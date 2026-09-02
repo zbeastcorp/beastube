@@ -48,7 +48,10 @@ url = "2"
 percent-encoding = "2"
 
 # --- database ---
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "time", "json"] }
+# `sqlite-bundled` rather than the umbrella `sqlite` feature: the latter also turns on
+# `sqlite-load-extension`, which lets SQLite load arbitrary native code from a path. Nothing in
+# BEASTUBE needs extensions, so it stays off.
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros", "time", "json"] }
 
 # --- provider ---
 rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots"] }
