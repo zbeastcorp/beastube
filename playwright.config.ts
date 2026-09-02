@@ -1,16 +1,18 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const isCi = Boolean(process.env['CI']);
+
 /**
- * E2E tests run the React app in a real Chromium against the Vite dev server with the Tauri IPC
- * layer mocked (see tests/e2e/fixtures). Full-desktop smoke tests against the packaged binary are
- * driven by tests/desktop (tauri-driver) and are not part of this config.
+ * E2E tests drive the React application in a real Chromium against the Vite dev server, with the
+ * Tauri IPC layer mocked (see tests/e2e/fixtures). Smoke tests against the packaged Windows binary
+ * are driven separately by tauri-driver and are not part of this config.
  */
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? 'github' : 'list',
+  forbidOnly: isCi,
+  retries: isCi ? 2 : 0,
+  reporter: isCi ? 'github' : 'list',
   use: {
     baseURL: 'http://localhost:1420',
     trace: 'on-first-retry',
@@ -20,7 +22,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm dev',
     url: 'http://localhost:1420',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCi,
     timeout: 60_000,
   },
 });

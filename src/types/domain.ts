@@ -1,0 +1,636 @@
+/**
+ * The TypeScript mirror of `beastube-core`'s domain model.
+ *
+ * These types are hand-written rather than generated. The tradeoff is deliberate: a code generator
+ * would add a build step, a dependency and a class of "the generator is stale" failures, for types
+ * that change rarely and are read constantly. Hand-writing them keeps the wire contract legible on
+ * both sides.
+ *
+ * Drift is caught rather than trusted: `tests/fixtures/contract/*.json` holds one sample of each
+ * shape, serialized by a Rust test and parsed by a TypeScript test. If either side changes a field
+ * name, a `serde` rename or an enum variant, one of those tests fails.
+ *
+ * Conventions carried over from Rust:
+ * - Timestamps are Unix milliseconds (`number`), directly usable as `new Date(value)`.
+ * - Durations and positions are milliseconds.
+ * - An absent optional field means *unknown*, not zero. Render nothing rather than a confident 0.
+ */
+
+// ---------------------------------------------------------------------------------------------
+// Identifiers
+//
+// Branded so a ChannelId cannot be passed where a VideoId is expected. The brand exists only at
+// compile time; at runtime these are plain strings.
+// ---------------------------------------------------------------------------------------------
+
+declare const brand: unique symbol;
+type Brand<T, B> = T & { readonly [brand]: B };
+
+/** Provider identifier of a video. */
+export type VideoId = Brand<string, 'VideoId'>;
+/** Provider identifier of a channel. */
+export type ChannelId = Brand<string, 'ChannelId'>;
+/** Provider identifier of a remote playlist. */
+export type PlaylistId = Brand<string, 'PlaylistId'>;
+/** Row identifier of a locally created playlist. */
+export type LocalPlaylistId = Brand<number, 'LocalPlaylistId'>;
+
+/** The alphabet Rust validates identifiers against (RFC 4648 URL/filename-safe). */
+const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/** Longest identifier accepted, matching the Rust bound for videos and channels. */
+const ID_MAX_LENGTH = 64;
+
+/**
+ * Validates and brands a video identifier.
+ *
+ * Mirrors the Rust validation so an identifier built from user input or a deep link is rejected
+ * here, before it reaches IPC — the same check runs again in Rust, since the frontend is not a
+ * trusted validator.
+ */
+export function toVideoId(raw: string): VideoId | null {
+  return raw.length > 0 && raw.length <= ID_MAX_LENGTH && ID_PATTERN.test(raw)
+    ? (raw as VideoId)
+    : null;
+}
+
+/** Validates and brands a channel identifier. */
+export function toChannelId(raw: string): ChannelId | null {
+  return raw.length > 0 && raw.length <= ID_MAX_LENGTH && ID_PATTERN.test(raw)
+    ? (raw as ChannelId)
+    : null;
+}
+
+/** Validates and brands a playlist identifier (longer bound, matching Rust). */
+export function toPlaylistId(raw: string): PlaylistId | null {
+  return raw.length > 0 && raw.length <= 128 && ID_PATTERN.test(raw) ? (raw as PlaylistId) : null;
+}
+
+/** Brands a local playlist row id. */
+export function toLocalPlaylistId(raw: number): LocalPlaylistId {
+  return raw as LocalPlaylistId;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Media
+// ---------------------------------------------------------------------------------------------
+
+/** One rendition of a thumbnail. */
+export interface Thumbnail {
+  url: string;
+  width?: number;
+  height?: number;
+}
+
+/** Renditions of one image, ascending by width. */
+export type ThumbnailSet = Thumbnail[];
+
+/**
+ * The smallest rendition at least `targetWidth` wide, falling back to the largest available.
+ *
+ * Mirrors `ThumbnailSet::best_for_width`. Selecting the smallest sufficient rendition rather than
+ * the largest is what keeps a virtualized grid from pulling oversized images for small cards.
+ */
+export function bestThumbnailFor(set: ThumbnailSet, targetWidth: number): Thumbnail | undefined {
+  const sufficient = set.find((t) => t.width !== undefined && t.width >= targetWidth);
+  if (sufficient) return sufficient;
+  const sized = [...set].reverse().find((t) => t.width !== undefined);
+  return sized ?? set.at(-1);
+}
+
+/** Live-broadcast state. */
+export type LiveStatus = 'not_live' | 'live' | 'upcoming' | 'was_live';
+
+/** Video quality tier. `auto` is a selection mode, not a resolution. */
+export type Quality =
+  | 'auto'
+  | '144p'
+  | '240p'
+  | '360p'
+  | '480p'
+  | '720p'
+  | '1080p'
+  | '1440p'
+  | '2160p';
+
+/** Video codec family. */
+export type VideoCodec = 'h264' | 'vp9' | 'av1' | 'other';
+
+/** Audio codec family. */
+export type AudioCodec = 'aac' | 'opus' | 'other';
+
+/** The compact shape used by every card and list. */
+export interface VideoSummary {
+  id: VideoId;
+  title: string;
+  channel_id?: ChannelId;
+  channel_name?: string;
+  thumbnails?: ThumbnailSet;
+  duration_ms?: number;
+  published_at?: number;
+  published_text?: string;
+  view_count?: number;
+  live_status?: LiveStatus;
+  is_short?: boolean;
+}
+
+/** A named position within a video. */
+export interface Chapter {
+  title: string;
+  start_ms: number;
+  thumbnails?: ThumbnailSet;
+}
+
+/** A subtitle track. */
+export interface CaptionTrack {
+  language_code: string;
+  language_name: string;
+  url: string;
+  is_auto_generated?: boolean;
+}
+
+/** The full shape used by the watch page. Flattens {@link VideoSummary} on the wire. */
+export interface VideoDetails extends VideoSummary {
+  description?: string;
+  channel_avatar?: ThumbnailSet;
+  channel_subscriber_count?: number;
+  like_count?: number;
+  chapters?: Chapter[];
+  captions?: CaptionTrack[];
+  category?: string;
+  is_unlisted?: boolean;
+  is_age_restricted?: boolean;
+}
+
+/** Channel tabs that actually have content. */
+export type ChannelTab = 'videos' | 'shorts' | 'live' | 'playlists';
+
+/** The compact shape used by channel cards. */
+export interface ChannelSummary {
+  id: ChannelId;
+  name: string;
+  avatar?: ThumbnailSet;
+  subscriber_count?: number;
+  handle?: string;
+  is_verified?: boolean;
+}
+
+/** The full shape used by the channel page. */
+export interface ChannelDetails extends ChannelSummary {
+  description?: string;
+  banner?: ThumbnailSet;
+  available_tabs?: ChannelTab[];
+  video_count?: number;
+  canonical_url?: string;
+}
+
+/** The compact shape used by playlist cards. */
+export interface PlaylistSummary {
+  id: PlaylistId;
+  title: string;
+  channel_id?: ChannelId;
+  channel_name?: string;
+  thumbnails?: ThumbnailSet;
+  video_count?: number;
+}
+
+/** The full shape used by the playlist page. */
+export interface PlaylistDetails extends PlaylistSummary {
+  description?: string;
+  videos?: VideoSummary[];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Pagination
+// ---------------------------------------------------------------------------------------------
+
+/** An opaque provider cursor. Never interpreted by the frontend. */
+export type ContinuationToken = Brand<string, 'ContinuationToken'>;
+
+/** One page of a paginated collection. */
+export interface Page<T> {
+  items: T[];
+  continuation?: ContinuationToken;
+  total_estimate?: number;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------------------------
+
+export type SearchResultKind = 'all' | 'videos' | 'shorts' | 'channels' | 'playlists' | 'live';
+export type UploadDateFilter =
+  | 'any'
+  | 'last_hour'
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'this_year';
+export type VideoDurationFilter = 'any' | 'short' | 'medium' | 'long';
+export type SearchSortOrder = 'relevance' | 'upload_date' | 'view_count' | 'rating';
+export type VideoFeatureFilter =
+  | 'subtitles'
+  | 'high_definition'
+  | 'ultra_high_definition'
+  | 'hdr'
+  | 'live'
+  | 'vr360';
+
+/** A complete search request. */
+export interface SearchFilters {
+  kind?: SearchResultKind;
+  upload_date?: UploadDateFilter;
+  duration?: VideoDurationFilter;
+  sort_by?: SearchSortOrder;
+  features?: VideoFeatureFilter[];
+  channel?: ChannelId;
+}
+
+/** One heterogeneous search result. Externally tagged by `type`. */
+export type SearchItem =
+  | ({ type: 'video' } & VideoSummary)
+  | ({ type: 'channel' } & ChannelSummary)
+  | ({ type: 'playlist' } & PlaylistSummary);
+
+/** A page of search results plus the query that produced it. */
+export interface SearchResults {
+  query: string;
+  filters: SearchFilters;
+  page: Page<SearchItem>;
+  estimated_total?: number;
+  corrected_query?: string;
+}
+
+/** One autocomplete suggestion. */
+export interface Suggestion {
+  text: string;
+  from_history?: boolean;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Library
+// ---------------------------------------------------------------------------------------------
+
+export type WatchState = 'unwatched' | 'in_progress' | 'completed';
+
+/** A stored playback position. */
+export interface PlaybackPosition {
+  position_ms: number;
+  duration_ms?: number;
+  updated_at: number;
+}
+
+/** One row of local watch history. */
+export interface HistoryEntry {
+  video_id: VideoId;
+  title: string;
+  channel_id?: ChannelId;
+  channel_name?: string;
+  thumbnails?: ThumbnailSet;
+  position: PlaybackPosition;
+  first_watched_at: number;
+  last_watched_at: number;
+  play_count: number;
+}
+
+/** A user-saved bookmark. */
+export interface Bookmark {
+  video_id: VideoId;
+  title: string;
+  channel_id?: ChannelId;
+  channel_name?: string;
+  thumbnails?: ThumbnailSet;
+  note?: string;
+  tags?: string[];
+  timestamp_ms?: number;
+  created_at: number;
+}
+
+/** A playlist the user created locally. */
+export interface LocalPlaylist {
+  id: LocalPlaylistId;
+  name: string;
+  description?: string;
+  item_count: number;
+  created_at: number;
+  updated_at: number;
+  thumbnails?: ThumbnailSet;
+  is_system?: boolean;
+}
+
+/** One entry in a local playlist. */
+export interface PlaylistItem {
+  video: VideoSummary;
+  position: number;
+  added_at: number;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Playback
+// ---------------------------------------------------------------------------------------------
+
+/** Explicit playback lifecycle states. Mirrors `beastube_core::PlaybackState`. */
+export type PlaybackState =
+  | 'idle'
+  | 'loading'
+  | 'ready'
+  | 'playing'
+  | 'paused'
+  | 'buffering'
+  | 'seeking'
+  | 'ended'
+  | 'error';
+
+/** Whether the playhead is advancing or trying to. Keeps OS controls from flickering on a stall. */
+export function isPlaybackActive(state: PlaybackState): boolean {
+  return state === 'playing' || state === 'buffering' || state === 'seeking';
+}
+
+/** Whether a busy indicator belongs on screen. */
+export function isPlaybackBusy(state: PlaybackState): boolean {
+  return state === 'loading' || state === 'buffering' || state === 'seeking';
+}
+
+/** Whether media is loaded, so position and track selection are meaningful. */
+export function hasMedia(state: PlaybackState): boolean {
+  return (
+    state === 'ready' ||
+    state === 'playing' ||
+    state === 'paused' ||
+    state === 'buffering' ||
+    state === 'seeking' ||
+    state === 'ended'
+  );
+}
+
+/**
+ * What the active playback adapter can actually do.
+ *
+ * The UI renders a control only where the corresponding flag is true. This is the mechanism behind
+ * §131 (no fake features): under the IFrame adapter `quality_selection` is false, so the quality
+ * menu is absent rather than present and inert.
+ */
+export interface PlaybackCapabilities {
+  /** A specific quality tier can be selected. */
+  quality_selection: boolean;
+  /** `available_qualities` reflects real streams. */
+  reports_available_qualities: boolean;
+  /** Playback rate can be changed. */
+  playback_rate: boolean;
+  /** Subtitle tracks can be listed and toggled. */
+  caption_control: boolean;
+  /** An audio track can be chosen. */
+  audio_track_selection: boolean;
+  /** Buffer level is observable. */
+  buffer_metrics: boolean;
+  /** Dropped/decoded frame counts are observable. */
+  frame_metrics: boolean;
+  /** Picture-in-picture can be entered. */
+  picture_in_picture: boolean;
+  /** The element can go fullscreen. */
+  fullscreen: boolean;
+  /** Volume can be set programmatically. */
+  volume_control: boolean;
+  /** Creator-marked segments can be skipped automatically. */
+  segment_skipping: boolean;
+}
+
+/** A capability set with everything off, used before an adapter reports in. */
+export const NO_CAPABILITIES: PlaybackCapabilities = {
+  quality_selection: false,
+  reports_available_qualities: false,
+  playback_rate: false,
+  caption_control: false,
+  audio_track_selection: false,
+  buffer_metrics: false,
+  frame_metrics: false,
+  picture_in_picture: false,
+  fullscreen: false,
+  volume_control: false,
+  segment_skipping: false,
+};
+
+// ---------------------------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------------------------
+
+export type ErrorKind =
+  | 'network'
+  | 'provider'
+  | 'playback'
+  | 'database'
+  | 'cache'
+  | 'filesystem'
+  | 'permission'
+  | 'configuration'
+  | 'filtering'
+  | 'update';
+
+/** What to do about a failure. Mirrors `beastube_core::error::Recovery`. */
+export type Recovery =
+  | { strategy: 'retry_automatic'; delay_ms: number; attempts_made: number; max_attempts: number }
+  | { strategy: 'retry_manual' }
+  | { strategy: 'fallback'; message_key: string }
+  | { strategy: 'adjust_settings'; settings_path: string }
+  | { strategy: 'rebuild_local_data'; store: string }
+  | { strategy: 'await_connectivity' }
+  | { strategy: 'unrecoverable' };
+
+/**
+ * A failure as it crosses IPC.
+ *
+ * Carries no English: `message_key` is resolved by the localization layer, and `diagnostic` is
+ * engineer-facing detail shown only on the diagnostics screen.
+ */
+export interface ErrorPayload {
+  kind: ErrorKind;
+  code: string;
+  message_key: string;
+  params?: Record<string, string>;
+  recovery: Recovery;
+  diagnostic?: string;
+  correlation_id?: string;
+}
+
+/** Whether the UI should offer a retry affordance. */
+export function offersRetry(error: ErrorPayload): boolean {
+  return error.recovery.strategy === 'retry_manual' || error.recovery.strategy === 'retry_automatic';
+}
+
+/** Narrows an unknown thrown value to an {@link ErrorPayload}. */
+export function isErrorPayload(value: unknown): value is ErrorPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Partial<ErrorPayload>;
+  return (
+    typeof candidate.kind === 'string' &&
+    typeof candidate.code === 'string' &&
+    typeof candidate.message_key === 'string' &&
+    typeof candidate.recovery === 'object' &&
+    candidate.recovery !== null
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------------------------
+
+export type Theme = 'system' | 'light' | 'dark' | 'amoled' | 'custom';
+export type Density = 'comfortable' | 'compact';
+export type FilteringMode = 'off' | 'standard' | 'strict';
+
+export interface AppearanceSettings {
+  theme: Theme;
+  accent: string;
+  density: Density;
+  sidebar_collapsed: boolean;
+  /** `null` means "follow the OS `prefers-reduced-motion`". */
+  reduced_motion: boolean | null;
+  ui_scale: number;
+  language: string | null;
+}
+
+export interface PlaybackSettings {
+  default_quality: Quality;
+  max_quality: Quality;
+  volume: number;
+  muted: boolean;
+  speed: number;
+  autoplay_next: boolean;
+  autoplay_on_open: boolean;
+  resume_playback: boolean;
+  captions_enabled: boolean;
+  caption_language: string | null;
+  audio_language: string | null;
+  hardware_acceleration: boolean;
+  seek_step_seconds: number;
+  seek_step_large_seconds: number;
+}
+
+export interface PrivacySettings {
+  history_enabled: boolean;
+  search_history_enabled: boolean;
+  local_recommendations_enabled: boolean;
+  incognito_by_default: boolean;
+  history_retention_days: number | null;
+  max_search_history_entries: number;
+}
+
+export interface FilteringSettings {
+  enabled: boolean;
+  mode: FilteringMode;
+  auto_update_rules: boolean;
+  update_interval_hours: number;
+  allowlist: string[];
+  blocklist: string[];
+  custom_rules: string[];
+}
+
+export interface NetworkSettings {
+  max_concurrent_requests: number;
+  request_timeout_seconds: number;
+  connect_timeout_seconds: number;
+  max_retries: number;
+  prefetch_enabled: boolean;
+  reduce_activity_on_battery: boolean;
+}
+
+export interface CacheSettings {
+  memory_budget_mb: number;
+  disk_budget_mb: number;
+  metadata_ttl_hours: number;
+  thumbnail_ttl_days: number;
+}
+
+/** The complete settings document. */
+export interface Settings {
+  version: number;
+  appearance: AppearanceSettings;
+  playback: PlaybackSettings;
+  privacy: PrivacySettings;
+  filtering: FilteringSettings;
+  network: NetworkSettings;
+  cache: CacheSettings;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------------------------
+
+export type NetworkStatus = 'online' | 'offline' | 'metered';
+export type FilterUpdateOutcome =
+  | 'applied'
+  | 'already_current'
+  | 'rejected_invalid'
+  | 'rolled_back';
+
+export interface PlaybackStateChanged {
+  session_id: string;
+  video_id: VideoId;
+  previous: PlaybackState;
+  current: PlaybackState;
+  position_ms: number;
+}
+
+export interface PlaybackFailed {
+  session_id: string;
+  video_id: VideoId;
+  position_ms: number;
+  error: ErrorPayload;
+}
+
+export interface SearchCompleted {
+  query: string;
+  result_count: number;
+  elapsed_ms: number;
+  from_cache: boolean;
+}
+
+export interface NetworkChanged {
+  previous: NetworkStatus;
+  current: NetworkStatus;
+}
+
+export interface CacheChanged {
+  disk_bytes: number;
+  memory_bytes: number;
+  evicted_entries: number;
+}
+
+export interface FilterUpdated {
+  outcome: FilterUpdateOutcome;
+  active_version: string;
+  rule_count: number;
+  reason_key?: string;
+}
+
+export interface UpdateAvailable {
+  version: string;
+  notes?: string;
+  published_at?: number;
+}
+
+export interface MaintenanceProgress {
+  task: string;
+  fraction?: number;
+  finished: boolean;
+}
+
+/**
+ * Event channel names and their payloads.
+ *
+ * Kept in step with `AppEvent::ALL_NAMES` in Rust by the contract fixture test — adding a variant
+ * on one side without the other fails that test.
+ */
+export interface AppEventMap {
+  'playback:state-changed': PlaybackStateChanged;
+  'playback:failed': PlaybackFailed;
+  'search:completed': SearchCompleted;
+  'network:changed': NetworkChanged;
+  'cache:changed': CacheChanged;
+  'filter:updated': FilterUpdated;
+  'update:available': UpdateAvailable;
+  'maintenance:progress': MaintenanceProgress;
+}
+
+/** Every event channel name. */
+export type AppEventName = keyof AppEventMap;

@@ -78,6 +78,12 @@ impl Priority {
     }
 }
 
+impl std::fmt::Display for Priority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,6 +128,12 @@ mod tests {
     #[test]
     fn default_is_normal() {
         assert_eq!(Priority::default(), Priority::Normal);
+    }
+
+    #[test]
+    fn displays_as_its_stable_identifier() {
+        assert_eq!(Priority::Critical.to_string(), "critical");
+        assert_eq!(format!("{}", Priority::Background), "background");
     }
 
     #[test]

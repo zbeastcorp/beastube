@@ -83,7 +83,7 @@ impl Database {
                 })?;
         }
 
-        let options = Self::connect_options(path)?;
+        let options = Self::connect_options(path);
         let db = Self::from_options(options, Some(path.to_path_buf())).await?;
         db.migrate().await?;
         Ok(db)
@@ -116,8 +116,8 @@ impl Database {
         Ok(db)
     }
 
-    fn connect_options(path: &Path) -> DbResult<SqliteConnectOptions> {
-        Ok(SqliteConnectOptions::new()
+    fn connect_options(path: &Path) -> SqliteConnectOptions {
+        SqliteConnectOptions::new()
             .filename(path)
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
@@ -128,7 +128,7 @@ impl Database {
             .pragma("temp_store", "MEMORY")
             // Runs `PRAGMA optimize` when a connection closes, so the query planner's statistics
             // stay current without a separate maintenance pass.
-            .optimize_on_close(true, None))
+            .optimize_on_close(true, None)
     }
 
     async fn from_options(options: SqliteConnectOptions, path: Option<PathBuf>) -> DbResult<Self> {
@@ -300,6 +300,8 @@ fn uuid_like() -> u64 {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // Truncating to the low 64 bits is fine: this only needs to be unique per test process.
+    #[allow(clippy::cast_possible_truncation)]
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos() as u64);

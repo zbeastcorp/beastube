@@ -1,0 +1,409 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+/*
+ * BEASTUBE design tokens.
+ *
+ * Every colour, radius, duration and elevation used anywhere in the application is defined here.
+ * Components reference tokens, never literals — that is what makes five themes possible without
+ * touching a single component (§62), and what keeps a theme change from being a find-and-replace.
+ *
+ * The palette is built around the product mark: a deep violet-black ground with a warm coral beam.
+ * It is deliberately not YouTube's red-on-white — this is a dedicated desktop player, and it should
+ * not read as a reskinned web page.
+ *
+ * Theme resolution:
+ *   :root                    → dark (the default; this is a media application)
+ *   [data-theme='light']     → light
+ *   [data-theme='amoled']    → true black, for OLED panels where black pixels are unlit
+ *   [data-theme='system']    → resolved to dark or light by the theme controller before paint,
+ *                              so there is never a flash of the wrong theme
+ */
+
+@theme {
+  /* ---------------------------------------------------------------------------------------
+   * Typography
+   * ------------------------------------------------------------------------------------- */
+  --font-sans:
+    'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* A compact type scale. Desktop density: the base is 14px, not 16px, because this is a tool
+     rather than a document, and a tighter scale fits meaningfully more content per screen. */
+  --text-2xs: 0.6875rem; /* 11px — metadata, counts */
+  --text-xs: 0.75rem; /* 12px — secondary labels */
+  --text-sm: 0.8125rem; /* 13px — body small, sidebar */
+  --text-base: 0.875rem; /* 14px — body */
+  --text-md: 0.9375rem; /* 15px — card titles */
+  --text-lg: 1.0625rem; /* 17px — section headings */
+  --text-xl: 1.375rem; /* 22px — page titles */
+  --text-2xl: 1.75rem; /* 28px — hero */
+
+  /* ---------------------------------------------------------------------------------------
+   * Spacing, radii, elevation
+   * ------------------------------------------------------------------------------------- */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Layout constants the shell depends on. Defined as tokens so the sidebar transition and the
+     content offset cannot drift apart. */
+  --layout-sidebar-width: 15rem;
+  --layout-sidebar-collapsed-width: 3.5rem;
+  --layout-topbar-height: 3.25rem;
+  --layout-miniplayer-height: 4.5rem;
+
+  /* ---------------------------------------------------------------------------------------
+   * Motion
+   *
+   * Short and GPU-friendly (§63). Nothing above 200ms, because an animation the user waits on
+   * makes the application feel slower no matter how smooth it is.
+   * ------------------------------------------------------------------------------------- */
+  --duration-instant: 60ms;
+  --duration-fast: 110ms;
+  --duration-normal: 160ms;
+  --duration-slow: 220ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/*
+ * Dark is the default, declared on bare :root so a token always resolves even if no theme
+ * attribute is present.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Ground and surfaces. A violet cast rather than neutral grey; it reads as intentional where a
+     pure grey reads as unstyled. */
+  --color-bg: #0b0716;
+  --color-bg-subtle: #100a1f;
+  --color-surface: #16102a;
+  --color-surface-raised: #1e1636;
+  --color-surface-hover: #251c40;
+  --color-surface-active: #2d2249;
+  --color-overlay: rgb(6 4 13 / 0.72);
+
+  /* Text. Three weights is enough; a fourth invites inconsistent hierarchy. */
+  --color-text: #f2eefb;
+  --color-text-muted: #a99fc4;
+  --color-text-subtle: #6f6690;
+  --color-text-inverse: #0b0716;
+
+  --color-border: #291f45;
+  --color-border-strong: #3b2d61;
+  --color-border-focus: #ff7a5c;
+
+  /* Accent: the coral beam from the product mark. */
+  --color-accent: #ff5c5c;
+  --color-accent-hover: #ff7373;
+  --color-accent-active: #e84a4a;
+  --color-accent-subtle: rgb(255 92 92 / 0.14);
+  --color-accent-contrast: #ffffff;
+
+  --color-danger: #ff5f56;
+  --color-warning: #ffb454;
+  --color-success: #4ade80;
+  --color-info: #7aa2ff;
+
+  /* Elevation. Dark themes need a light rim as well as a shadow, or raised surfaces disappear. */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.55);
+  --shadow-rim: inset 0 1px 0 rgb(255 255 255 / 0.04);
+
+  /* Skeleton shimmer endpoints. */
+  --color-skeleton: #1c1533;
+  --color-skeleton-highlight: #271e45;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #faf8fd;
+  --color-bg-subtle: #f2eff8;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-surface-hover: #f2eff8;
+  --color-surface-active: #e9e4f3;
+  --color-overlay: rgb(20 14 35 / 0.4);
+
+  --color-text: #1a1330;
+  --color-text-muted: #5c5478;
+  --color-text-subtle: #8b83a6;
+  --color-text-inverse: #ffffff;
+
+  --color-border: #e4dff0;
+  --color-border-strong: #cfc7e2;
+  --color-border-focus: #e84a4a;
+
+  --color-accent: #e0453f;
+  --color-accent-hover: #c93a35;
+  --color-accent-active: #b3312c;
+  --color-accent-subtle: rgb(224 69 63 / 0.1);
+  --color-accent-contrast: #ffffff;
+
+  --color-danger: #d92d20;
+  --color-warning: #b54708;
+  --color-success: #067647;
+  --color-info: #175cd3;
+
+  --shadow-sm: 0 1px 2px rgb(26 19 48 / 0.06);
+  --shadow-md: 0 4px 12px rgb(26 19 48 / 0.08);
+  --shadow-lg: 0 12px 32px rgb(26 19 48 / 0.12);
+  --shadow-rim: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  --color-skeleton: #ece8f4;
+  --color-skeleton-highlight: #f6f3fb;
+}
+
+/*
+ * AMOLED: true black ground so black pixels are unlit. Surfaces stay near-black rather than
+ * lifting to grey, and borders carry the structure that elevation would otherwise provide.
+ */
+[data-theme='amoled'] {
+  color-scheme: dark;
+
+  --color-bg: #000000;
+  --color-bg-subtle: #050308;
+  --color-surface: #0a0710;
+  --color-surface-raised: #120d1c;
+  --color-surface-hover: #181125;
+  --color-surface-active: #1f1730;
+  --color-overlay: rgb(0 0 0 / 0.85);
+
+  --color-text: #f5f2fb;
+  --color-text-muted: #a49bbd;
+  --color-text-subtle: #6b6388;
+  --color-text-inverse: #000000;
+
+  --color-border: #1d1630;
+  --color-border-strong: #2c2247;
+  --color-border-focus: #ff7a5c;
+
+  --color-accent: #ff5c5c;
+  --color-accent-hover: #ff7373;
+  --color-accent-active: #e84a4a;
+  --color-accent-subtle: rgb(255 92 92 / 0.16);
+  --color-accent-contrast: #ffffff;
+
+  --color-danger: #ff5f56;
+  --color-warning: #ffb454;
+  --color-success: #4ade80;
+  --color-info: #7aa2ff;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.8);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.85);
+  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.9);
+  --shadow-rim: inset 0 1px 0 rgb(255 255 255 / 0.03);
+
+  --color-skeleton: #100c1a;
+  --color-skeleton-highlight: #1a1329;
+}
+
+/* Expose the theme tokens to Tailwind utilities (bg-surface, text-muted, border-border, …). */
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-bg-subtle: var(--color-bg-subtle);
+  --color-surface: var(--color-surface);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-surface-active: var(--color-surface-active);
+  --color-overlay: var(--color-overlay);
+  --color-text: var(--color-text);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-subtle: var(--color-text-subtle);
+  --color-text-inverse: var(--color-text-inverse);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-border-focus: var(--color-border-focus);
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-active: var(--color-accent-active);
+  --color-accent-subtle: var(--color-accent-subtle);
+  --color-accent-contrast: var(--color-accent-contrast);
+  --color-danger: var(--color-danger);
+  --color-warning: var(--color-warning);
+  --color-success: var(--color-success);
+  --color-info: var(--color-info);
+  --color-skeleton: var(--color-skeleton);
+  --color-skeleton-highlight: var(--color-skeleton-highlight);
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Base layer
+ * ------------------------------------------------------------------------------------------- */
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* This is an application chrome, not a document: a stray text selection while clicking
+       controls looks like a bug. Selection is re-enabled on content that is meant to be copied. */
+    user-select: none;
+    /* Rubber-band scrolling on a desktop shell reads as a broken window. */
+    overscroll-behavior: none;
+  }
+
+  /* Content that genuinely is text the user may want. */
+  .selectable,
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  /*
+   * A single visible focus treatment, applied only for keyboard navigation. Removing focus rings
+   * would fail §64; showing them on mouse clicks makes the UI look broken, so :focus-visible is
+   * the correct middle.
+   */
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Scrollbars styled to match the surface rather than the OS default, which on Windows is a
+     bright light-grey slab that ruins a dark UI. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-strong);
+    border-radius: var(--radius-full);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-text-subtle);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  img {
+    max-width: 100%;
+  }
+
+  /*
+   * Reduced motion. Animations are not merely shortened but effectively removed, because the
+   * request is about vestibular comfort, not speed. Kept at 0.01ms rather than 0 so that
+   * transitionend/animationend listeners still fire and state machines do not stall.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* The same, when the user has asked for it in application settings rather than in the OS. */
+  [data-reduced-motion='true'] *,
+  [data-reduced-motion='true'] *::before,
+  [data-reduced-motion='true'] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * Utilities used across components
+ * ------------------------------------------------------------------------------------------- */
+
+@layer utilities {
+  /* Placeholder shimmer. Animates background-position only, which stays on the compositor. */
+  .skeleton {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-skeleton) 0%,
+      var(--color-skeleton-highlight) 50%,
+      var(--color-skeleton) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-sweep 1.4s var(--ease-in-out) infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Clamp to N lines without a layout-shifting measurement pass. */
+  .line-clamp-1,
+  .line-clamp-2,
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-1 {
+    -webkit-line-clamp: 1;
+  }
+  .line-clamp-2 {
+    -webkit-line-clamp: 2;
+  }
+  .line-clamp-3 {
+    -webkit-line-clamp: 3;
+  }
+
+  /* Regions that scroll internally. Paired with `overscroll-contain` so a list reaching its end
+     does not start scrolling the page behind it. */
+  .scroll-region {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Drag region for the custom title bar. */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}

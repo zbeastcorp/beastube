@@ -131,6 +131,8 @@ impl DomainError for DbError {
         }
     }
 
+    // Variants sharing a recovery today are still distinct failures; merging the arms would couple rules that are expected to diverge.
+    #[allow(clippy::match_same_arms)]
     fn recovery(&self) -> Recovery {
         match self {
             // Contention clears on its own; the busy timeout has already waited once, so back off

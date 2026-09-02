@@ -18,6 +18,8 @@
 
 pub mod connection;
 pub mod error;
+pub mod repo;
 
 pub use connection::{Database, MIGRATOR};
 pub use error::{DbError, DbResult};
+pub use repo::Repositories;
