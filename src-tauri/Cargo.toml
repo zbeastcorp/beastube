@@ -52,3 +52,6 @@ windows.workspace = true
 [features]
 default = []
 devtools = ["tauri/devtools"]
+
+[lints]
+workspace = true

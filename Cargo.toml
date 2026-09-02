@@ -65,7 +65,7 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_System_Power", "Win32_System_SystemInformation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
 
 # --- tauri ---
-tauri = { version = "2.11", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
 tauri-build = "2.6"
 tauri-plugin-updater = "2.11"
 tauri-plugin-notification = "2.4"
@@ -80,6 +80,21 @@ tempfile = "3"
 proptest = "1"
 wiremock = "0.6"
 criterion = { version = "0.8", features = ["async_tokio"] }
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unreachable_pub = "warn"
+# Deny rather than forbid: the Windows integration layer needs `unsafe` for COM interop and opts in
+# explicitly with a documented `#[allow]`, which `forbid` would make impossible.
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# The workspace uses `module::Type` naming deliberately (`error::ErrorKind`), which this flags.
+module_name_repetitions = "allow"
+# Panicking paths are reviewed case by case; a blanket ban pushes them into less visible forms.
+missing_panics_doc = "warn"
+missing_errors_doc = "warn"
 
 [profile.release]
 codegen-units = 1

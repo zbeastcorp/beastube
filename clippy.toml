@@ -1,0 +1,24 @@
+# Product and technology names that clippy's `doc_markdown` lint mistakes for code items because
+# they contain internal capitals. `".."` extends the built-in list rather than replacing it.
+doc-valid-idents = [
+    "..",
+    "YouTube",
+    "WebM",
+    "WebView2",
+    "SQLite",
+    "JavaScript",
+    "TypeScript",
+    "InnerTube",
+    "BEASTUBE",
+    "PoToken",
+    "SegmentBase",
+    "OpenGL",
+    "DirectX",
+]
+
+# A cognitive-complexity ceiling low enough to catch a function that should have been split, but
+# not so low that an exhaustive `match` over a state machine trips it.
+cognitive-complexity-threshold = 30
+
+# Windows paths and long URLs make a strict line limit counterproductive in docs.
+too-many-lines-threshold = 200
