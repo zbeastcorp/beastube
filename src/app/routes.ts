@@ -27,14 +27,7 @@ import {
 
 /** Which settings pane is open. */
 export type SettingsSection =
-  | 'appearance'
-  | 'playback'
-  | 'privacy'
-  | 'filtering'
-  | 'network'
-  | 'cache'
-  | 'shortcuts'
-  | 'about';
+  'appearance' | 'playback' | 'privacy' | 'filtering' | 'network' | 'cache' | 'shortcuts' | 'about';
 
 const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   'appearance',
@@ -100,7 +93,8 @@ export function routeToHash(route: Route): string {
     }
     case 'watch': {
       const params = new URLSearchParams();
-      if (route.startAtMs !== undefined) params.set('t', String(Math.floor(route.startAtMs / 1000)));
+      if (route.startAtMs !== undefined)
+        params.set('t', String(Math.floor(route.startAtMs / 1000)));
       if (route.playlistId !== undefined) params.set('list', String(route.playlistId));
       const query = params.toString();
       return `#/watch/${route.videoId}${query ? `?${query}` : ''}`;

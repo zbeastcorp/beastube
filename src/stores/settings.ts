@@ -109,7 +109,6 @@ interface SettingsState {
 
 /** Merges `patch` into `base`, replacing arrays wholesale rather than concatenating. */
 function mergeDeep<T>(base: T, patch: DeepPartial<T>): T {
-  if (patch === undefined) return base;
   if (Array.isArray(base) || typeof base !== 'object' || base === null) {
     return patch as T;
   }

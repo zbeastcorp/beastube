@@ -48,7 +48,17 @@ interface PluralForms {
   other: string;
 }
 
-type CatalogueNode = string | PluralForms | { readonly [key: string]: CatalogueNode };
+type CatalogueNode = string | PluralForms | CatalogueRecord;
+
+/**
+ * A nested catalogue level.
+ *
+ * An interface with an index signature rather than a mapped `Record`: inside a recursive alias a
+ * mapped type weakens inference enough that the locale catalogues stop being assignable to it.
+ */
+interface CatalogueRecord {
+  readonly [key: string]: CatalogueNode;
+}
 
 /**
  * Flattens the nested catalogue into dot-separated key paths.
@@ -80,9 +90,9 @@ type DeepPartial<T> = T extends string
     : { [K in keyof T]?: DeepPartial<T[K]> };
 
 const CATALOGUES: Record<Locale, CatalogueNode> = {
-  en: en as unknown as CatalogueNode,
-  hi: hi as unknown as CatalogueNode,
-  es: es as unknown as CatalogueNode,
+  en,
+  hi,
+  es,
 };
 
 /** Whether `value` is a supported locale tag. */
@@ -126,7 +136,7 @@ function lookup(catalogue: CatalogueNode, path: readonly string[]): CatalogueNod
   let node: CatalogueNode | undefined = catalogue;
   for (const segment of path) {
     if (node === undefined || typeof node === 'string') return undefined;
-    node = (node as { readonly [key: string]: CatalogueNode })[segment];
+    node = (node as CatalogueRecord)[segment];
   }
   return node;
 }

@@ -2,206 +2,247 @@
 @import '@fontsource-variable/inter';
 
 /*
- * BEASTUBE design tokens.
+ * BEASTUBE design tokens — YouTube-faithful.
  *
- * Every colour, radius, duration and elevation used anywhere in the application is defined here.
- * Components reference tokens, never literals — that is what makes five themes possible without
- * touching a single component (§62), and what keeps a theme change from being a find-and-replace.
+ * The palette, type scale, radii and motion below match YouTube's own dark and light themes, so
+ * the client feels immediately familiar rather than like a third-party skin. Every value is a
+ * token: components never hard-code a colour, which is what makes four themes possible without
+ * touching a component (§62).
  *
- * The palette is built around the product mark: a deep violet-black ground with a warm coral beam.
- * It is deliberately not YouTube's red-on-white — this is a dedicated desktop player, and it should
- * not read as a reskinned web page.
+ * Reference values (YouTube web, dark):
+ *   page ground        #0f0f0f
+ *   raised surface     #212121   (menus, dialogs, chips)
+ *   hover              #272727
+ *   search field       #121212 with a #303030 border
+ *   primary text       #f1f1f1
+ *   secondary text     #aaaaaa
+ *   dividers           #303030
+ *   brand red          #ff0000   (logo, live dot)
+ *   link / accent blue #3ea6ff   (links, "Sign in" style buttons, active chips in some surfaces)
  *
  * Theme resolution:
- *   :root                    → dark (the default; this is a media application)
- *   [data-theme='light']     → light
- *   [data-theme='amoled']    → true black, for OLED panels where black pixels are unlit
- *   [data-theme='system']    → resolved to dark or light by the theme controller before paint,
- *                              so there is never a flash of the wrong theme
+ *   :root                 → dark (YouTube dark; the default for a media application)
+ *   [data-theme='light']  → YouTube light
+ *   [data-theme='amoled'] → true black for OLED panels
+ *   [data-theme='system'] → resolved to dark or light before paint, so there is never a flash
  */
 
 @theme {
-  /* ---------------------------------------------------------------------------------------
-   * Typography
-   * ------------------------------------------------------------------------------------- */
+  /* -----------------------------------------------------------------------------------------
+   * Typography — YouTube uses Roboto; Inter is metrically close and bundled locally (no CDN,
+   * so no request leaks a page view to a font host).
+   * --------------------------------------------------------------------------------------- */
   --font-sans:
-    'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    'Inter Variable', 'Inter', Roboto, 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;
   --font-mono: 'Cascadia Code', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  /* A compact type scale. Desktop density: the base is 14px, not 16px, because this is a tool
-     rather than a document, and a tighter scale fits meaningfully more content per screen. */
-  --text-2xs: 0.6875rem; /* 11px — metadata, counts */
-  --text-xs: 0.75rem; /* 12px — secondary labels */
-  --text-sm: 0.8125rem; /* 13px — body small, sidebar */
-  --text-base: 0.875rem; /* 14px — body */
-  --text-md: 0.9375rem; /* 15px — card titles */
-  --text-lg: 1.0625rem; /* 17px — section headings */
-  --text-xl: 1.375rem; /* 22px — page titles */
-  --text-2xl: 1.75rem; /* 28px — hero */
+  /* YouTube's scale: 14px body, 12px metadata, 20px section headings. */
+  --text-2xs: 0.6875rem; /* 11px — badges, duration pills */
+  --text-xs: 0.75rem; /* 12px — view counts, timestamps */
+  --text-sm: 0.8125rem; /* 13px — chips, buttons */
+  --text-base: 0.875rem; /* 14px — body, sidebar, card titles */
+  --text-md: 1rem; /* 16px — video title in the watch page */
+  --text-lg: 1.25rem; /* 20px — section headings */
+  --text-xl: 1.5rem; /* 24px — page titles */
+  --text-2xl: 2rem; /* 32px — empty-state headings */
 
-  /* ---------------------------------------------------------------------------------------
-   * Spacing, radii, elevation
-   * ------------------------------------------------------------------------------------- */
+  /* -----------------------------------------------------------------------------------------
+   * Radii — YouTube moved to a heavily rounded language: 12px thumbnails, pill-shaped buttons
+   * and chips, 12px menus.
+   * --------------------------------------------------------------------------------------- */
   --radius-xs: 0.25rem;
-  --radius-sm: 0.375rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem; /* thumbnails, cards */
+  --radius-lg: 0.75rem; /* menus, dialogs */
   --radius-xl: 1rem;
-  --radius-full: 9999px;
+  --radius-full: 9999px; /* buttons, chips, avatars */
 
-  /* Layout constants the shell depends on. Defined as tokens so the sidebar transition and the
-     content offset cannot drift apart. */
-  --layout-sidebar-width: 15rem;
-  --layout-sidebar-collapsed-width: 3.5rem;
-  --layout-topbar-height: 3.25rem;
+  /* Layout constants the shell depends on, matching YouTube's own metrics. */
+  --layout-sidebar-width: 15rem; /* 240px expanded */
+  --layout-sidebar-collapsed-width: 4.5rem; /* 72px mini sidebar */
+  --layout-topbar-height: 3.5rem; /* 56px masthead */
   --layout-miniplayer-height: 4.5rem;
+  --layout-content-max: 100rem;
 
-  /* ---------------------------------------------------------------------------------------
+  /* -----------------------------------------------------------------------------------------
    * Motion
    *
-   * Short and GPU-friendly (§63). Nothing above 200ms, because an animation the user waits on
-   * makes the application feel slower no matter how smooth it is.
-   * ------------------------------------------------------------------------------------- */
-  --duration-instant: 60ms;
-  --duration-fast: 110ms;
-  --duration-normal: 160ms;
-  --duration-slow: 220ms;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+   * YouTube's transitions are short and mostly cubic-bezier(0.05, 0, 0, 1) — a fast start that
+   * settles gently. Nothing here exceeds 200ms: an animation the user waits on makes the
+   * application feel slower however smooth it is (§63).
+   * --------------------------------------------------------------------------------------- */
+  --duration-instant: 50ms;
+  --duration-fast: 100ms;
+  --duration-normal: 150ms;
+  --duration-slow: 200ms;
+  --duration-sidebar: 180ms;
+  /* YouTube's own easing curve. */
+  --ease-yt: cubic-bezier(0.05, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/*
- * Dark is the default, declared on bare :root so a token always resolves even if no theme
- * attribute is present.
- */
+/* Dark is the default, declared on bare :root so a token always resolves. */
 :root {
   color-scheme: dark;
 
-  /* Ground and surfaces. A violet cast rather than neutral grey; it reads as intentional where a
-     pure grey reads as unstyled. */
-  --color-bg: #0b0716;
-  --color-bg-subtle: #100a1f;
-  --color-surface: #16102a;
-  --color-surface-raised: #1e1636;
-  --color-surface-hover: #251c40;
-  --color-surface-active: #2d2249;
-  --color-overlay: rgb(6 4 13 / 0.72);
+  --color-bg: #0f0f0f;
+  --color-bg-subtle: #0f0f0f;
+  --color-surface: #212121;
+  --color-surface-raised: #282828;
+  --color-surface-hover: #272727;
+  --color-surface-active: #3f3f3f;
+  /* Chips and ghost buttons sit on a translucent white so they work over any backdrop. */
+  --color-surface-translucent: rgb(255 255 255 / 0.1);
+  --color-surface-translucent-hover: rgb(255 255 255 / 0.2);
+  --color-overlay: rgb(0 0 0 / 0.8);
+  --color-scrim: rgb(0 0 0 / 0.6);
 
-  /* Text. Three weights is enough; a fourth invites inconsistent hierarchy. */
-  --color-text: #f2eefb;
-  --color-text-muted: #a99fc4;
-  --color-text-subtle: #6f6690;
-  --color-text-inverse: #0b0716;
+  --color-text: #f1f1f1;
+  --color-text-muted: #aaaaaa;
+  --color-text-subtle: #717171;
+  --color-text-inverse: #0f0f0f;
 
-  --color-border: #291f45;
-  --color-border-strong: #3b2d61;
-  --color-border-focus: #ff7a5c;
+  --color-border: #303030;
+  --color-border-strong: #3f3f3f;
+  --color-border-focus: #3ea6ff;
 
-  /* Accent: the coral beam from the product mark. */
-  --color-accent: #ff5c5c;
-  --color-accent-hover: #ff7373;
-  --color-accent-active: #e84a4a;
-  --color-accent-subtle: rgb(255 92 92 / 0.14);
-  --color-accent-contrast: #ffffff;
+  /* Blue is YouTube's interactive accent; red is reserved for the brand mark and live state. */
+  --color-accent: #3ea6ff;
+  --color-accent-hover: #65b8ff;
+  --color-accent-active: #2b8fe6;
+  --color-accent-subtle: rgb(62 166 255 / 0.15);
+  --color-accent-contrast: #0f0f0f;
 
-  --color-danger: #ff5f56;
-  --color-warning: #ffb454;
-  --color-success: #4ade80;
-  --color-info: #7aa2ff;
+  --color-brand: #ff0000;
+  --color-brand-hover: #cc0000;
 
-  /* Elevation. Dark themes need a light rim as well as a shadow, or raised surfaces disappear. */
+  /* A filled primary button in YouTube dark is white with black text. */
+  --color-primary: #f1f1f1;
+  --color-primary-hover: #ffffff;
+  --color-primary-contrast: #0f0f0f;
+
+  --color-danger: #ff4e45;
+  --color-warning: #ffd24c;
+  --color-success: #2ba640;
+  --color-info: #3ea6ff;
+  --color-live: #ff0000;
+
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
-  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.55);
-  --shadow-rim: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-md: 0 4px 32px rgb(0 0 0 / 0.2);
+  --shadow-lg: 0 8px 48px rgb(0 0 0 / 0.4);
+  --shadow-menu: 0 4px 32px rgb(0 0 0 / 0.4);
 
-  /* Skeleton shimmer endpoints. */
-  --color-skeleton: #1c1533;
-  --color-skeleton-highlight: #271e45;
+  --color-skeleton: #212121;
+  --color-skeleton-highlight: #2f2f2f;
 }
 
 [data-theme='light'] {
   color-scheme: light;
 
-  --color-bg: #faf8fd;
-  --color-bg-subtle: #f2eff8;
+  --color-bg: #ffffff;
+  --color-bg-subtle: #f9f9f9;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-surface-hover: #f2eff8;
-  --color-surface-active: #e9e4f3;
-  --color-overlay: rgb(20 14 35 / 0.4);
+  --color-surface-hover: #f2f2f2;
+  --color-surface-active: #e5e5e5;
+  --color-surface-translucent: rgb(0 0 0 / 0.05);
+  --color-surface-translucent-hover: rgb(0 0 0 / 0.1);
+  --color-overlay: rgb(0 0 0 / 0.5);
+  --color-scrim: rgb(0 0 0 / 0.4);
 
-  --color-text: #1a1330;
-  --color-text-muted: #5c5478;
-  --color-text-subtle: #8b83a6;
+  --color-text: #0f0f0f;
+  --color-text-muted: #606060;
+  --color-text-subtle: #909090;
   --color-text-inverse: #ffffff;
 
-  --color-border: #e4dff0;
-  --color-border-strong: #cfc7e2;
-  --color-border-focus: #e84a4a;
+  --color-border: #e5e5e5;
+  --color-border-strong: #ccc;
+  --color-border-focus: #065fd4;
 
-  --color-accent: #e0453f;
-  --color-accent-hover: #c93a35;
-  --color-accent-active: #b3312c;
-  --color-accent-subtle: rgb(224 69 63 / 0.1);
+  --color-accent: #065fd4;
+  --color-accent-hover: #0b57c7;
+  --color-accent-active: #063f96;
+  --color-accent-subtle: rgb(6 95 212 / 0.1);
   --color-accent-contrast: #ffffff;
 
-  --color-danger: #d92d20;
+  --color-brand: #ff0000;
+  --color-brand-hover: #cc0000;
+
+  /* In light mode YouTube's filled primary button is near-black with white text. */
+  --color-primary: #0f0f0f;
+  --color-primary-hover: #272727;
+  --color-primary-contrast: #ffffff;
+
+  --color-danger: #c00;
   --color-warning: #b54708;
   --color-success: #067647;
-  --color-info: #175cd3;
+  --color-info: #065fd4;
+  --color-live: #ff0000;
 
-  --shadow-sm: 0 1px 2px rgb(26 19 48 / 0.06);
-  --shadow-md: 0 4px 12px rgb(26 19 48 / 0.08);
-  --shadow-lg: 0 12px 32px rgb(26 19 48 / 0.12);
-  --shadow-rim: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 32px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 8px 48px rgb(0 0 0 / 0.15);
+  --shadow-menu: 0 4px 32px rgb(0 0 0 / 0.2);
 
-  --color-skeleton: #ece8f4;
-  --color-skeleton-highlight: #f6f3fb;
+  --color-skeleton: #f2f2f2;
+  --color-skeleton-highlight: #fafafa;
 }
 
 /*
- * AMOLED: true black ground so black pixels are unlit. Surfaces stay near-black rather than
- * lifting to grey, and borders carry the structure that elevation would otherwise provide.
+ * AMOLED: true black so black pixels are unlit. Surfaces stay near-black rather than lifting to
+ * grey, and borders carry the structure that elevation would otherwise provide.
  */
 [data-theme='amoled'] {
   color-scheme: dark;
 
   --color-bg: #000000;
-  --color-bg-subtle: #050308;
-  --color-surface: #0a0710;
-  --color-surface-raised: #120d1c;
-  --color-surface-hover: #181125;
-  --color-surface-active: #1f1730;
-  --color-overlay: rgb(0 0 0 / 0.85);
+  --color-bg-subtle: #000000;
+  --color-surface: #0d0d0d;
+  --color-surface-raised: #161616;
+  --color-surface-hover: #1a1a1a;
+  --color-surface-active: #262626;
+  --color-surface-translucent: rgb(255 255 255 / 0.08);
+  --color-surface-translucent-hover: rgb(255 255 255 / 0.16);
+  --color-overlay: rgb(0 0 0 / 0.9);
+  --color-scrim: rgb(0 0 0 / 0.75);
 
-  --color-text: #f5f2fb;
-  --color-text-muted: #a49bbd;
-  --color-text-subtle: #6b6388;
+  --color-text: #f1f1f1;
+  --color-text-muted: #aaaaaa;
+  --color-text-subtle: #6d6d6d;
   --color-text-inverse: #000000;
 
-  --color-border: #1d1630;
-  --color-border-strong: #2c2247;
-  --color-border-focus: #ff7a5c;
+  --color-border: #1f1f1f;
+  --color-border-strong: #2e2e2e;
+  --color-border-focus: #3ea6ff;
 
-  --color-accent: #ff5c5c;
-  --color-accent-hover: #ff7373;
-  --color-accent-active: #e84a4a;
-  --color-accent-subtle: rgb(255 92 92 / 0.16);
-  --color-accent-contrast: #ffffff;
+  --color-accent: #3ea6ff;
+  --color-accent-hover: #65b8ff;
+  --color-accent-active: #2b8fe6;
+  --color-accent-subtle: rgb(62 166 255 / 0.15);
+  --color-accent-contrast: #000000;
 
-  --color-danger: #ff5f56;
-  --color-warning: #ffb454;
-  --color-success: #4ade80;
-  --color-info: #7aa2ff;
+  --color-brand: #ff0000;
+  --color-brand-hover: #cc0000;
+
+  --color-primary: #f1f1f1;
+  --color-primary-hover: #ffffff;
+  --color-primary-contrast: #000000;
+
+  --color-danger: #ff4e45;
+  --color-warning: #ffd24c;
+  --color-success: #2ba640;
+  --color-info: #3ea6ff;
+  --color-live: #ff0000;
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.8);
-  --shadow-md: 0 4px 12px rgb(0 0 0 / 0.85);
-  --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.9);
-  --shadow-rim: inset 0 1px 0 rgb(255 255 255 / 0.03);
+  --shadow-md: 0 4px 32px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 8px 48px rgb(0 0 0 / 0.8);
+  --shadow-menu: 0 4px 32px rgb(0 0 0 / 0.8);
 
-  --color-skeleton: #100c1a;
-  --color-skeleton-highlight: #1a1329;
+  --color-skeleton: #131313;
+  --color-skeleton-highlight: #1f1f1f;
 }
 
 /* Expose the theme tokens to Tailwind utilities (bg-surface, text-muted, border-border, …). */
@@ -212,7 +253,10 @@
   --color-surface-raised: var(--color-surface-raised);
   --color-surface-hover: var(--color-surface-hover);
   --color-surface-active: var(--color-surface-active);
+  --color-surface-translucent: var(--color-surface-translucent);
+  --color-surface-translucent-hover: var(--color-surface-translucent-hover);
   --color-overlay: var(--color-overlay);
+  --color-scrim: var(--color-scrim);
   --color-text: var(--color-text);
   --color-text-muted: var(--color-text-muted);
   --color-text-subtle: var(--color-text-subtle);
@@ -225,10 +269,16 @@
   --color-accent-active: var(--color-accent-active);
   --color-accent-subtle: var(--color-accent-subtle);
   --color-accent-contrast: var(--color-accent-contrast);
+  --color-brand: var(--color-brand);
+  --color-brand-hover: var(--color-brand-hover);
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-contrast: var(--color-primary-contrast);
   --color-danger: var(--color-danger);
   --color-warning: var(--color-warning);
   --color-success: var(--color-success);
   --color-info: var(--color-info);
+  --color-live: var(--color-live);
   --color-skeleton: var(--color-skeleton);
   --color-skeleton-highlight: var(--color-skeleton-highlight);
 }
@@ -254,17 +304,16 @@
     color: var(--color-text);
     font-family: var(--font-sans);
     font-size: var(--text-base);
-    line-height: 1.5;
+    line-height: 1.43; /* YouTube's body leading */
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* This is an application chrome, not a document: a stray text selection while clicking
-       controls looks like a bug. Selection is re-enabled on content that is meant to be copied. */
+    /* This is application chrome, not a document: a stray selection while clicking controls reads
+       as a bug. Selection is re-enabled on content meant to be copied. */
     user-select: none;
-    /* Rubber-band scrolling on a desktop shell reads as a broken window. */
+    /* Rubber-band scrolling in a desktop shell looks like a broken window. */
     overscroll-behavior: none;
   }
 
-  /* Content that genuinely is text the user may want. */
   .selectable,
   input,
   textarea {
@@ -272,9 +321,8 @@
   }
 
   /*
-   * A single visible focus treatment, applied only for keyboard navigation. Removing focus rings
-   * would fail §64; showing them on mouse clicks makes the UI look broken, so :focus-visible is
-   * the correct middle.
+   * One visible focus treatment, keyboard-only. Removing focus rings would fail §64; showing them
+   * on mouse clicks makes the UI look broken, so :focus-visible is the correct middle.
    */
   :focus {
     outline: none;
@@ -286,16 +334,16 @@
     border-radius: var(--radius-sm);
   }
 
-  /* Scrollbars styled to match the surface rather than the OS default, which on Windows is a
-     bright light-grey slab that ruins a dark UI. */
+  /* YouTube's scrollbar: an unobtrusive thumb that only appears against the dark ground. The OS
+     default on Windows is a bright light slab that ruins a dark UI. */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-border-strong) transparent;
   }
 
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
   }
 
   ::-webkit-scrollbar-track {
@@ -305,7 +353,7 @@
   ::-webkit-scrollbar-thumb {
     background-color: var(--color-border-strong);
     border-radius: var(--radius-full);
-    border: 2px solid transparent;
+    border: 3px solid transparent;
     background-clip: content-box;
   }
 
@@ -322,7 +370,7 @@
   }
 
   /*
-   * Reduced motion. Animations are not merely shortened but effectively removed, because the
+   * Reduced motion. Animations are effectively removed rather than merely shortened, because the
    * request is about vestibular comfort, not speed. Kept at 0.01ms rather than 0 so that
    * transitionend/animationend listeners still fire and state machines do not stall.
    */
@@ -337,7 +385,7 @@
     }
   }
 
-  /* The same, when the user has asked for it in application settings rather than in the OS. */
+  /* The same, when the user asked for it in application settings rather than in the OS. */
   [data-reduced-motion='true'] *,
   [data-reduced-motion='true'] *::before,
   [data-reduced-motion='true'] *::after {
@@ -349,11 +397,14 @@
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Utilities used across components
+ * Component utilities
+ *
+ * Only patterns that repeat across many components live here; everything else is Tailwind at the
+ * call site. Each animates transform/opacity/background only, so it stays on the compositor.
  * ------------------------------------------------------------------------------------------- */
 
 @layer utilities {
-  /* Placeholder shimmer. Animates background-position only, which stays on the compositor. */
+  /* Placeholder shimmer, matching YouTube's loading cards. */
   .skeleton {
     background-image: linear-gradient(
       90deg,
@@ -362,7 +413,7 @@
       var(--color-skeleton) 100%
     );
     background-size: 200% 100%;
-    animation: skeleton-sweep 1.4s var(--ease-in-out) infinite;
+    animation: skeleton-sweep 1.6s ease-in-out infinite;
   }
 
   @keyframes skeleton-sweep {
@@ -372,6 +423,135 @@
     to {
       background-position: -200% 0;
     }
+  }
+
+  /* Cards and rows: YouTube fades in newly loaded content rather than popping it in. */
+  .animate-fade-in {
+    animation: fade-in var(--duration-slow) var(--ease-yt) both;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Menus and popovers: YouTube scales them up slightly from the trigger edge. */
+  .animate-menu-in {
+    animation: menu-in var(--duration-normal) var(--ease-yt) both;
+    transform-origin: var(--radix-popper-transform-origin, top center);
+  }
+
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-menu-out {
+    animation: menu-out var(--duration-fast) var(--ease-yt) both;
+  }
+
+  @keyframes menu-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  /* Dialogs: a short rise, matching YouTube's modal entrance. */
+  .animate-dialog-in {
+    animation: dialog-in var(--duration-slow) var(--ease-yt) both;
+  }
+
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  /* Toasts slide up from the bottom-left, where YouTube puts them. */
+  .animate-toast-in {
+    animation: toast-in var(--duration-slow) var(--ease-yt) both;
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* The red loading bar YouTube runs across the top during navigation. */
+  .animate-progress-bar {
+    animation: progress-bar 1.4s var(--ease-out) infinite;
+    transform-origin: left;
+  }
+
+  @keyframes progress-bar {
+    0% {
+      transform: scaleX(0);
+      opacity: 1;
+    }
+    50% {
+      transform: scaleX(0.7);
+    }
+    100% {
+      transform: scaleX(1);
+      opacity: 0;
+    }
+  }
+
+  /* Live indicator pulse. */
+  .animate-live-pulse {
+    animation: live-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes live-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  /* Standard interactive transition, applied to buttons, chips and rows. */
+  .transition-surface {
+    transition:
+      background-color var(--duration-fast) var(--ease-yt),
+      color var(--duration-fast) var(--ease-yt),
+      border-color var(--duration-fast) var(--ease-yt),
+      opacity var(--duration-fast) var(--ease-yt);
+  }
+
+  /* Thumbnails lose their rounding on hover in YouTube's newer layouts; kept subtle here. */
+  .transition-thumbnail {
+    transition:
+      border-radius var(--duration-normal) var(--ease-yt),
+      transform var(--duration-normal) var(--ease-yt);
   }
 
   /* Clamp to N lines without a layout-shifting measurement pass. */
@@ -392,11 +572,19 @@
     -webkit-line-clamp: 3;
   }
 
-  /* Regions that scroll internally. Paired with `overscroll-contain` so a list reaching its end
-     does not start scrolling the page behind it. */
+  /* Regions that scroll internally, with contained overscroll so reaching the end of a list does
+     not start scrolling the page behind it. */
   .scroll-region {
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  /* Hides the scrollbar on horizontal chip rows, as YouTube does. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 
   /* Drag region for the custom title bar. */

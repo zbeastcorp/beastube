@@ -30,7 +30,13 @@ export type Overlay =
   | { kind: 'addToPlaylist'; video: VideoSummary }
   | { kind: 'createPlaylist' }
   | { kind: 'renamePlaylist'; id: number; currentName: string }
-  | { kind: 'confirm'; titleKey: string; bodyKey: string; confirmKey: string; onConfirm: () => void }
+  | {
+      kind: 'confirm';
+      titleKey: string;
+      bodyKey: string;
+      confirmKey: string;
+      onConfirm: () => void;
+    }
   | { kind: 'shortcuts' };
 
 interface UiState {

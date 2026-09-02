@@ -347,7 +347,8 @@ export const en = {
       modeStandard: 'Standard',
       modeStrict: 'Strict',
       modeOffHint: 'No filtering is applied.',
-      modeStandardHint: 'Filters only what can be identified confidently. Playback is never risked.',
+      modeStandardHint:
+        'Filters only what can be identified confidently. Playback is never risked.',
       modeStrictHint:
         'Also filters lower-confidence matches. More may be hidden than you intend; playback is still protected.',
       scopeNotice:

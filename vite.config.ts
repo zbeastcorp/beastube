@@ -39,7 +39,9 @@ export default defineConfig({
   build: {
     // WebView2 Evergreen is Chromium-based; Chrome 105 is Tauri's documented floor.
     target: 'chrome105',
-    minify: isDebug ? false : 'esbuild',
+    // Vite 8 transpiles and minifies with Oxc; the esbuild path is deprecated and no longer
+    // bundled. `true` selects the built-in minifier.
+    minify: !isDebug,
     sourcemap: isDebug,
     chunkSizeWarningLimit: 1500,
     rollupOptions: {

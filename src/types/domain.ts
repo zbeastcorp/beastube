@@ -103,15 +103,7 @@ export type LiveStatus = 'not_live' | 'live' | 'upcoming' | 'was_live';
 
 /** Video quality tier. `auto` is a selection mode, not a resolution. */
 export type Quality =
-  | 'auto'
-  | '144p'
-  | '240p'
-  | '360p'
-  | '480p'
-  | '720p'
-  | '1080p'
-  | '1440p'
-  | '2160p';
+  'auto' | '144p' | '240p' | '360p' | '480p' | '720p' | '1080p' | '1440p' | '2160p';
 
 /** Video codec family. */
 export type VideoCodec = 'h264' | 'vp9' | 'av1' | 'other';
@@ -220,21 +212,11 @@ export interface Page<T> {
 
 export type SearchResultKind = 'all' | 'videos' | 'shorts' | 'channels' | 'playlists' | 'live';
 export type UploadDateFilter =
-  | 'any'
-  | 'last_hour'
-  | 'today'
-  | 'this_week'
-  | 'this_month'
-  | 'this_year';
+  'any' | 'last_hour' | 'today' | 'this_week' | 'this_month' | 'this_year';
 export type VideoDurationFilter = 'any' | 'short' | 'medium' | 'long';
 export type SearchSortOrder = 'relevance' | 'upload_date' | 'view_count' | 'rating';
 export type VideoFeatureFilter =
-  | 'subtitles'
-  | 'high_definition'
-  | 'ultra_high_definition'
-  | 'hdr'
-  | 'live'
-  | 'vr360';
+  'subtitles' | 'high_definition' | 'ultra_high_definition' | 'hdr' | 'live' | 'vr360';
 
 /** A complete search request. */
 export interface SearchFilters {
@@ -331,15 +313,7 @@ export interface PlaylistItem {
 
 /** Explicit playback lifecycle states. Mirrors `beastube_core::PlaybackState`. */
 export type PlaybackState =
-  | 'idle'
-  | 'loading'
-  | 'ready'
-  | 'playing'
-  | 'paused'
-  | 'buffering'
-  | 'seeking'
-  | 'ended'
-  | 'error';
+  'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'buffering' | 'seeking' | 'ended' | 'error';
 
 /** Whether the playhead is advancing or trying to. Keeps OS controls from flickering on a stall. */
 export function isPlaybackActive(state: PlaybackState): boolean {
@@ -454,7 +428,9 @@ export interface ErrorPayload {
 
 /** Whether the UI should offer a retry affordance. */
 export function offersRetry(error: ErrorPayload): boolean {
-  return error.recovery.strategy === 'retry_manual' || error.recovery.strategy === 'retry_automatic';
+  return (
+    error.recovery.strategy === 'retry_manual' || error.recovery.strategy === 'retry_automatic'
+  );
 }
 
 /** Narrows an unknown thrown value to an {@link ErrorPayload}. */
@@ -465,8 +441,7 @@ export function isErrorPayload(value: unknown): value is ErrorPayload {
     typeof candidate.kind === 'string' &&
     typeof candidate.code === 'string' &&
     typeof candidate.message_key === 'string' &&
-    typeof candidate.recovery === 'object' &&
-    candidate.recovery !== null
+    typeof candidate.recovery === 'object'
   );
 }
 
@@ -558,10 +533,7 @@ export interface Settings {
 
 export type NetworkStatus = 'online' | 'offline' | 'metered';
 export type FilterUpdateOutcome =
-  | 'applied'
-  | 'already_current'
-  | 'rejected_invalid'
-  | 'rolled_back';
+  'applied' | 'already_current' | 'rejected_invalid' | 'rolled_back';
 
 export interface PlaybackStateChanged {
   session_id: string;

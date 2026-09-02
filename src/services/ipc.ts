@@ -248,12 +248,32 @@ export function isTauriRuntime(): boolean {
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * An IPC failure, as a real `Error`.
+ *
+ * The payload is what the UI renders; the `Error` wrapper is what makes the value throwable
+ * without losing a stack trace and what lets `instanceof` work in a `catch`. Throwing a bare
+ * object — which Tauri itself does — leaves callers with a value no error boundary can classify.
+ */
+export class IpcError extends Error {
+  /** The typed failure the UI renders. */
+  readonly payload: ErrorPayload;
+
+  constructor(payload: ErrorPayload) {
+    // The message is engineer-facing only; the user-facing string comes from `message_key`.
+    super(payload.diagnostic ?? payload.code);
+    this.name = 'IpcError';
+    this.payload = payload;
+  }
+}
+
+/**
  * Coerces anything thrown across IPC into an {@link ErrorPayload}.
  *
  * A command that rejects with a plain string, or a transport that fails before reaching Rust,
  * would otherwise reach error boundaries as an untyped value that no error UI can render.
  */
 export function normalizeError(cause: unknown): ErrorPayload {
+  if (cause instanceof IpcError) return cause.payload;
   if (isErrorPayload(cause)) return cause;
 
   const diagnostic =
@@ -298,7 +318,7 @@ export async function invoke<C extends CommandName>(
   options?: { signal?: AbortSignal },
 ): Promise<CommandResult<C>> {
   if (options?.signal?.aborted) {
-    throw abortedError();
+    throw new IpcError(abortedError());
   }
 
   const call = async (): Promise<CommandResult<C>> => {
@@ -306,16 +326,16 @@ export async function invoke<C extends CommandName>(
       return mockHandler(command, args);
     }
     if (!isTauriRuntime()) {
-      throw {
+      throw new IpcError({
         kind: 'configuration',
         code: 'ipc.no_runtime',
         message_key: 'error.generic',
         recovery: { strategy: 'unrecoverable' },
         diagnostic: `IPC command "${command}" was called with no Tauri runtime and no mock installed`,
-      } satisfies ErrorPayload;
+      });
     }
     const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
-    return tauriInvoke<CommandResult<C>>(command, args as Record<string, unknown> | undefined);
+    return tauriInvoke<CommandResult<C>>(command, args ?? undefined);
   };
 
   try {
@@ -326,7 +346,7 @@ export async function invoke<C extends CommandName>(
     // immediately (§32), even though the native side keeps running to completion.
     return await new Promise<CommandResult<C>>((resolve, reject) => {
       const onAbort = () => {
-        reject(abortedError());
+        reject(new IpcError(abortedError()));
       };
       options.signal?.addEventListener('abort', onAbort, { once: true });
       call()
@@ -336,7 +356,7 @@ export async function invoke<C extends CommandName>(
         });
     });
   } catch (cause) {
-    throw normalizeError(cause);
+    throw new IpcError(normalizeError(cause));
   }
 }
 

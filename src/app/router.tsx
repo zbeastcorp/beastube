@@ -17,6 +17,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type AnchorHTMLAttributes,
   type ReactNode,
@@ -54,9 +55,14 @@ export function RouterProvider({ children }: { children: ReactNode }): ReactNode
   const hash = useSyncExternalStore(subscribeToHash, currentHash, () => '#/');
   const route = useMemo(() => hashToRoute(hash), [hash]);
 
-  // The history API exposes a length but no "can go back" flag, so depth is tracked explicitly.
-  // Without it the back control would look enabled on the first screen and do nothing.
+  // The history API exposes a length but no "can go back" flag, so depth is tracked explicitly:
+  // without it the back control would look enabled on the first screen and do nothing.
+  //
+  // The ref is the authority (event handlers mutate it synchronously); the state mirrors it purely
+  // so render has something legal to read — reading `ref.current` during render is a correctness
+  // hazard, because React is not told the value changed.
   const depth = useRef(0);
+  const [canGoBack, setCanGoBack] = useState(false);
 
   const navigate = useCallback((to: Route, options?: { replace?: boolean }) => {
     const target = routeToHash(to);
@@ -69,6 +75,7 @@ export function RouterProvider({ children }: { children: ReactNode }): ReactNode
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     } else {
       depth.current += 1;
+      setCanGoBack(true);
       window.location.hash = target;
     }
   }, []);
@@ -76,6 +83,7 @@ export function RouterProvider({ children }: { children: ReactNode }): ReactNode
   const back = useCallback(() => {
     if (depth.current > 0) {
       depth.current -= 1;
+      setCanGoBack(depth.current > 0);
       window.history.back();
     }
   }, []);
@@ -103,8 +111,8 @@ export function RouterProvider({ children }: { children: ReactNode }): ReactNode
   }, [back, forward]);
 
   const value = useMemo<RouterValue>(
-    () => ({ route, navigate, back, forward, canGoBack: depth.current > 0 }),
-    [route, navigate, back, forward],
+    () => ({ route, navigate, back, forward, canGoBack }),
+    [route, navigate, back, forward, canGoBack],
   );
 
   return <RouterContext value={value}>{children}</RouterContext>;
