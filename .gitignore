@@ -1,0 +1,33 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+coverage/
+playwright-report/
+test-results/
+
+# Rust
+target/
+**/*.rs.bk
+
+# Tauri
+src-tauri/gen/
+src-tauri/target/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# Secrets (never commit signing keys)
+*.key
+*.pem
+.env
+.env.*
+!.env.example

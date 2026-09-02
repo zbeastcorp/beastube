@@ -1,0 +1,54 @@
+[package]
+name = "beastube-app"
+description = "BEASTUBE desktop application shell (Tauri 2)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lib]
+name = "beastube_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+beastube-core.workspace = true
+beastube-db.workspace = true
+beastube-network.workspace = true
+beastube-cache.workspace = true
+beastube-tasks.workspace = true
+beastube-provider.workspace = true
+beastube-provider-youtube.workspace = true
+beastube-filtering.workspace = true
+beastube-gateway.workspace = true
+beastube-playback.workspace = true
+tauri.workspace = true
+tauri-plugin-updater.workspace = true
+tauri-plugin-notification.workspace = true
+tauri-plugin-global-shortcut.workspace = true
+tauri-plugin-single-instance.workspace = true
+tauri-plugin-opener.workspace = true
+tauri-plugin-dialog.workspace = true
+tauri-plugin-process.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+time.workspace = true
+uuid.workspace = true
+url.workspace = true
+parking_lot.workspace = true
+sysinfo.workspace = true
+windows.workspace = true
+
+[features]
+default = []
+devtools = ["tauri/devtools"]

@@ -1,0 +1,24 @@
+[package]
+name = "beastube-playback"
+description = "BEASTUBE playback session orchestration: manifest generation, position checkpoints, recovery policy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+beastube-core.workspace = true
+beastube-provider.workspace = true
+beastube-gateway.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true

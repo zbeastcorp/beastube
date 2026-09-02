@@ -1,0 +1,105 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "GPL-3.0-or-later"
+authors = ["BEASTUBE contributors"]
+repository = "https://github.com/beastube/beastube"
+publish = false
+
+[workspace.dependencies]
+# --- internal crates ---
+beastube-core = { path = "crates/beastube-core" }
+beastube-db = { path = "crates/beastube-db" }
+beastube-network = { path = "crates/beastube-network" }
+beastube-cache = { path = "crates/beastube-cache" }
+beastube-tasks = { path = "crates/beastube-tasks" }
+beastube-provider = { path = "crates/beastube-provider" }
+beastube-provider-youtube = { path = "crates/beastube-provider-youtube" }
+beastube-filtering = { path = "crates/beastube-filtering" }
+beastube-gateway = { path = "crates/beastube-gateway" }
+beastube-playback = { path = "crates/beastube-playback" }
+
+# --- async runtime ---
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "signal", "io-util", "net"] }
+tokio-util = { version = "0.7", features = ["rt", "time", "io"] }
+futures = "0.3"
+bytes = "1"
+
+# --- serialization ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# --- errors / logging ---
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "time"] }
+tracing-appender = "0.2"
+
+# --- networking (0.12 line is shared with rustypipe so one client/pool serves both) ---
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "gzip", "brotli", "stream", "json", "charset"] }
+http = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+url = "2"
+percent-encoding = "2"
+
+# --- database ---
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "time", "json"] }
+
+# --- provider ---
+rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots"] }
+
+# --- utilities ---
+time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
+uuid = { version = "1", features = ["v7", "serde"] }
+moka = { version = "0.12", features = ["future"] }
+blake3 = "1"
+regex = "1"
+parking_lot = "0.12"
+async-trait = "0.1"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_System_Power", "Win32_System_SystemInformation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
+
+# --- tauri ---
+tauri = { version = "2.11", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-build = "2.6"
+tauri-plugin-updater = "2.11"
+tauri-plugin-notification = "2.4"
+tauri-plugin-global-shortcut = "2.3"
+tauri-plugin-single-instance = "2.4"
+tauri-plugin-opener = "2.5"
+tauri-plugin-dialog = "2.7"
+tauri-plugin-process = "2.3"
+
+# --- testing ---
+tempfile = "3"
+proptest = "1"
+wiremock = "0.6"
+criterion = { version = "0.8", features = ["async_tokio"] }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+panic = "abort"
+strip = true
+debug = false
+
+[profile.dev]
+opt-level = 0
+debug = 1
+incremental = true
+
+# Heavy dependencies are optimized even in dev so the app is usable while developing.
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.bench]
+inherits = "release"
+debug = true
+strip = false

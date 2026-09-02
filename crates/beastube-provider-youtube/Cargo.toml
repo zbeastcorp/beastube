@@ -1,0 +1,29 @@
+[package]
+name = "beastube-provider-youtube"
+description = "BEASTUBE YouTube provider adapter built on rustypipe (Innertube)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+beastube-core.workspace = true
+beastube-provider.workspace = true
+beastube-network.workspace = true
+rustypipe.workspace = true
+reqwest.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+regex.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true

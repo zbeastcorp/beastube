@@ -1,0 +1,4 @@
+minimumReleaseAgeExclude:
+  - '@testing-library/user-event@14.6.7'
+  - happy-dom@20.13.1
+  - lucide-react@1.39.0

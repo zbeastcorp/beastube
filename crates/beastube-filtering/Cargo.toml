@@ -1,0 +1,25 @@
+[package]
+name = "beastube-filtering"
+description = "BEASTUBE content/ad filtering subsystem: rule engine, adapters, rollback, diagnostics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+beastube-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+regex.workspace = true
+url.workspace = true
+parking_lot.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
