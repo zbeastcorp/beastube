@@ -40,6 +40,19 @@ const schemaDrift: ErrorPayload = {
   recovery: { strategy: 'unrecoverable' },
 };
 
+/**
+ * Rejects the way the real boundary does.
+ *
+ * Tauri rejects with the serialized payload — a plain object, not an `Error`, which is why
+ * `normalizeError` exists at all. `prefer-promise-reject-errors` is there to catch that shape
+ * arising by accident; here it is the entire point, and a test that rejected with an `Error`
+ * instead would exercise a path production never takes.
+ */
+function rejectLikeTauri(payload: ErrorPayload): Promise<never> {
+  // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- see above
+  return Promise.reject(payload);
+}
+
 afterEach(() => {
   setIpcMock(null);
   vi.useRealTimers();
@@ -69,10 +82,13 @@ async function withoutWaiting<T>(body: () => Promise<T>): Promise<T> {
 describe('invoke retries what the error says is retryable', () => {
   it('recovers from a transient failure without the caller ever seeing it', async () => {
     let calls = 0;
-    setIpcMock(async () => {
+    setIpcMock(() => {
       calls += 1;
-      if (calls === 1) throw transportFailure;
-      return { videos: [], source: 'discover' } as never;
+      // Tauri rejects with the serialized payload — a plain object, not an `Error` — so that is
+      // what the stand-in produces. Testing against a shape the real boundary never emits would
+      // prove nothing about the code under test.
+      if (calls === 1) return rejectLikeTauri(transportFailure);
+      return Promise.resolve({ videos: [], source: 'discover' } as never);
     });
 
     const result = await withoutWaiting(() => invoke('get_recommended', { limit: 1 }));
@@ -83,9 +99,9 @@ describe('invoke retries what the error says is retryable', () => {
 
   it('gives up after the attempt budget the payload states, rather than forever', async () => {
     let calls = 0;
-    setIpcMock(async () => {
+    setIpcMock(() => {
       calls += 1;
-      throw transportFailure;
+      return rejectLikeTauri(transportFailure);
     });
 
     await expect(withoutWaiting(() => invoke('get_recommended', { limit: 1 }))).rejects.toThrow();
@@ -97,9 +113,9 @@ describe('invoke retries what the error says is retryable', () => {
 
   it('does not retry a failure that retrying cannot fix', async () => {
     let calls = 0;
-    setIpcMock(async () => {
+    setIpcMock(() => {
       calls += 1;
-      throw schemaDrift;
+      return rejectLikeTauri(schemaDrift);
     });
 
     await expect(invoke('get_recommended', { limit: 1 })).rejects.toThrow();
@@ -121,9 +137,9 @@ describe('invoke retries what the error says is retryable', () => {
       },
     };
     let calls = 0;
-    setIpcMock(async () => {
+    setIpcMock(() => {
       calls += 1;
-      throw rateLimited;
+      return rejectLikeTauri(rateLimited);
     });
 
     await expect(invoke('get_recommended', { limit: 1 })).rejects.toThrow();
@@ -133,10 +149,10 @@ describe('invoke retries what the error says is retryable', () => {
   it('abandons the retry when the caller stops caring', async () => {
     const controller = new AbortController();
     let calls = 0;
-    setIpcMock(async () => {
+    setIpcMock(() => {
       calls += 1;
       controller.abort();
-      throw transportFailure;
+      return rejectLikeTauri(transportFailure);
     });
 
     await expect(
