@@ -23,6 +23,7 @@ import { TopBar } from '@/components/shell/TopBar';
 import { detectLocale, resolveLocale } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { TranslationProvider } from '@/i18n/context';
+import { loadCapabilities } from '@/services/capabilities';
 import { preloadFeeds } from '@/services/feedCache';
 import { useFeedStore } from '@/stores/feed';
 import { invoke, isTauriRuntime, listen } from '@/services/ipc';
@@ -235,6 +236,11 @@ export function App(): ReactNode {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     preloadFeeds([SHORTS_FEED_LIMIT, HOME_SHORTS_LIMIT], RECOMMENDED_LIMIT);
+    // Capabilities decide which controls exist at all, so they are wanted before the first screen
+    // that gates on them rather than after it.
+    void loadCapabilities().catch(() => {
+      // Speculative; a view that needs the answer asks again through the same cache.
+    });
     // And the player API, for the same reason. It is a cross-origin script that must be fetched,
     // parsed and run before the first player can exist, and paying for that on the first click
     // means the viewer waits for it with nothing on screen. Started here, it has almost always

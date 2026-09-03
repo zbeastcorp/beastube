@@ -38,6 +38,7 @@ import {
   sharedShortsFeed,
   shortsKey,
 } from '@/services/feedCache';
+import { capabilities, loadCapabilities } from '@/services/capabilities';
 import { invoke } from '@/services/ipc';
 import type { RecommendedFeed } from '@/services/ipc';
 import { useFeedStore } from '@/stores/feed';
@@ -183,7 +184,17 @@ function SearchView({ query, kind }: { query: string; kind: SearchResultKind }):
     { navigation: true },
   );
 
-  const items = results.data?.page.items ?? [];
+  // Read through a resource rather than the module directly, so the view re-renders once the
+  // provider has answered. Resolves from memory on every mount after the first.
+  const reported = useAsyncResource('capabilities', () => loadCapabilities());
+  const supported = reported.data ?? capabilities();
+
+  // A playlist card that leads nowhere is worse than no card. The extractor's remote-playlist
+  // parser no longer matches YouTube's response, the provider reports `playlists: false` because of
+  // it, and these results were still being rendered as links into a Not Found page (§131).
+  const items = (results.data?.page.items ?? []).filter(
+    (item) => item.type !== 'playlist' || supported.playlists,
+  );
 
   // Shorts are lifted out of the flat list into their own shelf, which is what YouTube does and is
   // also what keeps the grid usable: CSS grid rows size to their tallest item, so one 9:16 card in
