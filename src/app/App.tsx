@@ -21,6 +21,7 @@ import { TopBar } from '@/components/shell/TopBar';
 import { detectLocale, resolveLocale } from '@/i18n';
 import { TranslationProvider } from '@/i18n/context';
 import { preloadFeeds } from '@/services/feedCache';
+import { useFeedStore } from '@/stores/feed';
 import { invoke, isTauriRuntime, listen } from '@/services/ipc';
 import { applyPresentation, useSettingsStore } from '@/stores/settings';
 import { useSessionStore } from '@/stores/session';
@@ -59,6 +60,9 @@ function useShellEvents(): void {
 
   useEffect(() => {
     const unlistenNetwork = listen('network:changed', (payload) => {
+      // Read before writing: whether this is a *recovery* is the interesting part, and the store is
+      // about to lose the answer.
+      const was = useSessionStore.getState().networkStatus;
       setNetworkStatus(payload.current);
       if (payload.current === 'offline') {
         toast({
@@ -66,6 +70,14 @@ function useShellEvents(): void {
           tone: 'warning',
           durationMs: null,
         });
+        return;
+      }
+      if (was === 'offline') {
+        // Back online. A feed that failed while the connection was down would otherwise sit on its
+        // error until the user thought to press Retry — for a condition the application already
+        // knows has passed. Bumping the revision refetches whichever feeds are on screen, and the
+        // cache keeps whatever they were showing until the new batch lands.
+        useFeedStore.getState().refresh();
       }
     });
 

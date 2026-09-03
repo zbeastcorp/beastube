@@ -375,7 +375,7 @@ export async function invoke<C extends CommandName>(
     return tauriInvoke<CommandResult<C>>(command, args ?? undefined);
   };
 
-  try {
+  const attempt = async (): Promise<CommandResult<C>> => {
     if (!options?.signal) {
       return await call();
     }
@@ -392,9 +392,71 @@ export async function invoke<C extends CommandName>(
           options.signal?.removeEventListener('abort', onAbort);
         });
     });
-  } catch (cause) {
-    throw new IpcError(normalizeError(cause));
+  };
+
+  let made = 0;
+  for (;;) {
+    try {
+      return await attempt();
+    } catch (cause) {
+      const payload = normalizeError(cause);
+      const retry = retryDelayFor(payload, made);
+      if (retry === null) throw new IpcError(payload);
+      made += 1;
+      await wait(retry, options?.signal);
+    }
   }
+}
+
+/**
+ * The longest this will wait between attempts.
+ *
+ * A provider that asks to be left alone for thirty seconds is not something to honour silently:
+ * the screen would sit on a skeleton for half a minute with no explanation. Anything asking for
+ * longer than this is surfaced instead, with the manual retry the error already offers. What this
+ * covers is the case that actually happens — a transient network failure moments after launch,
+ * where a second attempt a beat later simply works.
+ */
+const MAX_RETRY_DELAY_MS = 6000;
+
+/**
+ * How long to wait before trying `payload`'s command again, or `null` not to.
+ *
+ * The error type has always declared `retry_automatic` with a delay and an attempt budget, and
+ * nothing anywhere acted on it — the frontend read the strategy only to decide whether to draw a
+ * Retry button, so a blip that the contract said would heal itself instead needed a click. This is
+ * that contract, honoured at the boundary where the payload arrives, so every caller gets it.
+ */
+function retryDelayFor(payload: ErrorPayload, made: number): number | null {
+  // Cancellation is the caller's own doing and the one failure that must never be retried.
+  if (isCancellation(payload)) return null;
+  if (payload.recovery.strategy !== 'retry_automatic') return null;
+  if (made + 1 >= payload.recovery.max_attempts) return null;
+
+  // Linear backoff off the delay the provider itself stated. Not exponential: the budget is at most
+  // three attempts, so the difference never amounts to anything and the stated delay is the better
+  // guide than a curve of our own invention.
+  const delay = payload.recovery.delay_ms * (made + 1);
+  return delay > MAX_RETRY_DELAY_MS ? null : delay;
+}
+
+/** Waits, or rejects the moment the caller stops caring. */
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted === true) {
+      reject(new IpcError(abortedError()));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new IpcError(abortedError()));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function abortedError(): ErrorPayload {
