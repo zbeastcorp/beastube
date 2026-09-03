@@ -150,6 +150,12 @@ export interface CommandMap {
   };
   get_provider_capabilities: { args: undefined; result: ProviderCapabilities };
 
+  // --- feeds ---
+  /** Home recommendations, ranked on this device from local history. */
+  get_recommended: { args: { limit: number }; result: RecommendedFeed };
+  /** Short-form videos for the Shorts tab. */
+  get_shorts_feed: { args: { limit: number }; result: VideoSummary[] };
+
   // --- filtering ---
   get_filtering_diagnostics: { args: undefined; result: FilteringSnapshot };
   reset_filter_rules: { args: undefined; result: FilteringSnapshot };
@@ -175,6 +181,7 @@ export interface CommandMap {
   get_bookmarks: { args: { limit: number; offset: number }; result: Bookmark[] };
   set_bookmark: { args: { video: VideoSummary }; result: null };
   remove_bookmark: { args: { videoId: VideoId }; result: boolean };
+  is_bookmarked: { args: { videoId: VideoId }; result: boolean };
 
   // --- session ---
   set_incognito: { args: { enabled: boolean }; result: boolean };
@@ -183,6 +190,20 @@ export interface CommandMap {
   // --- window ---
   /** Reports that the first frame has painted, so the shell can reveal the window. */
   frontend_ready: { args: undefined; result: null };
+}
+
+/**
+ * Why a recommendation set looks the way it does.
+ *
+ * The UI labels the section from this rather than assuming. A feed built from broad topics shown as
+ * "recommended for you" would claim a personalization that did not happen (§131).
+ */
+export type RecommendationSource = 'watched' | 'searched' | 'discover';
+
+/** Home recommendations and their provenance. */
+export interface RecommendedFeed {
+  videos: VideoSummary[];
+  source: RecommendationSource;
 }
 
 /** What the active metadata provider actually supports, so the UI renders only real controls. */

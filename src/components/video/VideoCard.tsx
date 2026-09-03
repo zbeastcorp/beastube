@@ -17,6 +17,7 @@
 import { memo, useState, type ReactNode } from 'react';
 
 import { Link } from '@/app/router';
+import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
 import { bestThumbnailFor, type VideoSummary } from '@/types/domain';
 
@@ -82,6 +83,7 @@ export const VideoCard = memo(function VideoCard({
 }: VideoCardProps): ReactNode {
   const t = useTranslation();
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   // Request roughly two device pixels per CSS pixel so the image stays crisp on a HiDPI display.
   const thumbnail = video.thumbnails ? bestThumbnailFor(video.thumbnails, width * 2) : undefined;
@@ -100,11 +102,25 @@ export const VideoCard = memo(function VideoCard({
   }
 
   return (
-    <article className="group flex flex-col gap-3">
+    <article
+      className="group flex flex-col gap-3"
+      onPointerEnter={(event) => {
+        // Pointer rather than mouse events, and coarse pointers are excluded: on a touch screen
+        // every tap would fire an enter and start a preview the user never asked for.
+        if (event.pointerType === 'mouse') {
+          setHovered(true);
+        }
+      }}
+      onPointerLeave={() => {
+        setHovered(false);
+      }}
+    >
       <Link
         to={{ name: 'watch', videoId: video.id }}
         className="relative block overflow-hidden rounded-md"
         // The box holds its shape before the image arrives, which is what prevents layout shift.
+        // A hovered card lifts its corners the way YouTube's does, so the preview reads as the card
+        // coming forward rather than as an unrelated frame appearing.
         style={{ aspectRatio: '16 / 9' }}
       >
         {showImage ? (
@@ -128,6 +144,10 @@ export const VideoCard = memo(function VideoCard({
           <div className="bg-surface size-full" aria-hidden="true" />
         )}
 
+        <HoverPreview videoId={video.id} active={hovered} />
+
+        {/* Both stay on top of the preview: the duration is still true while it plays, and losing
+            the progress bar on hover would hide the one thing that says you have seen this. */}
         <DurationBadge video={video} />
         {progress !== undefined && progress > 0 && <ProgressBar fraction={progress} />}
       </Link>

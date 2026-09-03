@@ -98,6 +98,12 @@ pub struct AppearanceSettings {
     pub ui_scale: f32,
     /// BCP 47 language tag for the interface, or `None` to follow the OS locale.
     pub language: Option<String>,
+    /// Cast a soft glow from the video's colours behind the player on the watch page.
+    ///
+    /// Decorative, and on by default because it is what the surface looks like when nobody has an
+    /// opinion. Suppressed independently of `reduced_motion`: the glow does not move, so someone
+    /// who wants less animation has not asked to lose it.
+    pub ambient_mode: bool,
 }
 
 impl Default for AppearanceSettings {
@@ -111,6 +117,7 @@ impl Default for AppearanceSettings {
             reduced_motion: None,
             ui_scale: 1.0,
             language: None,
+            ambient_mode: true,
         }
     }
 }

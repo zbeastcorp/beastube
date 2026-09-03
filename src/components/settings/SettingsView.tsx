@@ -113,6 +113,19 @@ function AppearancePanel(): ReactNode {
       </SettingRow>
 
       <SettingRow
+        label={t.t('settings.appearance.ambientMode')}
+        hint={t.t('settings.appearance.ambientModeHint')}
+      >
+        <Switch
+          label={t.t('settings.appearance.ambientMode')}
+          checked={appearance.ambient_mode}
+          onChange={(ambient_mode) => {
+            update({ appearance: { ambient_mode } });
+          }}
+        />
+      </SettingRow>
+
+      <SettingRow
         label={t.t('settings.appearance.reducedMotion')}
         hint={t.t('settings.appearance.reducedMotionSystem')}
       >

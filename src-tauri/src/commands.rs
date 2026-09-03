@@ -27,6 +27,7 @@ use beastube_core::Settings;
 use beastube_core::error::{DomainError, ErrorPayload};
 use beastube_core::ids::{ChannelId, VideoId};
 use beastube_core::model::channel::{ChannelDetails, ChannelTab};
+use beastube_core::model::search::{SearchItem, SearchResultKind};
 use beastube_core::model::video::{VideoDetails, VideoSummary};
 use beastube_core::model::{
     Bookmark, ContinuationToken, HistoryEntry, Page, PlaybackPosition, SearchFilters,
@@ -35,6 +36,9 @@ use beastube_core::model::{
 use beastube_core::time_util::Timestamp;
 use beastube_db::repo::history::WatchRecord;
 use beastube_db::repo::searches::SearchEntry;
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use tauri::State;
 use tokio_util::sync::CancellationToken;
 
@@ -805,4 +809,464 @@ pub(crate) fn get_app_info(state: State<'_, AppState>) -> AppInfo {
         cpu_cores: std::thread::available_parallelism().map_or(0, std::num::NonZeroUsize::get),
         uptime_ms: state.uptime_ms(),
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Feeds
+// ---------------------------------------------------------------------------------------------
+
+/// How many watched videos seed a recommendation pass.
+///
+/// Each seed costs one request, and they run concurrently, so this is a latency/breadth trade
+/// rather than a correctness one. Four gives a visibly varied feed while keeping the slowest path
+/// to one round trip.
+const RECOMMENDATION_SEEDS: usize = 4;
+
+/// How much history is scanned to decide what the user has already seen.
+///
+/// Recommendations that lead with videos already watched are the most obvious way for a feed to
+/// look broken, so the exclusion set is generous.
+const WATCHED_LOOKBACK: u32 = 300;
+
+/// Topics used when there is nothing personal to recommend from.
+///
+/// A deliberately broad, evergreen spread: this is the first screen of a fresh install, where the
+/// honest claim is "here is what is on YouTube", not "here is what we think you want". The UI
+/// labels the section accordingly, so the distinction is visible rather than implied.
+const DISCOVERY_TOPICS: &[&str] = &[
+    "music",
+    "technology",
+    "science",
+    "cooking",
+    "travel",
+    "documentary",
+    "gaming",
+    "live performance",
+];
+
+/// Topics used to fill the Shorts feed.
+///
+/// Shorts have no login-free listing endpoint, so the feed is assembled from searches whose results
+/// the provider marks as short-form. The topics rotate with the day so the tab is not identical on
+/// every launch.
+const SHORTS_TOPICS: &[&str] = &[
+    "shorts",
+    "funny shorts",
+    "music shorts",
+    "cooking shorts",
+    "sports shorts",
+    "science shorts",
+    "art shorts",
+    "animal shorts",
+];
+
+/// Where a set of recommendations came from.
+///
+/// Returned so the UI can label the section truthfully. A feed derived from broad topics but
+/// presented as "recommended for you" would claim a personalization that did not happen (§131).
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RecommendationSource {
+    /// Derived from videos the user watched.
+    Watched,
+    /// Derived from what the user searched for.
+    Searched,
+    /// Broad topics, because there was nothing personal to derive from.
+    Discover,
+}
+
+/// A recommendation set and the reason it looks the way it does.
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct RecommendedFeed {
+    /// The videos, best first.
+    videos: Vec<VideoSummary>,
+    /// What they were derived from.
+    source: RecommendationSource,
+}
+
+/// Videos to show on the home screen.
+///
+/// ## How the ranking works, and where it happens
+///
+/// Entirely on this device. The most recently watched videos are used as seeds, the provider's
+/// related list for each is fetched, and the results are interleaved so no single seed dominates.
+/// Videos already in the local history are removed. Nothing about the user is sent anywhere: the
+/// provider is asked "what is related to this video", never "what should this person watch" — which
+/// is the whole reason a useful home screen here needs no account (§43).
+///
+/// The user can switch this off (`privacy.local_recommendations_enabled`), and incognito suppresses
+/// it for the session. Either way the feed falls back to broad topics rather than going empty.
+///
+/// # Errors
+///
+/// Never returns an error. Every failure degrades to a smaller feed, because a home screen showing
+/// an error instead of content is worse than one showing less content (§81).
+#[tauri::command]
+pub(crate) async fn get_recommended(
+    state: State<'_, AppState>,
+    limit: u32,
+) -> CommandResult<RecommendedFeed> {
+    let limit = limit.clamp(1, 120) as usize;
+    let personalize =
+        state.settings().privacy.local_recommendations_enabled && !state.is_incognito();
+
+    let history = state
+        .repositories
+        .history
+        .list(WATCHED_LOOKBACK, 0)
+        .await
+        .unwrap_or_default();
+
+    let watched: HashSet<String> = history
+        .iter()
+        .map(|entry| entry.video_id.as_str().to_owned())
+        .collect();
+
+    if personalize {
+        let seeds: Vec<VideoId> = history
+            .iter()
+            .take(RECOMMENDATION_SEEDS)
+            .map(|entry| entry.video_id.clone())
+            .collect();
+
+        if !seeds.is_empty() {
+            let videos = interleave(related_lists(&state, seeds).await, &watched, limit);
+            if !videos.is_empty() {
+                return Ok(RecommendedFeed {
+                    videos,
+                    source: RecommendationSource::Watched,
+                });
+            }
+        }
+
+        // Nothing watched, or nothing came back. The user's own searches are the next-best local
+        // signal, and they sit under the same permission as the watch history.
+        let queries: Vec<String> = state
+            .repositories
+            .searches
+            .recent(RECOMMENDATION_SEEDS_U32)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|entry| entry.query)
+            .collect();
+
+        if !queries.is_empty() {
+            let videos = interleave(search_lists(&state, queries).await, &watched, limit);
+            if !videos.is_empty() {
+                return Ok(RecommendedFeed {
+                    videos,
+                    source: RecommendationSource::Searched,
+                });
+            }
+        }
+    }
+
+    let topics = rotating(DISCOVERY_TOPICS, RECOMMENDATION_SEEDS);
+    Ok(RecommendedFeed {
+        videos: interleave(search_lists(&state, topics).await, &watched, limit),
+        source: RecommendationSource::Discover,
+    })
+}
+
+/// [`RECOMMENDATION_SEEDS`] as the width the repository takes.
+const RECOMMENDATION_SEEDS_U32: u32 = 4;
+
+/// Short-form videos for the Shorts tab.
+///
+/// The provider has no login-free Shorts listing, so this searches topics and keeps only what the
+/// provider marks as short-form. That is a real feed of real Shorts rather than a text search for
+/// the word, which is what the tab did before.
+///
+/// # Errors
+///
+/// Never returns an error; a failed topic contributes nothing and the rest still fill the tab.
+#[tauri::command]
+pub(crate) async fn get_shorts_feed(
+    state: State<'_, AppState>,
+    limit: u32,
+) -> CommandResult<Vec<VideoSummary>> {
+    let limit = limit.clamp(1, 120) as usize;
+    // Every topic, not the four a recommendation pass uses. The provider marks only a fraction of
+    // any result page as short-form, so a narrow fan-out yields a feed of two or three videos —
+    // which is what a Shorts tab must not be.
+    let topics = rotating(SHORTS_TOPICS, SHORTS_TOPICS.len());
+    let filters = SearchFilters {
+        kind: SearchResultKind::Shorts,
+        ..SearchFilters::default()
+    };
+
+    let lists = fan_out(topics, |topic| {
+        let provider = Arc::clone(&state.provider);
+        let filters = filters.clone();
+        async move {
+            let cancel = CancellationToken::new();
+            provider
+                .search(&topic, &filters, None, &cancel)
+                .await
+                .map(|results| videos_of(results.page.items))
+                .unwrap_or_default()
+        }
+    })
+    .await;
+
+    Ok(interleave(lists, &HashSet::new(), limit))
+}
+
+/// Fetches the related list for each seed, concurrently.
+///
+/// One slow or failing seed costs its own list and nothing else: the point of fanning out is that
+/// the feed is assembled from whatever came back.
+async fn related_lists(state: &AppState, seeds: Vec<VideoId>) -> Vec<Vec<VideoSummary>> {
+    fan_out(seeds, |seed| {
+        let provider = Arc::clone(&state.provider);
+        async move {
+            let cancel = CancellationToken::new();
+            provider
+                .related(&seed, &cancel)
+                .await
+                .map(|page| page.items)
+                .unwrap_or_default()
+        }
+    })
+    .await
+}
+
+/// Runs each query as a search, concurrently, keeping only the videos.
+async fn search_lists(state: &AppState, queries: Vec<String>) -> Vec<Vec<VideoSummary>> {
+    fan_out(queries, |query| {
+        let provider = Arc::clone(&state.provider);
+        async move {
+            let cancel = CancellationToken::new();
+            let filters = SearchFilters {
+                kind: SearchResultKind::Videos,
+                ..SearchFilters::default()
+            };
+            provider
+                .search(&query, &filters, None, &cancel)
+                .await
+                .map(|results| videos_of(results.page.items))
+                .unwrap_or_default()
+        }
+    })
+    .await
+}
+
+/// Runs `operation` over every input concurrently, collecting whatever completed.
+///
+/// A panicking task contributes an empty list rather than poisoning the feed — a home screen is not
+/// worth failing over.
+async fn fan_out<I, F, Fut>(inputs: Vec<I>, operation: F) -> Vec<Vec<VideoSummary>>
+where
+    I: Send + 'static,
+    F: Fn(I) -> Fut,
+    Fut: std::future::Future<Output = Vec<VideoSummary>> + Send + 'static,
+{
+    let mut set = tokio::task::JoinSet::new();
+    for input in inputs {
+        set.spawn(operation(input));
+    }
+
+    let mut lists = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        lists.push(joined.unwrap_or_default());
+    }
+    lists
+}
+
+/// Keeps the video results, discarding channels and playlists.
+fn videos_of(items: Vec<SearchItem>) -> Vec<VideoSummary> {
+    items
+        .into_iter()
+        .filter_map(|item| match item {
+            SearchItem::Video(video) => Some(video),
+            SearchItem::Channel(_) | SearchItem::Playlist(_) => None,
+        })
+        .collect()
+}
+
+/// Merges lists round-robin, dropping duplicates and anything already watched.
+///
+/// Round-robin rather than concatenation: taking one from each list in turn means the first screen
+/// reflects every seed, whereas concatenating would show several screens of whatever the first seed
+/// was related to before the second seed appeared at all.
+fn interleave(
+    lists: Vec<Vec<VideoSummary>>,
+    exclude: &HashSet<String>,
+    limit: usize,
+) -> Vec<VideoSummary> {
+    let mut cursors: Vec<std::vec::IntoIter<VideoSummary>> =
+        lists.into_iter().map(Vec::into_iter).collect();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut merged = Vec::with_capacity(limit);
+
+    while merged.len() < limit {
+        let mut progressed = false;
+        for cursor in &mut cursors {
+            let Some(video) = cursor.next() else {
+                continue;
+            };
+            progressed = true;
+            let id = video.id.as_str().to_owned();
+            if exclude.contains(&id) || !seen.insert(id) {
+                continue;
+            }
+            merged.push(video);
+            if merged.len() >= limit {
+                break;
+            }
+        }
+        if !progressed {
+            break;
+        }
+    }
+
+    merged
+}
+
+/// Picks `count` entries from `pool`, starting at an offset that advances once a day.
+///
+/// Deterministic within a day so a relaunch does not reshuffle the screen under the user, and
+/// different across days so the tab is not frozen. Derived from the wall clock rather than from
+/// anything about the user.
+fn rotating(pool: &[&str], count: usize) -> Vec<String> {
+    if pool.is_empty() {
+        return Vec::new();
+    }
+    let days = Timestamp::now().as_millis().div_euclid(86_400_000).max(0);
+    let start = usize::try_from(days).unwrap_or(0) % pool.len();
+    (0..count.min(pool.len()))
+        .map(|offset| pool[(start + offset) % pool.len()].to_owned())
+        .collect()
+}
+
+#[cfg(test)]
+mod feed_tests {
+    use super::*;
+    use beastube_core::model::thumbnail::ThumbnailSet;
+    use beastube_core::model::video::LiveStatus;
+
+    fn video(id: &str) -> VideoSummary {
+        VideoSummary {
+            id: VideoId::new(id).expect("valid id"),
+            title: id.to_owned(),
+            channel_id: None,
+            channel_name: None,
+            thumbnails: ThumbnailSet::empty(),
+            duration_ms: None,
+            published_at: None,
+            published_text: None,
+            view_count: None,
+            live_status: LiveStatus::NotLive,
+            is_short: false,
+        }
+    }
+
+    fn ids(videos: &[VideoSummary]) -> Vec<&str> {
+        videos.iter().map(|video| video.id.as_str()).collect()
+    }
+
+    #[test]
+    fn merging_takes_one_from_each_list_in_turn() {
+        // Concatenating would put every result of the first seed before any result of the second,
+        // so the first screen would reflect one seed instead of all of them.
+        let merged = interleave(
+            vec![
+                vec![video("aaaaaaaaaaa"), video("bbbbbbbbbbb")],
+                vec![video("ccccccccccc"), video("ddddddddddd")],
+            ],
+            &HashSet::new(),
+            4,
+        );
+        assert_eq!(
+            ids(&merged),
+            [
+                "aaaaaaaaaaa",
+                "ccccccccccc",
+                "bbbbbbbbbbb",
+                "ddddddddddd"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_video_appears_once_however_many_seeds_suggested_it() {
+        let merged = interleave(
+            vec![
+                vec![video("aaaaaaaaaaa")],
+                vec![video("aaaaaaaaaaa"), video("bbbbbbbbbbb")],
+            ],
+            &HashSet::new(),
+            10,
+        );
+        assert_eq!(ids(&merged), ["aaaaaaaaaaa", "bbbbbbbbbbb"]);
+    }
+
+    #[test]
+    fn already_watched_videos_are_not_recommended_back() {
+        let exclude: HashSet<String> = ["aaaaaaaaaaa".to_owned()].into_iter().collect();
+        let merged = interleave(
+            vec![vec![video("aaaaaaaaaaa"), video("bbbbbbbbbbb")]],
+            &exclude,
+            10,
+        );
+        assert_eq!(ids(&merged), ["bbbbbbbbbbb"]);
+    }
+
+    #[test]
+    fn a_short_list_does_not_stall_the_merge() {
+        // The loop must terminate on exhausted cursors rather than spinning until the limit.
+        let merged = interleave(
+            vec![vec![video("aaaaaaaaaaa")], vec![], vec![video("bbbbbbbbbbb")]],
+            &HashSet::new(),
+            50,
+        );
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[test]
+    fn an_empty_input_produces_an_empty_feed() {
+        assert!(interleave(Vec::new(), &HashSet::new(), 10).is_empty());
+        assert!(interleave(vec![Vec::new()], &HashSet::new(), 10).is_empty());
+    }
+
+    #[test]
+    fn topic_rotation_stays_in_bounds_and_asks_for_no_more_than_exists() {
+        let pool = ["a", "b", "c"];
+        let picked = rotating(&pool, 2);
+        assert_eq!(picked.len(), 2);
+        assert!(picked.iter().all(|topic| pool.contains(&topic.as_str())));
+
+        assert_eq!(rotating(&pool, 99).len(), 3, "never more than the pool holds");
+        assert!(rotating(&[], 4).is_empty());
+    }
+
+    #[test]
+    fn rotation_is_stable_within_a_run() {
+        // A feed that reshuffles between two renders on the same day looks broken.
+        assert_eq!(rotating(DISCOVERY_TOPICS, 4), rotating(DISCOVERY_TOPICS, 4));
+    }
+}
+
+/// Whether a video is bookmarked.
+///
+/// Exists so the save control can render its real state rather than assuming "not saved" and
+/// telling the user something untrue about their own library (§131).
+///
+/// # Errors
+///
+/// Returns a payload if the identifier is invalid or the read fails.
+#[tauri::command]
+pub(crate) async fn is_bookmarked(
+    state: State<'_, AppState>,
+    video_id: String,
+) -> CommandResult<bool> {
+    let id = self::video_id(&video_id)?;
+    state
+        .repositories
+        .bookmarks
+        .get(&id)
+        .await
+        .map(|bookmark| bookmark.is_some())
+        .map_err(fail)
 }

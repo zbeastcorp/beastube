@@ -16,9 +16,11 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { DiagnosticsView } from '@/components/settings/DiagnosticsView';
 import { SettingsView } from '@/components/settings/SettingsView';
+import { ShortsFeed } from '@/components/video/ShortsFeed';
 import { VideoCard, VideoCardSkeleton, VideoGrid } from '@/components/video/VideoCard';
 import { WatchView } from '@/components/video/WatchView';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
+import type { TranslationKey } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { invoke } from '@/services/ipc';
 import type { ChannelTab, SearchItem, SearchResultKind, VideoSummary } from '@/types/domain';
@@ -31,6 +33,12 @@ const SKELETON_COUNT = 12;
 
 /** How many history rows a library page fetches at once. */
 const HISTORY_PAGE_SIZE = 60;
+
+/** How many recommendations the home feed asks for. Roughly three screenfuls at 1080p. */
+const RECOMMENDED_COUNT = 36;
+
+/** How many Shorts the tab loads at once. */
+const SHORTS_COUNT = 40;
 
 function PageHeading({ children }: { children: ReactNode }): ReactNode {
   return <h1 className="text-text mb-4 text-xl font-medium">{children}</h1>;
@@ -153,33 +161,44 @@ function itemKey(item: SearchItem): string {
 function HomeView(): ReactNode {
   const t = useTranslation();
 
-  // The provider has no login-free discovery feed, so home is built from the local library. That is
-  // deliberate: a first screen must be useful without an account (§43).
+  // Three sources, in the order they matter to someone opening the application: what they were part
+  // way through, what the local ranker suggests, and what they watched recently. Each is
+  // independent, so a slow or failing recommendation pass never delays the rest (§87).
   const resumable = useAsyncResource('home:resumable', () =>
     invoke('get_resumable', { limit: 12 }),
   );
   const recent = useAsyncResource('home:recent', () =>
-    invoke('get_history', { limit: 24, offset: 0 }),
+    invoke('get_history', { limit: 12, offset: 0 }),
+  );
+  const recommended = useAsyncResource('home:recommended', (signal) =>
+    invoke('get_recommended', { limit: RECOMMENDED_COUNT }, { signal }),
   );
 
   const continueWatching = resumable.data ?? [];
   const recentlyWatched = recent.data ?? [];
-  const loading = resumable.loading || recent.loading;
+  const suggestions = recommended.data?.videos ?? [];
 
-  if (loading && continueWatching.length === 0 && recentlyWatched.length === 0) {
-    return (
-      <>
-        <PageHeading>{t.t('home.title')}</PageHeading>
-        <FeedSkeleton />
-      </>
-    );
+  // Named from what the videos were actually derived from, so a feed of broad topics is not
+  // presented as personalization that did not happen (§131).
+  const feedHeading: TranslationKey =
+    recommended.data?.source === 'discover' ? 'home.discover' : 'home.recommended';
+
+  const empty =
+    continueWatching.length === 0 && recentlyWatched.length === 0 && suggestions.length === 0;
+
+  if (empty && (recommended.loading || recent.loading)) {
+    return <FeedSkeleton />;
   }
 
-  if (continueWatching.length === 0 && recentlyWatched.length === 0) {
+  if (empty) {
     return (
       <>
         <PageHeading>{t.t('home.title')}</PageHeading>
-        <EmptyState titleKey="home.empty" bodyKey="home.emptyHint" icon="search" />
+        {recommended.error ? (
+          <ErrorState error={recommended.error} onRetry={recommended.reload} />
+        ) : (
+          <EmptyState titleKey="home.empty" bodyKey="home.emptyHint" icon="search" />
+        )}
       </>
     );
   }
@@ -187,32 +206,63 @@ function HomeView(): ReactNode {
   return (
     <>
       {continueWatching.length > 0 && (
-        <section className="mb-10">
-          <h2 className="text-text mb-4 text-lg font-medium">{t.t('home.continueWatching')}</h2>
-          <VideoGrid>
-            {continueWatching.map((entry) => (
-              <VideoCard
-                key={entry.video_id}
-                video={historyToSummary(entry)}
-                progress={progressOf(entry)}
-              />
-            ))}
-          </VideoGrid>
-        </section>
+        <FeedSection heading={t.t('home.continueWatching')}>
+          {continueWatching.map((entry) => (
+            <VideoCard
+              key={entry.video_id}
+              video={historyToSummary(entry)}
+              progress={progressOf(entry)}
+            />
+          ))}
+        </FeedSection>
       )}
 
+      {suggestions.length > 0 && (
+        <FeedSection heading={t.t(feedHeading)}>
+          {suggestions.map((video) => (
+            <VideoCard key={video.id} video={video} />
+          ))}
+        </FeedSection>
+      )}
+
+      {/* Loading below existing content rather than instead of it: the sections above are already
+          useful, and blanking them to show a spinner would take working content away (§87). */}
+      {suggestions.length === 0 && recommended.loading && <FeedSkeleton />}
+
       {recentlyWatched.length > 0 && (
-        <section>
-          <h2 className="text-text mb-4 text-lg font-medium">{t.t('home.recentlyWatched')}</h2>
-          <VideoGrid>
-            {recentlyWatched.map((entry) => (
-              <VideoCard key={entry.video_id} video={historyToSummary(entry)} />
-            ))}
-          </VideoGrid>
-        </section>
+        <FeedSection heading={t.t('home.recentlyWatched')}>
+          {recentlyWatched.map((entry) => (
+            <VideoCard key={entry.video_id} video={historyToSummary(entry)} />
+          ))}
+        </FeedSection>
       )}
     </>
   );
+}
+
+/** One titled row of the home feed. */
+function FeedSection({ heading, children }: { heading: string; children: ReactNode }): ReactNode {
+  return (
+    <section className="mb-10 last:mb-0">
+      <h2 className="text-text mb-4 text-lg font-medium">{heading}</h2>
+      <VideoGrid>{children}</VideoGrid>
+    </section>
+  );
+}
+
+/**
+ * The Shorts tab.
+ *
+ * A real feed of short-form videos, assembled natively from searches the provider marks as
+ * short-form — the tab used to run a text search for the word "shorts", which looked like a feature
+ * and was not one (§131).
+ */
+function ShortsView(): ReactNode {
+  const shorts = useAsyncResource('shorts:feed', (signal) =>
+    invoke('get_shorts_feed', { limit: SHORTS_COUNT }, { signal }),
+  );
+
+  return <ShortsFeed videos={shorts.data ?? []} state={shorts} />;
 }
 
 /** Projects a history row onto the card shape. */
@@ -413,7 +463,7 @@ export function renderRoute(route: Route): ReactNode {
     case 'home':
       return <HomeView />;
     case 'shorts':
-      return <SearchView query="shorts" kind="shorts" />;
+      return <ShortsView />;
     case 'search':
       return <SearchView query={route.query} kind={route.kind ?? 'all'} />;
     case 'watch':

@@ -462,6 +462,8 @@ export interface AppearanceSettings {
   reduced_motion: boolean | null;
   ui_scale: number;
   language: string | null;
+  /** Cast a soft glow from the video's colours behind the player on the watch page. */
+  ambient_mode: boolean;
 }
 
 export interface PlaybackSettings {

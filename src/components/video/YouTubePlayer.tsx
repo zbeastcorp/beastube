@@ -197,6 +197,26 @@ export interface YouTubePlayerProps {
   onPosition?: (positionMs: number, durationMs: number) => void;
   /** Called when the embed reports a failure, with an i18n key. */
   onError?: (messageKey: string, code: number) => void;
+  /**
+   * Aspect ratio of the player box, as a CSS `aspect-ratio` value.
+   *
+   * The default is the landscape frame every ordinary video wants. Shorts pass `9 / 16` so the
+   * portrait video fills the column instead of sitting letterboxed inside a landscape box.
+   */
+  aspectRatio?: string;
+  /** Fill the parent's height instead of its width. Used where the parent is height-bounded. */
+  fill?: boolean;
+  /**
+   * Start muted.
+   *
+   * Required for anything that plays without being asked for — a browser refuses unmuted autoplay,
+   * and a grid that starts making noise as the pointer crosses it would be hostile anyway.
+   */
+  muted?: boolean;
+  /** Show the player's own controls. Off for previews, where the card underneath is the control. */
+  controls?: boolean;
+  /** Loop the video. Used by previews, which are shorter than what they preview. */
+  loop?: boolean;
 }
 
 /** The embedded player. */
@@ -207,6 +227,11 @@ export function YouTubePlayer({
   onStateChange,
   onPosition,
   onError,
+  aspectRatio = '16 / 9',
+  fill = false,
+  muted = false,
+  controls = true,
+  loop = false,
 }: YouTubePlayerProps): React.ReactNode {
   const t = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -260,6 +285,13 @@ export function YouTubePlayer({
             // Related videos are restricted to the same channel; the API no longer allows
             // suppressing them entirely, so this is the least intrusive setting available.
             rel: 0,
+            mute: muted ? 1 : 0,
+            controls: controls ? 1 : 0,
+            // Keyboard handling belongs to the application, not to a preview embedded in a card.
+            disablekb: controls ? 0 : 1,
+            // `loop` needs the playlist to name the video itself; without it the parameter is
+            // silently ignored, which is a documented quirk of the embed rather than a guess.
+            ...(loop ? { loop: 1, playlist: videoId } : {}),
             ...(startAtMs !== undefined ? { start: Math.floor(startAtMs / 1000) } : {}),
           },
           events: {
@@ -301,13 +333,15 @@ export function YouTubePlayer({
       }
       playerRef.current = null;
     };
-  }, [videoId, autoplay, startAtMs]);
+  }, [videoId, autoplay, startAtMs, muted, controls, loop]);
 
   if (failed !== null) {
     return (
       <div
-        className="bg-surface flex flex-col items-center justify-center gap-3 rounded-lg text-center"
-        style={{ aspectRatio: '16 / 9' }}
+        className={`bg-surface flex flex-col items-center justify-center gap-3 rounded-lg text-center ${
+          fill ? 'size-full' : ''
+        }`}
+        style={fill ? undefined : { aspectRatio }}
         role="alert"
       >
         <p className="text-text text-base font-medium">
@@ -319,8 +353,8 @@ export function YouTubePlayer({
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-lg bg-black"
-      style={{ aspectRatio: '16 / 9' }}
+      className={`relative overflow-hidden rounded-lg bg-black ${fill ? 'size-full' : 'w-full'}`}
+      style={fill ? undefined : { aspectRatio }}
       aria-label={t.t('a11y.playerRegion')}
     >
       {/* The API replaces this element with its iframe. */}

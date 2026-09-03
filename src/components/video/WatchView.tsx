@@ -117,20 +117,40 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
 
   const relatedItems = related.data?.items ?? [];
 
+  // The largest rendition, because this image is scaled up and blurred: a small one would band.
+  const ambientSource = details?.thumbnails?.at(-1)?.url;
+
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
       <div className="min-w-0 flex-1">
-        {/* The player mounts as soon as the id is known — it does not wait for metadata, because
-            the embed resolves the video itself and waiting would delay the first frame. */}
-        <YouTubePlayer
-          videoId={videoId}
-          {...(resumeAt !== undefined ? { startAtMs: resumeAt } : {})}
-          autoplay={settings.playback.autoplay_on_open}
-          onStateChange={setPlaybackState}
-          onPosition={(positionMs, durationMs) => {
-            positionRef.current = { positionMs, durationMs };
-          }}
-        />
+        <div className="relative">
+          {/* Ambient glow. A scaled, heavily blurred copy of the poster frame behind the player,
+              which is what YouTube's ambient mode amounts to visually: the video's own colours
+              spilling past its edges. It cannot be sampled from the video itself — the embed is
+              cross-origin, so its pixels are not readable — and the poster frame is the same
+              image the player shows before playback anyway. Purely decorative, so it is hidden
+              from assistive technology and never intercepts a click. */}
+          {settings.appearance.ambient_mode && ambientSource !== undefined && (
+            <img
+              src={ambientSource}
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 -z-10 size-full scale-110 object-cover opacity-45 blur-3xl saturate-150"
+            />
+          )}
+
+          {/* The player mounts as soon as the id is known — it does not wait for metadata, because
+              the embed resolves the video itself and waiting would delay the first frame. */}
+          <YouTubePlayer
+            videoId={videoId}
+            {...(resumeAt !== undefined ? { startAtMs: resumeAt } : {})}
+            autoplay={settings.playback.autoplay_on_open}
+            onStateChange={setPlaybackState}
+            onPosition={(positionMs, durationMs) => {
+              positionRef.current = { positionMs, durationMs };
+            }}
+          />
+        </div>
 
         <div className="mt-4 flex flex-col gap-3">
           {details ? (

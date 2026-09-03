@@ -189,6 +189,7 @@ export const en = {
     recentlyWatched: 'Recently watched',
     fromYourLibrary: 'From your library',
     discover: 'Discover',
+    recommended: 'Recommended',
     categories: 'Categories',
     empty: 'Nothing here yet',
     emptyHint: 'Search for something, and what you watch will start showing up here.',
@@ -292,6 +293,9 @@ export const en = {
       densityComfortable: 'Comfortable',
       densityCompact: 'Compact',
       reducedMotion: 'Reduce motion',
+      ambientMode: 'Ambient glow',
+      ambientModeHint:
+        'Casts the video’s colours softly behind the player, the way YouTube’s ambient mode does.',
       reducedMotionSystem: 'Match system',
       uiScale: 'Interface scale',
       language: 'Language',

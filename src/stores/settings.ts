@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
     reduced_motion: null,
     ui_scale: 1,
     language: null,
+    ambient_mode: true,
   },
   playback: {
     default_quality: 'auto',
