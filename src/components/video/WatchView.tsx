@@ -22,7 +22,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { ShortsCard } from '@/components/video/ShortsCard';
 import { VideoActions } from '@/components/video/VideoActions';
 import { VideoCard, VideoGrid } from '@/components/video/VideoCard';
-import { YouTubePlayer } from '@/components/video/YouTubePlayer';
+import { setPlayerHandlers, usePlayerStore } from '@/stores/player';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
 import { invoke } from '@/services/ipc';
@@ -58,6 +58,10 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   const stored = useAsyncResource(`position:${videoId}`, (signal) =>
     invoke('get_position', { videoId }, { signal }),
   );
+
+  const autoplay = settings.playback.autoplay_on_open;
+  const setSession = usePlayerStore((state) => state.setSession);
+  const setSlot = usePlayerStore((state) => state.setSlot);
 
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [playbackState, setPlaybackState] = useState<PlaybackState>('loading');
@@ -102,7 +106,38 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
     }
   }, [playbackState, checkpoint]);
 
+  // Handlers are pushed rather than passed, because the player is not this component's child.
+  //
+  // Deliberately in an effect with no dependency list: it runs after every render, so the host
+  // always calls this render's closures. Registering during render instead would be a side effect
+  // in a render, which React is entitled to run twice or throw away.
+  useEffect(() => {
+    setPlayerHandlers({
+      onStateChange: (state) => {
+        // The video the change belongs to is ignored here: this page holds one video for its whole
+        // life, so there is no other it could be about.
+        setPlaybackState(state);
+      },
+      onPosition: (positionMs, durationMs) => {
+        positionRef.current = { positionMs, durationMs };
+      },
+    });
+  });
+
+  useEffect(
+    () => () => {
+      // Leaving the page parks the player: paused, off-screen, and still alive for the next video.
+      setSession(null);
+      setSlot(null);
+      setPlayerHandlers({});
+    },
+    [setSession, setSlot],
+  );
+
   const details = video.data;
+  // Only from *this* video's metadata. The resource retains the previous value across a key change,
+  // so the guard is what stops the last video's thumbnail being shown over the new one.
+  const poster = video.data?.id === videoId ? details?.thumbnails?.at(-1)?.url : undefined;
 
   // Route wins over the stored position: an explicit timestamp is a deliberate request.
   //
@@ -121,6 +156,17 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
       stored.data.duration_ms - stored.data.position_ms > 20_000)
       ? stored.data.position_ms
       : undefined);
+
+  // What to play. Set after `resumeAt` is known so a stored position is honoured on the first
+  // attempt rather than by seeking a moment after playback has already started somewhere else.
+  useEffect(() => {
+    setSession({
+      videoId,
+      ...(resumeAt !== undefined ? { startAtMs: resumeAt } : {}),
+      autoplay,
+      ...(poster !== undefined ? { posterUrl: poster } : {}),
+    });
+  }, [videoId, resumeAt, autoplay, poster, setSession]);
 
   if (video.error && !details) {
     return <ErrorState error={video.error} onRetry={video.reload} />;
@@ -153,21 +199,13 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
             />
           )}
 
-          {/* The player mounts as soon as the id is known — it does not wait for metadata, because
-              the embed resolves the video itself and waiting would delay the first frame. */}
-          <YouTubePlayer
-            videoId={videoId}
-            {...(resumeAt !== undefined ? { startAtMs: resumeAt } : {})}
-            autoplay={settings.playback.autoplay_on_open}
-            onStateChange={(state) => {
-              // The video id the change belongs to is ignored here: this page holds one video for
-              // its whole life, so there is no other short it could be about.
-              setPlaybackState(state);
-            }}
-            onPosition={(positionMs, durationMs) => {
-              positionRef.current = { positionMs, durationMs };
-            }}
-          />
+          {/* The slot, not the player.
+              The player itself is mounted once by `PlayerHost`, above the router, and positioned
+              over this box — so arriving here from Home costs one `loadVideoById` rather than a
+              fresh `<iframe>` and a full embed bootstrap. This element is only ever an empty box
+              of the right shape; it reserves the layout so nothing shifts when the picture
+              appears. */}
+          <div ref={setSlot} className="w-full" style={{ aspectRatio: '16 / 9' }} />
         </div>
 
         <div className="mt-4 flex flex-col gap-3">

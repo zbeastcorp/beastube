@@ -12,10 +12,11 @@
  *    skeleton; navigation is never gated on a request.
  */
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { NavigationProgress } from '@/components/shell/NavigationProgress';
+import { PlayerHost } from '@/components/video/PlayerHost';
 import { OverlayHost } from '@/components/shell/OverlayHost';
 import { preloadPlayerApi } from '@/components/video/YouTubePlayer';
 import { Sidebar } from '@/components/shell/Sidebar';
@@ -134,9 +135,16 @@ function useShellEvents(): void {
 function Shell(): ReactNode {
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
   const route = useRoute();
+  const [scroller, setScroller] = useState<HTMLElement | null>(null);
 
   usePresentation();
   useShellEvents();
+
+  // What the route key used to do by remounting. A new screen starts at the top; without this it
+  // would inherit wherever the previous one had been scrolled to.
+  useEffect(() => {
+    scroller?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [route.name, scroller]);
 
   return (
     <div className="bg-bg text-text flex h-full flex-col overflow-hidden">
@@ -152,12 +160,17 @@ function Shell(): ReactNode {
         <Sidebar collapsed={collapsed} />
         <main
           id="main-content"
-          className="scroll-region min-w-0 flex-1"
-          // Keyed on the route so a new view starts at the top rather than inheriting the previous
-          // view's scroll offset, and so its enter animation replays.
-          key={route.name}
+          ref={setScroller}
+          // `relative` so the player host below can position itself against this box, and no longer
+          // keyed on the route. The key used to live here, which meant every navigation rebuilt the
+          // whole subtree — including the player, and therefore its `<iframe>`. Scroll is reset
+          // explicitly instead, which is all the key was really buying.
+          className="scroll-region relative min-w-0 flex-1"
         >
-          <div className="animate-route-in mx-auto max-w-[var(--layout-content-max)] px-6 pt-2 pb-16">
+          <div
+            key={route.name}
+            className="animate-route-in mx-auto max-w-[var(--layout-content-max)] px-6 pt-2 pb-16"
+          >
             {/* Scoped to the view, so a screen that throws is something you can walk away from:
                 the sidebar and the top bar are outside this and keep working. Reset on the route
                 name, which makes navigating away the recovery. */}
@@ -168,6 +181,10 @@ function Shell(): ReactNode {
               {renderRoute(route)}
             </ErrorBoundary>
           </div>
+
+          {/* Inside the scroller so it moves with the content for free, outside the keyed subtree
+              so navigation cannot destroy it. */}
+          <PlayerHost scroller={scroller} />
         </main>
       </div>
     </div>
