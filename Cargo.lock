@@ -502,6 +502,7 @@ dependencies = [
  "beastube-core",
  "beastube-network",
  "beastube-provider",
+ "futures",
  "regex",
  "reqwest 0.12.28",
  "rustypipe",

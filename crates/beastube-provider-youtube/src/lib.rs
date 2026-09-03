@@ -52,6 +52,8 @@ use rustypipe::client::{RustyPipe, RustyPipeQuery};
 use rustypipe::error::Error as YtError;
 use rustypipe::model::YouTubeItem;
 use rustypipe::model::richtext::ToPlaintext;
+use futures::FutureExt as _;
+use std::panic::AssertUnwindSafe;
 use tokio_util::sync::CancellationToken;
 
 /// Stable adapter name, used in diagnostics and error payloads.
@@ -110,19 +112,45 @@ impl YouTubeProvider {
         self.client.query()
     }
 
-    /// Runs `operation`, abandoning it if `cancel` fires first.
+    /// Runs `operation`, abandoning it if `cancel` fires first and surviving it if it panics.
     ///
     /// The extractor has no cancellation channel, so the request itself runs to completion in the
     /// background. What this buys is that the *caller* stops waiting immediately, which is the part
     /// the user perceives (§32).
+    ///
+    /// # Why a panic is caught here
+    ///
+    /// The extractor unwraps in places where a network failure is possible — `visitor_data.rs`
+    /// calls `.unwrap()` on the result of fetching `music.youtube.com`, so a momentary DNS or
+    /// connectivity blip becomes a panic rather than an error. Observed thirty-three times in a
+    /// single session. Unguarded, that panic propagates out of whichever command was running and
+    /// the user is shown a failed screen for something a retry would have fixed.
+    ///
+    /// Catching it converts the panic into [`ProviderError::Transport`], which is classified as
+    /// automatically retryable — so the same blip now costs a retry rather than a screen. This is
+    /// not a workaround for our own bug; it is a boundary around a dependency whose failure mode is
+    /// not ours to fix, and the alternative is letting a third-party `.unwrap()` decide whether the
+    /// application works.
+    ///
+    /// `AssertUnwindSafe` is a deliberate claim, not an oversight: a panic mid-request could leave
+    /// the extractor's internal caches inconsistent. They hold fetched metadata, not invariants
+    /// anything else depends on, and the next call re-fetches what it needs. Trading that risk for
+    /// "the window does not break" is the right way round.
     async fn with_cancellation<T, F>(cancel: &CancellationToken, operation: F) -> ProviderResult<T>
     where
         F: Future<Output = ProviderResult<T>>,
     {
+        let guarded = AssertUnwindSafe(operation).catch_unwind();
+
         tokio::select! {
             biased;
             () = cancel.cancelled() => Err(ProviderError::Cancelled),
-            result = operation => result,
+            result = guarded => match result {
+                Ok(value) => value,
+                Err(_) => Err(ProviderError::Transport {
+                    detail: "the extractor panicked, most likely on a failed request".to_owned(),
+                }),
+            },
         }
     }
 }
