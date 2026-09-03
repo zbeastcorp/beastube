@@ -109,7 +109,7 @@ export const VideoCard = memo(function VideoCard({
 
   return (
     <article
-      className="group card-glow flex flex-col gap-3"
+      className="group card-glow feed-card flex flex-col gap-3"
       data-glow={hovered && glow !== null ? 'on' : undefined}
       style={glow !== null ? ({ '--card-glow-color': glow } as CSSProperties) : undefined}
       onPointerEnter={(event) => {

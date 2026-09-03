@@ -556,6 +556,22 @@
     position: relative;
   }
 
+  /*
+   * Off-screen cards are skipped entirely during layout and paint.
+   *
+   * A feed can hold hundreds of cards, and without this every one of them is laid out and painted
+   * on every scroll frame — which is the difference between a grid that keeps up with a 144Hz
+   * display and one that does not. `contain-intrinsic-size` supplies the height a skipped card
+   * would have had, so the scrollbar stays honest and nothing jumps when one comes into view.
+   *
+   * The value is a starting guess; `auto` lets the browser remember each card's real size once it
+   * has been rendered, so the estimate stops mattering after first paint.
+   */
+  .feed-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
+  }
+
   .card-glow::before {
     content: '';
     position: absolute;
@@ -572,6 +588,14 @@
     opacity: 0;
     transition: opacity var(--duration-normal, 200ms) var(--ease-yt, ease);
     pointer-events: none;
+    /*
+     * Promoted to its own layer. A 28px blur is expensive to rasterise, and without this it would
+     * be redrawn on every frame of the fade; on its own layer it is rasterised once and the
+     * animation becomes a compositor opacity change, which runs off the main thread and therefore
+     * keeps up with whatever refresh rate the display is running at.
+     */
+    transform: translateZ(0);
+    will-change: opacity;
   }
 
   .card-glow[data-glow='on']::before {
@@ -629,6 +653,17 @@
   }
 
   /* Hides the scrollbar on horizontal chip rows, as YouTube does. */
+  /*
+   * Smooth scrolling that follows the display rather than the main thread.
+   *
+   * `overscroll-behavior` stops a scroll that reaches the end of a shelf from chaining to the page
+   * behind it, which is the jolt that makes a horizontal row feel like it fights back.
+   */
+  .scroll-region,
+  .scrollbar-none {
+    overscroll-behavior: contain;
+  }
+
   .scrollbar-none {
     scrollbar-width: none;
   }

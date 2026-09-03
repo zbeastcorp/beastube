@@ -287,6 +287,37 @@ async fn main() {
 
     // The Shorts tab depends on this: a search that returns items marked `is_short` is the only
     // login-free way to fill it.
+    // What actually distinguishes a short in this data. Prints the three candidate signals side by
+    // side so the classifier is chosen from evidence rather than from a guess.
+    outcomes.push(
+        probe("shorts signal survey", || async {
+            let results = client
+                .query()
+                .search::<rustypipe::model::VideoItem, _>("funny #shorts")
+                .await
+                .map_err(|error| error.to_string())?;
+            let mut lines = Vec::new();
+            for video in results.items.items.iter().take(12) {
+                let thumb = video
+                    .thumbnail
+                    .iter()
+                    .max_by_key(|t| t.width)
+                    .map_or("none".to_owned(), |t| format!("{}x{}", t.width, t.height));
+                lines.push(format!(
+                    "short={} dur={:?} thumb={} | {}",
+                    video.is_short,
+                    video.duration,
+                    thumb,
+                    video.name.chars().take(38).collect::<String>()
+                ));
+            }
+            Ok(format!("
+      {}", lines.join("
+      ")))
+        })
+        .await,
+    );
+
     outcomes.push(
         probe("shorts via search", || async {
             client

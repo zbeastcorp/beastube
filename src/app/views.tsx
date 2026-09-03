@@ -366,10 +366,11 @@ function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
     invoke('get_shorts_feed', { limit: SHORTS_COUNT }, { signal }),
   );
 
-  // The second half of the defence. The provider filters on the extractor's short-form marker, but
-  // that invariant lives in another crate; the vertical player renders whatever it is handed, and a
-  // landscape video in a portrait frame is the exact thing being fixed here.
-  const videos = (shorts.data ?? []).filter((video) => video.is_short === true);
+  // The same test the native side applies, restated here because the vertical player renders
+  // whatever it is handed and the invariant otherwise lives only in another crate. Deliberately not
+  // the bare `is_short` marker: that marker is absent for most short-form video this extractor
+  // returns, and filtering on it emptied the tab.
+  const videos = (shorts.data ?? []).filter(isPortraitVideo);
 
   return (
     <ShortsFeed

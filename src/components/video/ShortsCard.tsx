@@ -62,7 +62,7 @@ export const ShortsCard = memo(function ShortsCard({
 
   return (
     <article
-      className="group card-glow flex flex-col gap-2"
+      className="group card-glow feed-card flex flex-col gap-2"
       style={
         {
           width,

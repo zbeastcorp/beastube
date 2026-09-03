@@ -846,9 +846,10 @@ const DISCOVERY_TOPICS: &[&str] = &[
 
 /// Topics used to fill the Shorts feed.
 ///
-/// Shorts have no login-free listing endpoint, so the feed is assembled from searches whose results
-/// the provider marks as short-form. The topics rotate with the day so the tab is not identical on
-/// every launch.
+/// Hashtag queries, because they surface short-form content far more reliably than plain topical
+/// ones — measured both ways: `art timelapse` returns a full page of ten-minute videos, while
+/// `art #shorts` returns few items but nearly all of them short. Few-but-right beats
+/// many-but-wrong, and the expansion pass below is what turns "few" into a feed.
 const SHORTS_TOPICS: &[&str] = &[
     "#shorts",
     "funny #shorts",
@@ -998,18 +999,45 @@ pub(crate) async fn get_shorts_feed(
     limit: u32,
 ) -> CommandResult<Vec<VideoSummary>> {
     let limit = limit.clamp(1, 120) as usize;
-    // Every topic, not the four a recommendation pass uses. The provider marks only a fraction of
-    // any result page as short-form, so a narrow fan-out yields a feed of two or three videos —
-    // which is what a Shorts tab must not be.
     let topics = rotating(SHORTS_TOPICS, SHORTS_TOPICS.len());
-    // The extractor's own marker is the criterion, because it is the only signal that means
-    // "vertical". Duration is not a substitute: plenty of three-minute videos are landscape.
+    // `All`, so the provider pre-filters nothing and `is_short_form` below is the only test.
+    //
+    // Neither narrower kind works here. `Shorts` admits only what the extractor marked, and the
+    // marker is far rarer than short-form content is — most shorts arrive inside a shelf renderer
+    // this extractor discards, so whole topic queries come back empty. `Videos` is worse than
+    // useless: its filter is `!is_short`, so it drops precisely the marked shorts this feed exists
+    // to collect.
     let filters = SearchFilters {
-        kind: SearchResultKind::Shorts,
+        kind: SearchResultKind::All,
         ..SearchFilters::default()
     };
 
-    let lists = fan_out(topics, |topic| {
+    // The viewer's own watch history is the richest source of short-form video available here:
+    // related lists are full of it, and unlike a topic search they cannot come back empty for
+    // reasons that have nothing to do with the query. Consulted under the same permission as the
+    // home recommendations, and skipped entirely in incognito.
+    let mut lists = if state.settings().privacy.local_recommendations_enabled
+        && !state.is_incognito()
+    {
+        let seeds: Vec<VideoId> = state
+            .repositories
+            .history
+            .list(RECOMMENDATION_SEEDS_U32, 0)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|entry| entry.video_id)
+            .collect();
+        related_lists(&state, seeds)
+            .await
+            .into_iter()
+            .map(|list| list.into_iter().filter(is_short_form).collect::<Vec<_>>())
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let searched = fan_out(topics, |topic| {
         let provider = Arc::clone(&state.provider);
         let filters = filters.clone();
         async move {
@@ -1024,7 +1052,7 @@ pub(crate) async fn get_shorts_feed(
                 else {
                     break;
                 };
-                collected.extend(videos_of(results.page.items));
+                collected.extend(videos_of(results.page.items).into_iter().filter(is_short_form));
                 // A page without a cursor is the end of the collection; asking again would repeat
                 // the first page forever.
                 cursor = results.page.continuation;
@@ -1038,7 +1066,67 @@ pub(crate) async fn get_shorts_feed(
     })
     .await;
 
-    Ok(interleave(lists, &HashSet::new(), limit))
+    lists.extend(searched);
+    let mut collected = interleave(lists, &HashSet::new(), limit);
+
+    // Expansion. A short's related list is mostly other shorts — it is the one place this extractor
+    // reliably hands back short-form video, because those results arrive as ordinary video items
+    // rather than inside the shelf renderer it discards. So the shorts already found are used as
+    // seeds for more, which is what turns a handful of search hits into a feed worth scrolling.
+    if collected.len() < limit && !collected.is_empty() {
+        let seeds: Vec<VideoId> = collected
+            .iter()
+            .take(SHORTS_EXPANSION_SEEDS)
+            .map(|video| video.id.clone())
+            .collect();
+        let seen: HashSet<String> = collected
+            .iter()
+            .map(|video| video.id.as_str().to_owned())
+            .collect();
+
+        let expanded: Vec<Vec<VideoSummary>> = related_lists(&state, seeds)
+            .await
+            .into_iter()
+            .map(|list| list.into_iter().filter(is_short_form).collect())
+            .collect();
+
+        collected.extend(interleave(expanded, &seen, limit - collected.len()));
+    }
+
+    Ok(collected)
+}
+
+/// How many of the shorts already found are used to look for more.
+const SHORTS_EXPANSION_SEEDS: usize = 6;
+
+/// Longest a video can be and still be treated as short-form, in milliseconds.
+///
+/// YouTube's current ceiling for a Short, raised from sixty seconds to three minutes. Used because
+/// the extractor's own marker is unreliable here: it comes from the renderer shape the response
+/// happened to use, so the same video is marked in one listing and unmarked in another, and most
+/// shorts arrive inside a shelf this extractor discards entirely.
+///
+/// The card surfaces use a stricter sixty-second test, because there a false positive puts a
+/// landscape video in a portrait card across the whole application. Here the cost is much lower —
+/// the stage is portrait and a wider video is simply letterboxed inside it, the same way YouTube
+/// presents a short that is not 9:16 — while the cost of being too strict is a tab with one video
+/// in it.
+const SHORT_MAX_DURATION_MS: u64 = 180_000;
+
+/// Whether a video belongs in the Shorts tab.
+///
+/// The marker when it is set, and a sub-minute duration otherwise. This admits the occasional
+/// landscape video, and that is a deliberate trade: the stage is portrait with a blurred backdrop
+/// filling whatever the video does not, so a landscape item looks like a letterboxed short rather
+/// than a broken frame — while the alternative, holding out for a marker that usually is not there,
+/// empties the tab entirely.
+///
+/// A video with no duration at all is excluded. An unknown length is not evidence of a short one.
+fn is_short_form(video: &VideoSummary) -> bool {
+    video.is_short
+        || video
+            .duration_ms
+            .is_some_and(|duration| duration > 0 && duration <= SHORT_MAX_DURATION_MS)
 }
 
 /// Fetches the related list for each seed, concurrently.

@@ -20,7 +20,7 @@
  * without a cooldown a single gesture would skip four or five videos.
  */
 
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Maximize2, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -35,7 +35,7 @@ import { Link } from '@/app/router';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { VideoActions } from '@/components/video/VideoActions';
-import { YouTubePlayer } from '@/components/video/YouTubePlayer';
+import { YouTubePlayer, type PlayerHandle } from '@/components/video/YouTubePlayer';
 import { useTranslation } from '@/i18n/context';
 import type { AsyncResource } from '@/hooks/useAsyncResource';
 import { invoke } from '@/services/ipc';
@@ -83,6 +83,9 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
    */
   const [navigated, setNavigated] = useState<{ forId: VideoId | null; index: number } | null>(null);
   const lastWheelAt = useRef(0);
+  const playerRef = useRef<PlayerHandle>(null);
+  const [playing, setPlaying] = useState(true);
+  const [muted, setMuted] = useState(false);
   const touchStartY = useRef<number | null>(null);
   const incognito = useSessionStore((session) => session.incognito);
 
@@ -130,6 +133,20 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
         target instanceof HTMLElement &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
       ) {
+        return;
+      }
+      if (event.key === ' ' || event.key === 'k') {
+        // The embed's own keyboard handling is off with its chrome, so these are ours to provide.
+        event.preventDefault();
+        playerRef.current?.toggle();
+        return;
+      }
+      if (event.key === 'm') {
+        event.preventDefault();
+        setMuted((current) => {
+          playerRef.current?.setMuted(!current);
+          return !current;
+        });
         return;
       }
       if (event.key === 'ArrowDown' || event.key === 'PageDown' || event.key === 'j') {
@@ -220,12 +237,13 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
           }
         >
           {/*
-           * The blurred backdrop that fills whatever the video does not. YouTube does exactly this,
-           * and it is also the safety net for the cases the thumbnail ratio gets wrong: the strips
-           * either side stop being flat black and start being the video's own colours.
+           * The blurred poster frame, shown while the embed loads.
            *
-           * Kept mounted across navigations rather than remounted, so a short change does not flash
-           * the empty stage while the next thumbnail decodes.
+           * It cannot fill the letterbox bars of a video that is not the stage's shape, which was
+           * the original hope: the embed is one opaque iframe that fills the stage and paints its
+           * own bars, so nothing behind it is ever visible once it has painted. What it does do is
+           * replace a black rectangle with the video's own colours for the moment before that —
+           * which is most of what makes a swap between shorts feel continuous.
            */}
           {backdrop !== undefined && (
             <img
@@ -240,11 +258,16 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
               whole embed iframe — on every navigation, which is exactly the stutter this feed is
               supposed to not have. One player persists and swaps videos in place. */}
           <YouTubePlayer
+            ref={playerRef}
             videoId={current.id}
             fill
             transparent
             autoplay
+            // The embed's own chrome is hidden and replaced below, which is what YouTube does on its
+            // Shorts surface. Every control drawn in its place drives the player for real.
+            controls={false}
             onStateChange={(playbackState) => {
+              setPlaying(playbackState === 'playing' || playbackState === 'buffering');
               // Advancing on end is what makes the feed a feed. At the last short it stops, rather
               // than looping back to the top.
               if (playbackState === 'ended') {
@@ -253,13 +276,57 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
             }}
           />
 
-          {/*
-           * Lifted clear of the embed's own control strip. The embed is one opaque iframe, so an
-           * absolutely-positioned sibling paints OVER its chrome however it is ordered — the
-           * gradient was covering the seek bar, and the channel link (the one clickable thing in an
-           * otherwise pointer-transparent band) sat directly on top of the play button.
-           */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-[52px] bg-gradient-to-t from-black/85 to-transparent p-4 pt-16">
+          {/* The whole frame is the play/pause target, as it is on YouTube. A button rather than a
+              div so it is keyboard reachable and announced; it carries no visible chrome of its
+              own. */}
+          <button
+            type="button"
+            onClick={() => {
+              playerRef.current?.toggle();
+            }}
+            aria-label={t.t(playing ? 'player.pause' : 'player.play')}
+            className="absolute inset-0 z-10 cursor-default"
+          />
+
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-3">
+            <div className="pointer-events-auto flex items-center gap-1">
+              <StageButton
+                label={t.t(playing ? 'player.pause' : 'player.play')}
+                onClick={() => {
+                  playerRef.current?.toggle();
+                }}
+              >
+                {playing ? <Pause size={18} /> : <Play size={18} />}
+              </StageButton>
+              <StageButton
+                label={t.t(muted ? 'player.unmute' : 'player.mute')}
+                onClick={() => {
+                  const next = !muted;
+                  setMuted(next);
+                  playerRef.current?.setMuted(next);
+                }}
+              >
+                {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </StageButton>
+            </div>
+
+            {/* Captions and a overflow menu belong here on YouTube. Neither is wired to anything
+                this adapter can do, so neither is drawn (§131). */}
+            <div className="pointer-events-auto">
+              <StageButton
+                label={t.t('player.fullscreen')}
+                onClick={() => {
+                  playerRef.current?.requestFullscreen();
+                }}
+              >
+                <Maximize2 size={18} />
+              </StageButton>
+            </div>
+          </div>
+
+          {/* Back at the bottom edge: with the embed's own chrome hidden there is nothing left
+              underneath for this band to cover. */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 to-transparent p-4 pt-16">
             <h2 className="line-clamp-2 text-base leading-snug font-medium text-white">
               {current.title}
             </h2>
@@ -311,6 +378,29 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
         </div>
       </div>
     </div>
+  );
+}
+
+/** One control on the video itself: circular, translucent, legible over any frame. */
+function StageButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="grid size-9 place-items-center rounded-full text-white/90 transition-[background-color,color] duration-150 hover:bg-white/15 hover:text-white"
+    >
+      {children}
+    </button>
   );
 }
 

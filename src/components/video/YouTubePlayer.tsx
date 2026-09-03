@@ -23,7 +23,7 @@
  * itself.
  */
 
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type Ref } from 'react';
 
 import { useTranslation } from '@/i18n/context';
 import type { PlaybackState, VideoId } from '@/types/domain';
@@ -225,6 +225,25 @@ export interface YouTubePlayerProps {
    * instead of a black rectangle.
    */
   transparent?: boolean;
+  /**
+   * Handle for driving the player from outside.
+   *
+   * Exists so a surface that hides the embed's own chrome can offer real controls in its place. A
+   * control that cannot act on the player would be exactly the kind of decoration the specification
+   * forbids (§131), so the commands are the same ones the API actually supports and nothing more.
+   */
+  ref?: Ref<PlayerHandle>;
+}
+
+/** What a caller can ask the live player to do. */
+export interface PlayerHandle {
+  play: () => void;
+  pause: () => void;
+  /** Plays if paused, pauses if playing. Reads the live state rather than trusting a cached one. */
+  toggle: () => void;
+  setMuted: (muted: boolean) => void;
+  /** Puts the player's frame into fullscreen, when the browser allows it. */
+  requestFullscreen: () => void;
 }
 
 /**
@@ -267,6 +286,7 @@ export function YouTubePlayer({
   controls = true,
   loop = false,
   transparent = false,
+  ref,
 }: YouTubePlayerProps): React.ReactNode {
   const t = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -516,12 +536,63 @@ export function YouTubePlayer({
     applyResume(startAtMs);
   }, [startAtMs]);
 
+  const frameRef = useRef<HTMLDivElement>(null);
+
+  useImperativeHandle(
+    ref,
+    (): PlayerHandle => ({
+      play: () => {
+        try {
+          playerRef.current?.playVideo();
+        } catch {
+          // The player throws once torn down; a command with nothing to command is a no-op.
+        }
+      },
+      pause: () => {
+        try {
+          playerRef.current?.pauseVideo();
+        } catch {
+          // As above.
+        }
+      },
+      toggle: () => {
+        const player = playerRef.current;
+        if (!player) return;
+        try {
+          // Asked of the player rather than derived from the last reported state: a state change
+          // the parent has not re-rendered for yet would otherwise invert the button.
+          if (player.getPlayerState() === EMBED_STATE.playing) player.pauseVideo();
+          else player.playVideo();
+        } catch {
+          // As above.
+        }
+      },
+      setMuted: (next: boolean) => {
+        const player = playerRef.current;
+        if (!player) return;
+        try {
+          if (next) player.mute();
+          else player.unMute();
+        } catch {
+          // As above.
+        }
+      },
+      requestFullscreen: () => {
+        void frameRef.current?.requestFullscreen().catch(() => {
+          // Refused when the gesture is not trusted, or unavailable in this context.
+        });
+      },
+    }),
+    [],
+  );
+
   // A failure belongs to the video that produced it. Once a different video is loaded the frame is
   // live again, so the error must not outlive its subject.
   const failed = failure !== null && failure.id === videoId ? failure.key : null;
 
   return (
     <div
+      ref={frameRef}
       className={`relative overflow-hidden rounded-lg ${transparent ? '' : 'bg-black'} ${
         fill ? 'size-full' : 'w-full'
       }`}
