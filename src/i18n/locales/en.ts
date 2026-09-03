@@ -181,6 +181,8 @@ export const en = {
     next: 'Next short',
     previous: 'Previous short',
     empty: 'No Shorts to show',
+    unplayable: 'This short cannot be played here',
+    skipping: 'Skipping to the next one',
   },
 
   home: {

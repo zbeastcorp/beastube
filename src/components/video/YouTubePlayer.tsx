@@ -200,8 +200,14 @@ export interface YouTubePlayerProps {
    * routing it through a store would re-render the application on every tick (§89).
    */
   onPosition?: (positionMs: number, durationMs: number) => void;
-  /** Called when the embed reports a failure, with an i18n key. */
-  onError?: (messageKey: string, code: number) => void;
+  /**
+   * Called when the embed reports a failure, with an i18n key and the video it applies to.
+   *
+   * The video id is not decoration. One player serves a whole feed, so by the time an error is
+   * delivered the caller may already have moved on — a handler that assumed "the current one"
+   * would blame a perfectly good video for its predecessor's failure.
+   */
+  onError?: (messageKey: string, code: number, videoId: VideoId) => void;
   /**
    * Aspect ratio of the player box, as a CSS `aspect-ratio` value.
    *
@@ -329,8 +335,8 @@ export function YouTubePlayer({
   const reportPosition = useEffectEvent((positionMs: number, durationMs: number) => {
     onPosition?.(positionMs, durationMs);
   });
-  const reportError = useEffectEvent((messageKey: string, code: number) => {
-    onError?.(messageKey, code);
+  const reportError = useEffectEvent((messageKey: string, code: number, id: VideoId) => {
+    onError?.(messageKey, code, id);
   });
 
   /**
@@ -446,9 +452,10 @@ export function YouTubePlayer({
           onError: (event) => {
             if (isCancelled()) return;
             const key = errorKeyFor(event.data);
-            setFailure({ id: loadedIdRef.current ?? id, key });
+            const failed = loadedIdRef.current ?? id;
+            setFailure({ id: failed, key });
             reportState('error');
-            reportError(key, event.data);
+            reportError(key, event.data, failed);
           },
         },
       });

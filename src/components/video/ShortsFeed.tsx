@@ -108,6 +108,27 @@ const SEED_WINDOW = 3;
  */
 const EMBED_CHROME_CROP_PX = 64;
 
+/**
+ * How long a short may sit without reaching playback before it is nudged, then given up on.
+ *
+ * Two waits, not one. The first expiry re-issues `play()`, which recovers the ordinary case of an
+ * autoplay that the embed dropped on the floor. Only the second expiry concludes the short is not
+ * going to play, because a slow connection is not the same thing as a dead video and must not be
+ * treated as one.
+ */
+const STALL_NUDGE_MS = 4500;
+const STALL_GIVE_UP_MS = 9000;
+
+/**
+ * How many shorts may be skipped in a row before the feed stops skipping.
+ *
+ * Without this, an offline machine — where *every* short stalls — would auto-advance through the
+ * entire feed in about a minute and land the viewer at the end of it with nothing shown. The cap
+ * resets the moment anything plays, so it only ever bites when the failure is systemic rather than
+ * per-video.
+ */
+const MAX_CONSECUTIVE_SKIPS = 3;
+
 /** How long the pointer must rest before the overlaid chrome fades away. */
 const CHROME_IDLE_MS = 2600;
 
@@ -156,6 +177,50 @@ export function ShortsFeed({
   const [menuOpen, setMenuOpen] = useState(false);
   const seekedToDeepLink = useRef(false);
   const scrollFrame = useRef(0);
+
+  /**
+   * Shorts that will not play, and are therefore not worth stopping on.
+   *
+   * A short reaches this set two ways: the embed reported an error for it (101 and 150 mean the
+   * uploader disallowed off-site playback, which no amount of retrying changes), or it never
+   * started. Either way YouTube's own feed would never have shown it, and leaving the viewer parked
+   * on a frozen poster is the thing being reported.
+   *
+   * Kept rather than filtered out of `videos`. Removing an entry mid-scroll renumbers every short
+   * below it, which moves the feed under a viewer who did not ask it to move; skipping past on
+   * arrival costs one animated scroll and leaves the numbering alone.
+   */
+  const [unplayable, setUnplayable] = useState<ReadonlySet<VideoId>>(() => new Set());
+
+  /**
+   * Which way the viewer is travelling, so a dead short is skipped *past* rather than always down.
+   *
+   * Scrolling up into an unplayable short and being bounced back down is a trap: the viewer cannot
+   * get past it in the direction they are going.
+   */
+  const direction = useRef(1);
+
+  /**
+   * Consecutive skips with nothing played in between. See {@link MAX_CONSECUTIVE_SKIPS}.
+   *
+   * State rather than a ref because the message on a dead short reads it — whether the feed is
+   * still moving past failures or has given up is exactly what the viewer needs told.
+   */
+  const [skips, setSkips] = useState(0);
+
+  /**
+   * The short that has actually reached playback, if any.
+   *
+   * Not derivable from `playing`: that is true for buffering as well, deliberately, so the button
+   * shows a pause glyph while a video is fetching rather than flickering between the two. The
+   * watchdog needs the stricter question — has *this* short produced a frame — because a short
+   * stuck buffering forever is precisely the failure being watched for, and it would otherwise look
+   * like a short that was playing fine.
+   */
+  const [startedId, setStartedId] = useState<VideoId | null>(null);
+
+  /** The short the viewer deliberately paused, if it is still the one on screen. */
+  const [pausedShortId, setPausedShortId] = useState<VideoId | null>(null);
   const incognito = useSessionStore((session) => session.incognito);
 
   const current = videos[Math.min(index, Math.max(0, videos.length - 1))];
@@ -198,9 +263,14 @@ export function ShortsFeed({
    * the press. The optimistic flip is corrected by `onStateChange` if the player disagrees.
    */
   const togglePlayback = useCallback(() => {
-    setPlaying((wasPlaying) => !wasPlaying);
+    const pausing = playing;
+    setPlaying(!playing);
+    // Remembered against the short it applies to, so it clears itself on the next one without an
+    // effect — and so the stall watchdog can tell "this video will not start" apart from "the
+    // viewer stopped it", which look identical from the embed's side.
+    setPausedShortId(pausing ? (current?.id ?? null) : null);
     playerRef.current?.toggle();
-  }, []);
+  }, [playing, current?.id]);
 
   /** Shows the chrome and restarts the idle countdown. Called on any pointer activity. */
   const wakeChrome = useCallback(() => {
@@ -290,6 +360,7 @@ export function ShortsFeed({
   // reads as a bug, not as a loop.
   const move = useCallback(
     (delta: number) => {
+      if (delta !== 0) direction.current = Math.sign(delta);
       const next = Math.min(Math.max(index + delta, 0), Math.max(0, videos.length - 1));
       scrollToIndex(next, true);
       // Pressing next at the boundary asks for more rather than doing nothing at all, so a viewer
@@ -322,6 +393,78 @@ export function ShortsFeed({
   useEffect(() => {
     requestMore();
   }, [index, videos.length]);
+
+  /** Records a short as unplayable. Idempotent, so a repeated error does not re-render. */
+  const markUnplayable = useCallback((id: VideoId) => {
+    setUnplayable((known) => {
+      if (known.has(id)) return known;
+      const next = new Set(known);
+      next.add(id);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Moves off a short that cannot play, in whichever direction the viewer was already going.
+   *
+   * Does nothing once the cap is reached, so the feed stops rather than racing to the end when the
+   * failure is the network rather than the video.
+   */
+  const skipPast = useEffectEvent(() => {
+    if (skips >= MAX_CONSECUTIVE_SKIPS) return;
+    const step = direction.current === -1 && index > 0 ? -1 : 1;
+    if (step === 1 && index >= videos.length - 1) {
+      // At the end with nothing to skip to. Asking for more is better than sitting on a dead frame.
+      requestMoreNow();
+      return;
+    }
+    setSkips((run) => run + 1);
+    move(step);
+  });
+
+  // Leaves a short that is already known not to play, as soon as it becomes the current one.
+  const currentIsDead = current !== undefined && unplayable.has(current.id);
+  useEffect(() => {
+    if (!currentIsDead) return;
+    skipPast();
+  }, [currentIsDead, current?.id]);
+
+  /**
+   * Gives up on a short that never starts.
+   *
+   * The embed does not always report a failure — a video can simply sit in `unstarted` forever —
+   * so silence has to be treated as its own signal. `playing` cancels both timers; reaching the
+   * second one means nothing is coming.
+   */
+  const watchdogId = current?.id;
+  const watchdogArmed =
+    watchdogId !== undefined &&
+    !currentIsDead &&
+    startedId !== watchdogId &&
+    // A short the viewer stopped is not a short that failed, and the two are indistinguishable from
+    // the embed's side. Without this the watchdog would nudge a deliberate pause back into playing
+    // and then blacklist the video for not starting.
+    pausedShortId !== watchdogId;
+  const onStall = useEffectEvent((stage: 'nudge' | 'give-up') => {
+    if (stage === 'nudge') {
+      playerRef.current?.play();
+      return;
+    }
+    if (watchdogId !== undefined) markUnplayable(watchdogId);
+  });
+  useEffect(() => {
+    if (!watchdogArmed) return undefined;
+    const nudge = setTimeout(() => {
+      onStall('nudge');
+    }, STALL_NUDGE_MS);
+    const giveUp = setTimeout(() => {
+      onStall('give-up');
+    }, STALL_GIVE_UP_MS);
+    return () => {
+      clearTimeout(nudge);
+      clearTimeout(giveUp);
+    };
+  }, [watchdogArmed, watchdogId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -420,7 +563,12 @@ export function ShortsFeed({
             const element = scrollRef.current;
             if (!element || element.clientHeight === 0) return;
             const next = Math.round(element.scrollTop / element.clientHeight);
-            setIndex((shown) => (shown === next ? shown : next));
+            setIndex((shown) => {
+              if (shown === next) return shown;
+              // A scroll is a statement of direction just as much as a button press is.
+              direction.current = next > shown ? 1 : -1;
+              return next;
+            });
           });
         }}
       >
@@ -523,10 +671,22 @@ export function ShortsFeed({
                   controls={false}
                   onStateChange={(playbackState) => {
                     setPlaying(playbackState === 'playing' || playbackState === 'buffering');
+                    // Something played, so the run of failures is over. Reset here rather than on
+                    // arrival at a short: arriving proves nothing, playing does.
+                    if (playbackState === 'playing') {
+                      setSkips(0);
+                      setStartedId(current.id);
+                    }
                     // Caption availability is a property of the video, and the embed only knows once
                     // it has loaded one. Asked here so the control is absent for a short with none.
                     setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
                     if (playbackState === 'ended') move(1);
+                  }}
+                  // The embed says which video failed, and it is not always the current one — see
+                  // the prop's own note. Marking the wrong short dead would blacklist a good video
+                  // for the rest of the session.
+                  onError={(_key, _code, failedId) => {
+                    markUnplayable(failedId);
                   }}
                 />
               </div>
@@ -587,6 +747,20 @@ export function ShortsFeed({
                 )}
               </div>
 
+              {/* Said out loud rather than left to look like buffering. A short the uploader has
+                  disallowed off-site will never play here however long it is waited on, and the
+                  feed is already moving past it — the message explains the movement. */}
+              {currentIsDead && (
+                <div className="absolute inset-0 z-40 grid place-items-center bg-black/80 p-6 text-center">
+                  <div>
+                    <p className="text-sm font-medium text-white">{t.t('shorts.unplayable')}</p>
+                    {skips < MAX_CONSECUTIVE_SKIPS && (
+                      <p className="mt-1 text-xs text-white/70">{t.t('shorts.skipping')}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* The whole frame is the play/pause target, as it is on YouTube. A button rather than
                 a div so it is keyboard reachable and announced; it carries no chrome of its own. */}
               <button
@@ -609,9 +783,7 @@ export function ShortsFeed({
                 <div className="pointer-events-auto flex items-center gap-1">
                   <StageButton
                     label={t.t(playing ? 'player.pause' : 'player.play')}
-                    onClick={() => {
-                      playerRef.current?.toggle();
-                    }}
+                    onClick={togglePlayback}
                   >
                     {playing ? <Pause size={18} /> : <Play size={18} />}
                   </StageButton>
