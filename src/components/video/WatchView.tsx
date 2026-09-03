@@ -19,13 +19,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ErrorState } from '@/components/common/ErrorState';
+import { ShortsCard } from '@/components/video/ShortsCard';
 import { VideoCard, VideoGrid } from '@/components/video/VideoCard';
 import { YouTubePlayer } from '@/components/video/YouTubePlayer';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
 import { invoke } from '@/services/ipc';
 import { useSettingsStore } from '@/stores/settings';
-import type { PlaybackState, VideoId } from '@/types/domain';
+import { isPortraitVideo, type PlaybackState, type VideoId } from '@/types/domain';
 
 /** Interval between position checkpoints while playing. */
 const CHECKPOINT_INTERVAL_MS = 10_000;
@@ -100,9 +101,15 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   const details = video.data;
 
   // Route wins over the stored position: an explicit timestamp is a deliberate request.
+  //
+  // `!stored.loading` is load-bearing. The resource hook deliberately retains the previous value
+  // while a new request runs, so at the moment the video changes `stored.data` still holds the
+  // PREVIOUS video's position — and handing that to the player would start the new video at the old
+  // one's timestamp. Waiting for the fetch that belongs to this video is the only honest test.
   const resumeAt =
     startAtMs ??
     (settings.playback.resume_playback &&
+    !stored.loading &&
     stored.data &&
     stored.data.position_ms >= MIN_RESUME_MS &&
     // Do not resume into the last moments; that shows a frozen final frame rather than the video.
@@ -229,9 +236,15 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
         <h2 className="text-text mb-3 text-base font-medium">{t.t('video.related')}</h2>
         {relatedItems.length > 0 ? (
           <VideoGrid>
-            {relatedItems.map((item) => (
-              <VideoCard key={item.id} video={item} width={168} />
-            ))}
+            {/* The rail is a fixed 402px column, so a portrait card is told its width explicitly:
+                left to the grid it would be more than twice as tall as the landscape ones. */}
+            {relatedItems.map((item) =>
+              isPortraitVideo(item) ? (
+                <ShortsCard key={item.id} video={item} width={168} />
+              ) : (
+                <VideoCard key={item.id} video={item} width={168} />
+              ),
+            )}
           </VideoGrid>
         ) : (
           <div className="flex flex-col gap-3">

@@ -57,6 +57,84 @@ where
     }
 }
 
+
+/// Probes for short-form listings, which are the weakest part of this extractor.
+///
+/// Split out of `main` so each half stays readable; they are otherwise ordinary probes.
+async fn shorts_probes(client: &RustyPipe) -> Vec<Outcome> {
+    let mut outcomes = Vec::new();
+
+    // The Shorts tab depends on this far more than on search: a channel's Shorts tab is a real
+    // listing, whereas shorts in search results arrive inside a shelf the extractor mostly drops.
+    outcomes.push(
+        probe("channel shorts tab", || async {
+            client
+                .query()
+                .channel_videos_tab(
+                    "UCuAXFkgsw1L7xaCfnd5JJOw",
+                    rustypipe::param::ChannelVideoTab::Shorts,
+                )
+                .await
+                .map(|channel| {
+                    let shorts = channel.content.items.iter().filter(|v| v.is_short).count();
+                    format!(
+                        "{} items, {shorts} marked short, more: {}",
+                        channel.content.items.len(),
+                        channel.content.ctoken.is_some()
+                    )
+                })
+                .map_err(|error| error.to_string())
+        })
+        .await,
+    );
+
+    // The decisive experiment for the Shorts tab: the Shorts tab answers with zero items and a
+    // continuation token, which is what a lazily-deferred rich grid looks like. If following the
+    // token yields items, a channel's Shorts tab is a real short-form listing and the feed can be
+    // built on it instead of on search, which drops shorts inside a shelf renderer this extractor
+    // does not parse.
+    outcomes.push(
+        probe("channel shorts continuation", || async {
+            let first = client
+                .query()
+                .channel_videos_tab(
+                    "UCuAXFkgsw1L7xaCfnd5JJOw",
+                    rustypipe::param::ChannelVideoTab::Shorts,
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+
+            let Some(ctoken) = first.content.ctoken.clone() else {
+                return Err(format!(
+                    "page 1 had {} items and no continuation",
+                    first.content.items.len()
+                ));
+            };
+
+            let second = client
+                .query()
+                .continuation::<rustypipe::model::VideoItem, _>(
+                    ctoken,
+                    rustypipe::model::paginator::ContinuationEndpoint::Browse,
+                    first.content.visitor_data.as_deref(),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+
+            let shorts = second.items.iter().filter(|v| v.is_short).count();
+            Ok(format!(
+                "page 1: {} items, page 2: {} items ({shorts} short), more: {}",
+                first.content.items.len(),
+                second.items.len(),
+                second.ctoken.is_some()
+            ))
+        })
+        .await,
+    );
+
+    outcomes
+}
+
 #[tokio::main]
 async fn main() {
     // A dedicated cache directory so the probe never writes into the process working directory,
@@ -157,29 +235,7 @@ async fn main() {
         .await,
     );
 
-    // The Shorts tab depends on this far more than on search: a channel's Shorts tab is a real
-    // listing, whereas shorts in search results arrive inside a shelf the extractor mostly drops.
-    outcomes.push(
-        probe("channel shorts tab", || async {
-            client
-                .query()
-                .channel_videos_tab(
-                    "UCuAXFkgsw1L7xaCfnd5JJOw",
-                    rustypipe::param::ChannelVideoTab::Shorts,
-                )
-                .await
-                .map(|channel| {
-                    let shorts = channel.content.items.iter().filter(|v| v.is_short).count();
-                    format!(
-                        "{} items, {shorts} marked short, more: {}",
-                        channel.content.items.len(),
-                        channel.content.ctoken.is_some()
-                    )
-                })
-                .map_err(|error| error.to_string())
-        })
-        .await,
-    );
+    outcomes.extend(shorts_probes(&client).await);
 
     // Paging depends on this: without a working continuation endpoint a feed cannot scroll and the
     // Shorts tab ends after whatever the first page happened to contain.

@@ -14,11 +14,12 @@
  *    never fires; the load handler checks `naturalWidth` instead.
  */
 
-import { memo, useState, type ReactNode } from 'react';
+import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Link } from '@/app/router';
 import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
+import { cachedDominantColor, sampleDominantColor } from '@/services/dominantColor';
 import { bestThumbnailFor, type VideoSummary } from '@/types/domain';
 
 /** Below this width the provider's grey "no thumbnail" placeholder is what came back. */
@@ -84,10 +85,15 @@ export const VideoCard = memo(function VideoCard({
   const t = useTranslation();
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   // Request roughly two device pixels per CSS pixel so the image stays crisp on a HiDPI display.
   const thumbnail = video.thumbnails ? bestThumbnailFor(video.thumbnails, width * 2) : undefined;
   const showImage = thumbnail !== undefined && !thumbnailFailed;
+
+  // Seeded from the cache so a card scrolled back into view paints its glow on the first render,
+  // with no effect and no second pass. A miss stays null until the pointer arrives.
+  const [glow, setGlow] = useState<string | null>(() => cachedDominantColor(thumbnail?.url));
 
   const metadata: string[] = [];
   if (video.view_count !== undefined) {
@@ -103,12 +109,21 @@ export const VideoCard = memo(function VideoCard({
 
   return (
     <article
-      className="group flex flex-col gap-3"
+      className="group card-glow flex flex-col gap-3"
+      data-glow={hovered && glow !== null ? 'on' : undefined}
+      style={glow !== null ? ({ '--card-glow-color': glow } as CSSProperties) : undefined}
       onPointerEnter={(event) => {
         // Pointer rather than mouse events, and coarse pointers are excluded: on a touch screen
         // every tap would fire an enter and start a preview the user never asked for.
-        if (event.pointerType === 'mouse') {
-          setHovered(true);
+        if (event.pointerType !== 'mouse') return;
+        setHovered(true);
+
+        // Sampled on hover rather than on load. A screen holds around forty cards and a viewer
+        // hovers one or two; measuring every thumbnail as it decodes would do forty times the work
+        // for a state almost none of them enter. The cost is well under a millisecond and it is
+        // absorbed by the preview's own rest delay.
+        if (glow === null && imageRef.current !== null) {
+          setGlow(sampleDominantColor(imageRef.current));
         }
       }}
       onPointerLeave={() => {
@@ -125,7 +140,13 @@ export const VideoCard = memo(function VideoCard({
       >
         {showImage ? (
           <img
+            ref={imageRef}
             src={thumbnail.url}
+            // Measured, not assumed: i.ytimg.com answers with `Access-Control-Allow-Origin: *`, so
+            // the card's own decoded pixels can be read back for the glow at no extra bytes. If
+            // that ever stopped being true the image would fail to load outright rather than
+            // silently tainting, and the existing onError below already renders the placeholder.
+            crossOrigin="anonymous"
             alt={t.t('a11y.videoThumbnail', { title: video.title })}
             loading="lazy"
             decoding="async"

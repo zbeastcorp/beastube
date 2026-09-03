@@ -85,6 +85,78 @@ export interface Thumbnail {
 /** Renditions of one image, ascending by width. */
 export type ThumbnailSet = Thumbnail[];
 
+/** YouTube's original ceiling for a Short, and still the length nothing longer can be. */
+const SHORT_MAX_DURATION_MS = 60_000;
+
+/**
+ * Whether a video should be *presented* as short-form.
+ *
+ * Three signals, because no one of them is sufficient:
+ *
+ * 1. **The extractor's marker**, when set. It is authoritative — but it is derived from the
+ *    renderer shape the response happened to use, so the same video arrives marked from a
+ *    shorts-filtered search and unmarked from a related-videos list.
+ * 2. **The thumbnail's dimensions**, when they are portrait. Not decisive on their own either: some
+ *    renditions of a short are padded to 16:9 with the portrait frame boxed inside them, so a
+ *    landscape rendition does not mean a landscape video.
+ * 3. **Duration**, under a minute. Nothing longer is a Short, and in practice this is what catches
+ *    the ones the first two miss.
+ *
+ * ## Why the third signal is acceptable here and not everywhere
+ *
+ * It admits false positives: a genuinely landscape forty-second video is treated as short-form. The
+ * cost of that is a card in the wrong shape or an item in the Shorts shelf instead of the grid —
+ * visible, minor, recoverable. The cost of a false *negative* is the bug being fixed: a portrait
+ * video with grey bars either side of it in a landscape card.
+ *
+ * The Shorts tab does not use this. There a false positive means a landscape video in a vertical
+ * player with black bars top and bottom, which is worse than a shorter feed, so it holds out for
+ * the marker alone.
+ */
+export function isPortraitVideo(
+  video: Pick<VideoSummary, 'thumbnails' | 'is_short' | 'duration_ms'>,
+): boolean {
+  if (video.is_short === true) return true;
+  // Comfortably below square, so a 4:3 or 1:1 thumbnail is not mistaken for a short.
+  if (videoAspectRatio(video) < 0.9) return true;
+  return (
+    video.duration_ms !== undefined &&
+    video.duration_ms > 0 &&
+    video.duration_ms <= SHORT_MAX_DURATION_MS
+  );
+}
+
+/**
+ * The aspect ratio to give a video's player frame, as a plain number.
+ *
+ * The IFrame Player API cannot report a video's intrinsic dimensions — the embed is a cross-origin
+ * iframe, so its `<video>` element and `videoWidth`/`videoHeight` are unreachable — which leaves the
+ * thumbnail as the only signal available. Not every short is 9:16; measuring real YouTube showed a
+ * 3:4 reel in a container sized to match it, not letterboxed inside a forced portrait box.
+ *
+ * Guarded on two sides. Renditions without both dimensions are skipped, and a ratio outside a
+ * plausible band is rejected as a padded placeholder rather than trusted — some renditions are 4:3
+ * with black bars baked in, and one code path reports a hardcoded 320x180 for every video. When
+ * nothing usable survives, `is_short` decides the fallback.
+ */
+export function videoAspectRatio(video: Pick<VideoSummary, 'thumbnails' | 'is_short'>): number {
+  const fallback = video.is_short === true ? 9 / 16 : 16 / 9;
+
+  const sized = (video.thumbnails ?? []).filter(
+    (thumbnail) => thumbnail.width !== undefined && thumbnail.height !== undefined,
+  );
+  // The largest, because a small rendition is the one most likely to be a padded square.
+  const best = sized.reduce<Thumbnail | undefined>(
+    (widest, thumbnail) =>
+      widest === undefined || (thumbnail.width ?? 0) > (widest.width ?? 0) ? thumbnail : widest,
+    undefined,
+  );
+  if (best?.width === undefined || best.height === undefined || best.height <= 0) return fallback;
+
+  const ratio = best.width / best.height;
+  return ratio >= 0.3 && ratio <= 2.5 ? ratio : fallback;
+}
+
 /**
  * The smallest rendition at least `targetWidth` wide, falling back to the largest available.
  *

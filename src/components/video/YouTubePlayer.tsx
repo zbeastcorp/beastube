@@ -217,9 +217,43 @@ export interface YouTubePlayerProps {
   controls?: boolean;
   /** Loop the video. Used by previews, which are shorter than what they preview. */
   loop?: boolean;
+  /**
+   * Leave the frame's own background unpainted.
+   *
+   * The embed is opaque once it paints, so this only shows before that — which is exactly when a
+   * caller that has something better to show there, like a blurred poster frame, wants it visible
+   * instead of a black rectangle.
+   */
+  transparent?: boolean;
 }
 
-/** The embedded player. */
+/**
+ * The embedded player.
+ *
+ * ## Built once, pointed at many videos
+ *
+ * The expensive thing here is not this component — it is the `<iframe>` the API creates, which is a
+ * whole embed document with its own bootstrap and media pipeline. Rebuilding it is what a viewer
+ * experiences as the stutter between two shorts, or as the pause before a hover preview appears.
+ *
+ * So construction and video selection are separate effects. Effect 1 builds the player once per
+ * mount and tears it down once per unmount. Effect 2 watches `videoId` alone and calls
+ * `loadVideoById`, which swaps the media inside the *existing* iframe. Mute and resume are the same
+ * shape: a live command, not a rebuild.
+ *
+ * Everything reactive is read through `useEffectEvent`, which always sees the latest render's
+ * values and is excluded from dependency arrays. That is what lets the construction effect declare
+ * `[controls, loop]` — the two genuinely construction-time player vars — without dragging `videoId`
+ * or `startAtMs` in with them.
+ *
+ * ## The sacrificial mount node
+ *
+ * The API *replaces* the element it is handed. Handing it the element React owns leaves React's ref
+ * pointing at a detached node, so a second construction would build into a node outside the
+ * document and React's unmount would try to remove a child the API had already deleted. The fix is
+ * one line of ownership: React keeps its own `<div>`, and each construction appends a throwaway
+ * child for the API to consume.
+ */
 export function YouTubePlayer({
   videoId,
   startAtMs,
@@ -232,11 +266,25 @@ export function YouTubePlayer({
   muted = false,
   controls = true,
   loop = false,
+  transparent = false,
 }: YouTubePlayerProps): React.ReactNode {
   const t = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
+
+  /** Which video the live player currently holds, so a redundant swap is skipped. */
+  const loadedIdRef = useRef<VideoId | null>(null);
+
+  /** A resume position that arrived before the player was ready, drained by `onReady`. */
+  const pendingResumeRef = useRef<number | null>(null);
+
+  /**
+   * The failure, tagged with the video it belongs to.
+   *
+   * Tagged rather than a bare key because the player now outlives a video: an unembeddable video
+   * would otherwise leave its error on screen for every video swapped in after it.
+   */
+  const [failure, setFailure] = useState<{ id: VideoId; key: string } | null>(null);
 
   // Callbacks are wrapped as effect events so changing one does not tear down and rebuild the
   // player — which would restart playback from the beginning every time a parent re-rendered.
@@ -250,77 +298,186 @@ export function YouTubePlayer({
     onError?.(messageKey, code);
   });
 
+  /**
+   * Reads the playhead and reports it.
+   *
+   * An effect event rather than a closure inside the construction effect: that is what removes the
+   * last reactive read from the effect body, which is what lets its dependency list shrink to the
+   * two construction-time vars.
+   */
+  const samplePosition = useEffectEvent(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    try {
+      reportPosition(
+        Math.floor(player.getCurrentTime() * 1000),
+        Math.floor(player.getDuration() * 1000),
+      );
+    } catch {
+      // The player throws if queried during teardown; a missed sample is not worth reporting.
+    }
+  });
+
+  /**
+   * Constructs the player against the current render's props.
+   *
+   * `isCancelled` is passed in rather than read here: it belongs to one particular run of the
+   * construction effect, and an effect event has no way to know which run is asking.
+   */
+  const createPlayer = useEffectEvent(
+    (
+      api: YouTubeApi,
+      mount: HTMLElement,
+      isCancelled: () => boolean,
+      startPoll: (timer: ReturnType<typeof setInterval>) => void,
+    ): YouTubePlayerInstance => {
+      const id = videoId;
+      loadedIdRef.current = id;
+
+      return new api.Player(mount, {
+        videoId: id,
+        playerVars: {
+          autoplay: autoplay ? 1 : 0,
+          // Required for the API to accept commands from this page.
+          enablejsapi: 1,
+          // Attributes the embed to this origin. Without it the embed cannot identify the caller
+          // and answers with error 153.
+          origin: window.location.origin,
+          playsinline: 1,
+          // Related videos are restricted to the same channel; the API no longer allows
+          // suppressing them entirely, so this is the least intrusive setting available.
+          rel: 0,
+          mute: muted ? 1 : 0,
+          controls: controls ? 1 : 0,
+          // Keyboard handling belongs to the application, not to a preview embedded in a card.
+          disablekb: controls ? 0 : 1,
+          // `loop` needs the playlist to name the video itself; without it the parameter is
+          // silently ignored, which is a documented quirk of the embed rather than a guess.
+          ...(loop ? { loop: 1, playlist: id } : {}),
+          ...(startAtMs !== undefined ? { start: Math.floor(startAtMs / 1000) } : {}),
+        },
+        events: {
+          onReady: () => {
+            if (isCancelled()) return;
+            reportState('ready');
+
+            // A resume that arrived while the API was still loading is applied now rather than
+            // dropped — the position request and the script fetch race, and either can win.
+            const pending = pendingResumeRef.current;
+            pendingResumeRef.current = null;
+            if (pending !== null) {
+              try {
+                playerRef.current?.seekTo(pending / 1000, true);
+              } catch {
+                // A seek before the media is cued throws; the start var already covers this case.
+              }
+            }
+
+            startPoll(setInterval(samplePosition, POSITION_POLL_MS));
+          },
+          onStateChange: (event) => {
+            if (isCancelled()) return;
+            reportState(toPlaybackState(event.data));
+            // Sample immediately on transition so a pause records its exact position rather than
+            // waiting up to a poll interval.
+            samplePosition();
+          },
+          onError: (event) => {
+            if (isCancelled()) return;
+            const key = errorKeyFor(event.data);
+            setFailure({ id: loadedIdRef.current ?? id, key });
+            reportState('error');
+            reportError(key, event.data);
+          },
+        },
+      });
+    },
+  );
+
+  /**
+   * Points the live player at a different video.
+   *
+   * The two guards carry the whole correctness argument. `loadedIdRef` makes the run immediately
+   * after construction a no-op, because construction already loaded that video. A null player makes
+   * a change during API load a no-op — which is safe precisely because `createPlayer` reads the
+   * *current* `videoId`, so whichever of the two paths wins, the player lands on the latest one.
+   */
+  const swapVideo = useEffectEvent((id: VideoId) => {
+    const player = playerRef.current;
+    if (!player || loadedIdRef.current === id) return;
+    loadedIdRef.current = id;
+    pendingResumeRef.current = null;
+    try {
+      // Deliberately no `startSeconds`. At the instant `videoId` changes, a resume position fetched
+      // for the *previous* video is still the newest settled value the parent holds — the resource
+      // hook retains data across a key change on purpose — so honouring it here would start the new
+      // video at the old one's timestamp. The resume effect applies the right position once it
+      // actually belongs to this video.
+      player.loadVideoById({ videoId: id });
+      if (!autoplay) player.pauseVideo();
+    } catch {
+      // A swap during teardown throws; the player is going away regardless.
+    }
+  });
+
+  /** Records a failure against whichever video the player is currently holding. */
+  const reportLoadFailure = useEffectEvent(() => {
+    setFailure({ id: loadedIdRef.current ?? videoId, key: 'error.playback.load_failed' });
+    reportState('error');
+  });
+
+  const applyMuted = useEffectEvent((next: boolean) => {
+    const player = playerRef.current;
+    if (!player) return;
+    try {
+      if (next) player.mute();
+      else player.unMute();
+    } catch {
+      // Same teardown race as every other live command.
+    }
+  });
+
+  const applyResume = useEffectEvent((ms: number | undefined) => {
+    if (ms === undefined) return;
+    const player = playerRef.current;
+    if (!player) {
+      // Held for `onReady`, which is the first moment a seek can land.
+      pendingResumeRef.current = ms;
+      return;
+    }
+    try {
+      player.seekTo(ms / 1000, true);
+    } catch {
+      pendingResumeRef.current = ms;
+    }
+  });
+
+  // Effect 1 — construct and destroy. `controls` and `loop` are the only genuinely
+  // construction-time vars: one changes the embed's chrome and the other needs the video named in a
+  // playlist parameter, and neither has a live command. Everything else is applied by the effects
+  // below, so in practice this runs exactly once per mount.
   useEffect(() => {
     let cancelled = false;
     let poll: ReturnType<typeof setInterval> | undefined;
-
-    // Defined inside the effect because it calls an effect event, which React only permits from
-    // effects and other effect events.
-    const sample = () => {
-      const player = playerRef.current;
-      if (!player) return;
-      try {
-        const positionMs = Math.floor(player.getCurrentTime() * 1000);
-        const durationMs = Math.floor(player.getDuration() * 1000);
-        reportPosition(positionMs, durationMs);
-      } catch {
-        // The player throws if queried during teardown; a missed sample is not worth reporting.
-      }
-    };
+    const isCancelled = () => cancelled;
+    // Captured now rather than read in the cleanup: by teardown the ref may already point somewhere
+    // else, and the node this run appended its player into is the one that must be emptied.
+    const host = containerRef.current;
 
     void loadPlayerApi()
       .then((api) => {
-        if (cancelled || !containerRef.current) return;
-
-        playerRef.current = new api.Player(containerRef.current, {
-          videoId,
-          playerVars: {
-            autoplay: autoplay ? 1 : 0,
-            // Required for the API to accept commands from this page.
-            enablejsapi: 1,
-            // Attributes the embed to this origin. Without it the embed cannot identify the caller
-            // and answers with error 153.
-            origin: window.location.origin,
-            playsinline: 1,
-            // Related videos are restricted to the same channel; the API no longer allows
-            // suppressing them entirely, so this is the least intrusive setting available.
-            rel: 0,
-            mute: muted ? 1 : 0,
-            controls: controls ? 1 : 0,
-            // Keyboard handling belongs to the application, not to a preview embedded in a card.
-            disablekb: controls ? 0 : 1,
-            // `loop` needs the playlist to name the video itself; without it the parameter is
-            // silently ignored, which is a documented quirk of the embed rather than a guess.
-            ...(loop ? { loop: 1, playlist: videoId } : {}),
-            ...(startAtMs !== undefined ? { start: Math.floor(startAtMs / 1000) } : {}),
-          },
-          events: {
-            onReady: () => {
-              if (cancelled) return;
-              reportState('ready');
-              poll = setInterval(sample, POSITION_POLL_MS);
-            },
-            onStateChange: (event) => {
-              if (cancelled) return;
-              reportState(toPlaybackState(event.data));
-              // Sample immediately on transition so a pause records its exact position rather than
-              // waiting up to a poll interval.
-              sample();
-            },
-            onError: (event) => {
-              if (cancelled) return;
-              const key = errorKeyFor(event.data);
-              setFailed(key);
-              reportState('error');
-              reportError(key, event.data);
-            },
-          },
+        if (cancelled || !host) return;
+        // The throwaway node the API is allowed to replace; React never sees it.
+        const mount = document.createElement('div');
+        mount.className = 'size-full';
+        host.append(mount);
+        playerRef.current = createPlayer(api, mount, isCancelled, (timer) => {
+          poll = timer;
         });
       })
       .catch(() => {
         if (cancelled) return;
-        setFailed('error.playback.load_failed');
-        reportState('error');
+        reportLoadFailure();
       });
 
     return () => {
@@ -332,33 +489,62 @@ export function YouTubePlayer({
         // Destroying an already-torn-down player throws; nothing to recover.
       }
       playerRef.current = null;
+      loadedIdRef.current = null;
+      // `mount` is already detached by this point — the API replaced it — so removing it does
+      // nothing. The live node is the iframe the API left inside our own container, and a
+      // `destroy()` that threw leaves it there to be stacked under by the next construction.
+      // Emptying the container is what actually guarantees a clean slate.
+      host?.replaceChildren();
     };
-  }, [videoId, autoplay, startAtMs, muted, controls, loop]);
+  }, [controls, loop]);
 
-  if (failed !== null) {
-    return (
-      <div
-        className={`bg-surface flex flex-col items-center justify-center gap-3 rounded-lg text-center ${
-          fill ? 'size-full' : ''
-        }`}
-        style={fill ? undefined : { aspectRatio }}
-        role="alert"
-      >
-        <p className="text-text text-base font-medium">
-          {t.t(failed as Parameters<typeof t.t>[0])}
-        </p>
-      </div>
-    );
-  }
+  // Effect 2 — swap. This is the whole point: a new video costs one API call, not a new iframe.
+  useEffect(() => {
+    swapVideo(videoId);
+  }, [videoId]);
+
+  // Effect 3 — mute. No call site changes it live today; leaving it in the construction deps would
+  // make the first mute control anyone adds rebuild the player.
+  useEffect(() => {
+    applyMuted(muted);
+  }, [muted]);
+
+  // Effect 4 — resume. WatchView resolves a stored position asynchronously, so `startAtMs` almost
+  // always arrives *after* the first render; rebuilding on it restarted playback from zero on every
+  // partly-watched video, which is the default configuration.
+  useEffect(() => {
+    applyResume(startAtMs);
+  }, [startAtMs]);
+
+  // A failure belongs to the video that produced it. Once a different video is loaded the frame is
+  // live again, so the error must not outlive its subject.
+  const failed = failure !== null && failure.id === videoId ? failure.key : null;
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg bg-black ${fill ? 'size-full' : 'w-full'}`}
+      className={`relative overflow-hidden rounded-lg ${transparent ? '' : 'bg-black'} ${
+        fill ? 'size-full' : 'w-full'
+      }`}
       style={fill ? undefined : { aspectRatio }}
       aria-label={t.t('a11y.playerRegion')}
     >
-      {/* The API replaces this element with its iframe. */}
+      {/* React owns this element. The API replaces a throwaway child appended inside it. */}
       <div ref={containerRef} className="size-full" />
+
+      {/* The failure is painted OVER the container rather than instead of it. Returning early here
+          would unmount the container, and since the construction effect runs once per mount there
+          would be nothing left to rebuild into — one unembeddable video would black out the player
+          for every video after it. */}
+      {failed !== null && (
+        <div
+          className="bg-surface absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg text-center"
+          role="alert"
+        >
+          <p className="text-text text-base font-medium">
+            {t.t(failed as Parameters<typeof t.t>[0])}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

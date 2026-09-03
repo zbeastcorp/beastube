@@ -539,6 +539,55 @@
   }
 
   /* Standard interactive transition, applied to buttons, chips and rows. */
+  /*
+   * The hover glow a card casts in the colours of the video it holds.
+   *
+   * Painted on a pseudo-element behind the card rather than as a box-shadow, because a shadow
+   * cannot be blurred this far without also being clipped by every ancestor that scrolls, and
+   * because a gradient can fade to nothing at its edges where a shadow has a hard falloff.
+   *
+   * `--card-glow-color` is set inline per card. Its absence is the resting state: the gradient
+   * resolves to transparent and the element costs nothing.
+   *
+   * The element is never a hit target and is hidden from assistive technology by having no content
+   * at all. Opacity is the only animated property, so this stays on the compositor.
+   */
+  .card-glow {
+    position: relative;
+  }
+
+  .card-glow::before {
+    content: '';
+    position: absolute;
+    /* Reaches beyond the card so the colour appears to spill out of the thumbnail. */
+    inset: -12% -6% -18%;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(
+      60% 55% at 50% 45%,
+      var(--card-glow-color, transparent) 0%,
+      transparent 72%
+    );
+    filter: blur(28px);
+    opacity: 0;
+    transition: opacity var(--duration-normal, 200ms) var(--ease-yt, ease);
+    pointer-events: none;
+  }
+
+  .card-glow[data-glow='on']::before {
+    opacity: 0.55;
+  }
+
+  /*
+   * The glow is decoration and nothing depends on it, so a reduced-motion preference removes the
+   * fade rather than the colour: appearing instantly is not motion.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    .card-glow::before {
+      transition: none;
+    }
+  }
+
   .transition-surface {
     transition:
       background-color var(--duration-fast) var(--ease-yt),

@@ -21,7 +21,15 @@
  */
 
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 
 import { Link } from '@/app/router';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -32,7 +40,12 @@ import { useTranslation } from '@/i18n/context';
 import type { AsyncResource } from '@/hooks/useAsyncResource';
 import { invoke } from '@/services/ipc';
 import { useSessionStore } from '@/stores/session';
-import type { VideoSummary } from '@/types/domain';
+import {
+  bestThumbnailFor,
+  videoAspectRatio,
+  type VideoId,
+  type VideoSummary,
+} from '@/types/domain';
 
 /** Minimum gap between two accepted wheel gestures. */
 const WHEEL_COOLDOWN_MS = 450;
@@ -47,27 +60,67 @@ interface ShortsFeedProps {
   videos: readonly VideoSummary[];
   /** The resource backing `videos`, for the loading and error states. */
   state: Pick<AsyncResource<unknown>, 'loading' | 'error' | 'reload'>;
+  /**
+   * Open on this video rather than at the top.
+   *
+   * Set when the feed was reached by clicking a specific short. If that video is not in the batch
+   * the feed happened to load, the request is dropped rather than failing — the user still gets a
+   * feed, which is better than an error about a video they can see the thumbnail of.
+   */
+  initialVideoId?: VideoId;
 }
 
 /** The Shorts tab. */
-export function ShortsFeed({ videos, state }: ShortsFeedProps): ReactNode {
+export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): ReactNode {
   const t = useTranslation();
-  const [index, setIndex] = useState(0);
+  /**
+   * Where the user has navigated to, tagged with the deep link it was relative to.
+   *
+   * Derived rather than seeded by an effect. The requested video arrives asynchronously — the feed
+   * renders before the batch containing it lands — and an effect that reached back to correct the
+   * index would run a render with the wrong short on screen first. Tagging the stored position with
+   * the id it belongs to lets a stale value simply not apply.
+   */
+  const [navigated, setNavigated] = useState<{ forId: VideoId | null; index: number } | null>(null);
   const lastWheelAt = useRef(0);
   const touchStartY = useRef<number | null>(null);
   const incognito = useSessionStore((session) => session.incognito);
 
+  const requested = initialVideoId ?? null;
+  const requestedIndex =
+    initialVideoId === undefined ? -1 : videos.findIndex((video) => video.id === initialVideoId);
+
+  // A stored position applies only while it belongs to the current request; otherwise the deep
+  // link decides, and failing that the top of the feed does.
+  const index =
+    navigated !== null && navigated.forId === requested
+      ? navigated.index
+      : requestedIndex >= 0
+        ? requestedIndex
+        : 0;
+
   const current = videos[Math.min(index, Math.max(0, videos.length - 1))];
+  // Portrait-first, and never wider than portrait. Sizing purely from the thumbnail was tried and
+  // produced a landscape stage with the video pillar-boxed inside it, because some renditions of a
+  // short are padded to 16:9 — the very thing this feed exists to not do. A measured ratio is only
+  // trusted when it is itself portrait, which is where it can still help: a 3:4 short then gets a
+  // 3:4 stage instead of black bars.
+  const measured = current ? videoAspectRatio(current) : 9 / 16;
+  const stageRatio = measured < 1 ? measured : 9 / 16;
+  // A small rendition on purpose: it is about to be blurred to mush, and it is swapped on every
+  // navigation.
+  const backdrop = current?.thumbnails ? bestThumbnailFor(current.thumbnails, 160)?.url : undefined;
 
   // Bounds are clamped rather than wrapped: arriving back at the first short after the last one
   // reads as a bug, not as a loop.
   const move = useCallback(
     (delta: number) => {
-      setIndex((currentIndex) =>
-        Math.min(Math.max(currentIndex + delta, 0), Math.max(0, videos.length - 1)),
-      );
+      setNavigated({
+        forId: requested,
+        index: Math.min(Math.max(index + delta, 0), Math.max(0, videos.length - 1)),
+      });
     },
-    [videos.length],
+    [index, requested, videos.length],
   );
 
   useEffect(() => {
@@ -146,15 +199,50 @@ export function ShortsFeed({ videos, state }: ShortsFeedProps): ReactNode {
     >
       <div className="flex items-center gap-4">
         <div
-          className="bg-surface relative overflow-hidden rounded-xl"
-          // Portrait, and bounded by the viewport height so the whole short is visible without
-          // scrolling — a Shorts player you have to scroll to see is not one.
-          style={{ aspectRatio: '9 / 16', height: 'min(82vh, 900px)' }}
+          className="bg-bg relative overflow-hidden rounded-xl"
+          /*
+           * Sized to the video, not to a fixed 9:16 box. Shorts are not all 9:16 — real YouTube
+           * measures its stage against the video and this does the same, from the thumbnail, which
+           * is the only aspect signal a cross-origin embed leaves reachable.
+           *
+           * Height is the definite dimension and the ratio derives the width. The third `min()`
+           * term is what stops a wide-tagged item from blowing the row out sideways, and the height
+           * budget subtracts the shell chrome rather than guessing at a viewport fraction — 82vh
+           * ignored 128px of top bar and padding, so on a short window the tab scrolled.
+           */
+          style={
+            {
+              '--ar': stageRatio,
+              aspectRatio: 'var(--ar)',
+              height:
+                'min(calc(100dvh - var(--layout-topbar-height) - 5rem), 900px, calc(520px / var(--ar)))',
+            } as CSSProperties
+          }
         >
+          {/*
+           * The blurred backdrop that fills whatever the video does not. YouTube does exactly this,
+           * and it is also the safety net for the cases the thumbnail ratio gets wrong: the strips
+           * either side stop being flat black and start being the video's own colours.
+           *
+           * Kept mounted across navigations rather than remounted, so a short change does not flash
+           * the empty stage while the next thumbnail decodes.
+           */}
+          {backdrop !== undefined && (
+            <img
+              src={backdrop}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 size-full scale-110 object-cover opacity-60 blur-2xl"
+            />
+          )}
+
+          {/* Deliberately unkeyed. A key here would unmount and rebuild the player — and with it the
+              whole embed iframe — on every navigation, which is exactly the stutter this feed is
+              supposed to not have. One player persists and swaps videos in place. */}
           <YouTubePlayer
-            key={current.id}
             videoId={current.id}
             fill
+            transparent
             autoplay
             onStateChange={(playbackState) => {
               // Advancing on end is what makes the feed a feed. At the last short it stops, rather
@@ -165,9 +253,13 @@ export function ShortsFeed({ videos, state }: ShortsFeedProps): ReactNode {
             }}
           />
 
-          {/* The overlay sits below the player's own controls but above the frame, matching where
-              YouTube puts a short's title and channel. */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4 pt-16">
+          {/*
+           * Lifted clear of the embed's own control strip. The embed is one opaque iframe, so an
+           * absolutely-positioned sibling paints OVER its chrome however it is ordered — the
+           * gradient was covering the seek bar, and the channel link (the one clickable thing in an
+           * otherwise pointer-transparent band) sat directly on top of the play button.
+           */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-[52px] bg-gradient-to-t from-black/85 to-transparent p-4 pt-16">
             <h2 className="line-clamp-2 text-base leading-snug font-medium text-white">
               {current.title}
             </h2>

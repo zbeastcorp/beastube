@@ -10,6 +10,7 @@
  * is never gated on a request (§87).
  */
 
+import { Clapperboard } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
@@ -17,13 +18,21 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { DiagnosticsView } from '@/components/settings/DiagnosticsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { ShortsFeed } from '@/components/video/ShortsFeed';
+import { ShortsCard, ShortsGrid, ShortsShelf } from '@/components/video/ShortsCard';
 import { VideoCard, VideoCardSkeleton, VideoGrid } from '@/components/video/VideoCard';
 import { WatchView } from '@/components/video/WatchView';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import type { TranslationKey } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { invoke } from '@/services/ipc';
-import type { ChannelTab, SearchItem, SearchResultKind, VideoSummary } from '@/types/domain';
+import {
+  isPortraitVideo,
+  type ChannelTab,
+  type SearchItem,
+  type SearchResultKind,
+  type VideoId,
+  type VideoSummary,
+} from '@/types/domain';
 
 import { Link } from './router';
 import type { Route } from './routes';
@@ -40,6 +49,9 @@ const RECOMMENDED_COUNT = 36;
 /** How many Shorts the tab loads at once. */
 const SHORTS_COUNT = 40;
 
+/** How many Shorts the home shelf peeks at. Smaller than the tab: it is a row, not a screen. */
+const HOME_SHORTS_COUNT = 16;
+
 function PageHeading({ children }: { children: ReactNode }): ReactNode {
   return <h1 className="text-text mb-4 text-xl font-medium">{children}</h1>;
 }
@@ -54,12 +66,26 @@ function FeedSkeleton(): ReactNode {
   );
 }
 
+/**
+ * Renders one video with the card its shape calls for.
+ *
+ * Every grid and rail goes through here, so "a portrait video never appears in a landscape box" is
+ * one rule in one place rather than a judgement repeated at each of a dozen call sites.
+ */
+function FeedCard({ video, width }: { video: VideoSummary; width?: number }): ReactNode {
+  return isPortraitVideo(video) ? (
+    <ShortsCard video={video} {...(width !== undefined ? { width } : {})} />
+  ) : (
+    <VideoCard video={video} {...(width !== undefined ? { width } : {})} />
+  );
+}
+
 /** Renders a heterogeneous search result. */
 function SearchResultCard({ item }: { item: SearchItem }): ReactNode {
   const t = useTranslation();
 
   if (item.type === 'video') {
-    return <VideoCard video={item} />;
+    return <FeedCard video={item} />;
   }
 
   if (item.type === 'channel') {
@@ -122,6 +148,17 @@ function SearchView({ query, kind }: { query: string; kind: SearchResultKind }):
 
   const items = results.data?.page.items ?? [];
 
+  // Shorts are lifted out of the flat list into their own shelf, which is what YouTube does and is
+  // also what keeps the grid usable: CSS grid rows size to their tallest item, so one 9:16 card in
+  // a column sized for 16:9 cards would give its whole row a ~500px height with landscape cards
+  // stranded at the top of it.
+  const shorts = items.filter(
+    (item): item is Extract<SearchItem, { type: 'video' }> =>
+      item.type === 'video' && isPortraitVideo(item),
+  );
+  const isShort = (item: SearchItem) => item.type === 'video' && isPortraitVideo(item);
+  const rest = kind === 'shorts' ? [] : items.filter((item) => !isShort(item));
+
   return (
     <>
       <PageHeading>{t.t('search.resultsFor', { query })}</PageHeading>
@@ -142,11 +179,39 @@ function SearchView({ query, kind }: { query: string; kind: SearchResultKind }):
           <p className="text-text-muted mb-4 text-xs">
             {t.plural('search.resultCount', items.length)}
           </p>
-          <VideoGrid>
-            {items.map((item) => (
-              <SearchResultCard key={`${item.type}-${itemKey(item)}`} item={item} />
+
+          {shorts.length > 0 &&
+            (kind === 'shorts' ? (
+              // A screen that is entirely shorts gets the tighter portrait column, not a landscape
+              // grid with portrait cards floating in it.
+              <ShortsGrid>
+                {shorts.map((item) => (
+                  <ShortsCard key={item.id} video={item} />
+                ))}
+              </ShortsGrid>
+            ) : (
+              <section className="mb-8">
+                <h2 className="text-text mb-3 flex items-center gap-2 text-lg font-medium">
+                  <Clapperboard size={20} strokeWidth={2} />
+                  {t.t('shorts.title')}
+                </h2>
+                <ShortsShelf>
+                  {shorts.map((item) => (
+                    <div key={item.id} className="shrink-0 snap-start">
+                      <ShortsCard video={item} />
+                    </div>
+                  ))}
+                </ShortsShelf>
+              </section>
             ))}
-          </VideoGrid>
+
+          {rest.length > 0 && (
+            <VideoGrid>
+              {rest.map((item) => (
+                <SearchResultCard key={`${item.type}-${itemKey(item)}`} item={item} />
+              ))}
+            </VideoGrid>
+          )}
         </>
       )}
     </>
@@ -173,10 +238,30 @@ function HomeView(): ReactNode {
   const recommended = useAsyncResource('home:recommended', (signal) =>
     invoke('get_recommended', { limit: RECOMMENDED_COUNT }, { signal }),
   );
+  // Its own resource key rather than the tab's: the shelf asks for far fewer, and sharing a key
+  // would make the two fight over one cache entry every time the user moved between them.
+  const homeShorts = useAsyncResource('home:shorts', (signal) =>
+    invoke('get_shorts_feed', { limit: HOME_SHORTS_COUNT }, { signal }),
+  );
 
   const continueWatching = resumable.data ?? [];
   const recentlyWatched = recent.data ?? [];
-  const suggestions = recommended.data?.videos ?? [];
+  // The grid stays landscape and the portrait ones move to the shelf, which is how YouTube's home
+  // is arranged and is also what keeps grid rows from being sized by a card twice their height.
+  const recommendedAll = recommended.data?.videos ?? [];
+  const suggestions = recommendedAll.filter((video) => !isPortraitVideo(video));
+
+  // The shelf carries both what the shorts query returned and any portrait items lifted out of the
+  // recommendations, deduplicated: the same short can legitimately arrive from both.
+  const shelfSeen = new Set<string>();
+  const shortsShelf = [
+    ...(homeShorts.data ?? []),
+    ...recommendedAll.filter(isPortraitVideo),
+  ].filter((video) => {
+    if (shelfSeen.has(video.id)) return false;
+    shelfSeen.add(video.id);
+    return true;
+  });
 
   // Named from what the videos were actually derived from, so a feed of broad topics is not
   // presented as personalization that did not happen (§131).
@@ -220,7 +305,7 @@ function HomeView(): ReactNode {
       {suggestions.length > 0 && (
         <FeedSection heading={t.t(feedHeading)}>
           {suggestions.map((video) => (
-            <VideoCard key={video.id} video={video} />
+            <FeedCard key={video.id} video={video} />
           ))}
         </FeedSection>
       )}
@@ -229,10 +314,29 @@ function HomeView(): ReactNode {
           useful, and blanking them to show a spinner would take working content away (§87). */}
       {suggestions.length === 0 && recommended.loading && <FeedSkeleton />}
 
+      {/* A shelf, as YouTube has. Nothing at all when it is empty or still loading — a row of
+          skeletons for a secondary surface would claim more attention than it deserves, and this
+          fetch is the most expensive one on the page. */}
+      {shortsShelf.length > 0 && (
+        <section className="mb-10">
+          <h2 className="text-text mb-4 flex items-center gap-2 text-lg font-medium">
+            <Clapperboard size={22} strokeWidth={2} />
+            {t.t('shorts.title')}
+          </h2>
+          <ShortsShelf>
+            {shortsShelf.map((video) => (
+              <div key={video.id} className="shrink-0 snap-start">
+                <ShortsCard video={video} />
+              </div>
+            ))}
+          </ShortsShelf>
+        </section>
+      )}
+
       {recentlyWatched.length > 0 && (
         <FeedSection heading={t.t('home.recentlyWatched')}>
           {recentlyWatched.map((entry) => (
-            <VideoCard key={entry.video_id} video={historyToSummary(entry)} />
+            <FeedCard key={entry.video_id} video={historyToSummary(entry)} />
           ))}
         </FeedSection>
       )}
@@ -257,12 +361,23 @@ function FeedSection({ heading, children }: { heading: string; children: ReactNo
  * short-form — the tab used to run a text search for the word "shorts", which looked like a feature
  * and was not one (§131).
  */
-function ShortsView(): ReactNode {
+function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
   const shorts = useAsyncResource('shorts:feed', (signal) =>
     invoke('get_shorts_feed', { limit: SHORTS_COUNT }, { signal }),
   );
 
-  return <ShortsFeed videos={shorts.data ?? []} state={shorts} />;
+  // The second half of the defence. The provider filters on the extractor's short-form marker, but
+  // that invariant lives in another crate; the vertical player renders whatever it is handed, and a
+  // landscape video in a portrait frame is the exact thing being fixed here.
+  const videos = (shorts.data ?? []).filter((video) => video.is_short === true);
+
+  return (
+    <ShortsFeed
+      videos={videos}
+      state={shorts}
+      {...(videoId !== undefined ? { initialVideoId: videoId } : {})}
+    />
+  );
 }
 
 /** Projects a history row onto the card shape. */
@@ -429,7 +544,7 @@ function ChannelView({
       ) : (
         <VideoGrid>
           {videos.map((video) => (
-            <VideoCard key={video.id} video={video} />
+            <FeedCard key={video.id} video={video} />
           ))}
         </VideoGrid>
       )}
@@ -463,11 +578,20 @@ export function renderRoute(route: Route): ReactNode {
     case 'home':
       return <HomeView />;
     case 'shorts':
-      return <ShortsView />;
+      // The route has always carried an optional video id and always round-tripped through the
+      // hash; it was simply never read, so every shorts link landed on the top of the feed.
+      return <ShortsView {...(route.videoId !== undefined ? { videoId: route.videoId } : {})} />;
     case 'search':
       return <SearchView query={route.query} kind={route.kind ?? 'all'} />;
     case 'watch':
-      return <WatchView videoId={route.videoId} />;
+      // The `?t=` timestamp is parsed by the router and was being dropped here, which made every
+      // deep link into the middle of a video start at zero.
+      return (
+        <WatchView
+          videoId={route.videoId}
+          {...(route.startAtMs !== undefined ? { startAtMs: route.startAtMs } : {})}
+        />
+      );
     case 'channel':
       return <ChannelView channelId={route.channelId} tab={route.tab ?? 'videos'} />;
     case 'playlist':
