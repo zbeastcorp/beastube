@@ -99,6 +99,8 @@ pub fn run() {
             commands::get_app_info,
             commands::get_recommended,
             commands::get_shorts_feed,
+            commands::get_more_shorts,
+            commands::open_external,
             commands::set_incognito,
             commands::is_incognito,
         ])

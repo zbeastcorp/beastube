@@ -50,6 +50,10 @@ interface YouTubePlayerInstance {
   unMute: () => void;
   setPlaybackRate: (rate: number) => void;
   loadVideoById: (options: { videoId: string; startSeconds?: number }) => void;
+  /** Names of the option modules the player currently has, e.g. `captions`. */
+  getOptions: () => string[];
+  loadModule: (module: string) => void;
+  unloadModule: (module: string) => void;
   destroy: () => void;
 }
 
@@ -244,6 +248,14 @@ export interface PlayerHandle {
   setMuted: (muted: boolean) => void;
   /** Puts the player's frame into fullscreen, when the browser allows it. */
   requestFullscreen: () => void;
+  /**
+   * Whether this video actually has captions.
+   *
+   * Asked of the player rather than assumed, so a caption control can be absent for a video that
+   * has none instead of present and inert (§131).
+   */
+  hasCaptions: () => boolean;
+  setCaptions: (enabled: boolean) => void;
 }
 
 /**
@@ -538,6 +550,22 @@ export function YouTubePlayer({
 
   const frameRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * The name the embed uses for its caption module, or `null` when this video has none.
+   *
+   * The name differs between the two player builds, so both are checked rather than one guessed.
+   */
+  const captionModule = (): string | null => {
+    try {
+      const modules = playerRef.current?.getOptions() ?? [];
+      if (modules.includes('captions')) return 'captions';
+      if (modules.includes('cc')) return 'cc';
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   useImperativeHandle(
     ref,
     (): PlayerHandle => ({
@@ -573,6 +601,19 @@ export function YouTubePlayer({
         try {
           if (next) player.mute();
           else player.unMute();
+        } catch {
+          // As above.
+        }
+      },
+      hasCaptions: () => captionModule() !== null,
+      setCaptions: (enabled: boolean) => {
+        const player = playerRef.current;
+        const module = captionModule();
+        if (!player || module === null) return;
+        try {
+          // Unloading is how the embed turns captions off; there is no `setEnabled`.
+          if (enabled) player.loadModule(module);
+          else player.unloadModule(module);
         } catch {
           // As above.
         }

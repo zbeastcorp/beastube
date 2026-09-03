@@ -11,7 +11,7 @@
  */
 
 import { Clapperboard } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -48,6 +48,9 @@ const RECOMMENDED_COUNT = 36;
 
 /** How many Shorts the tab loads at once. */
 const SHORTS_COUNT = 40;
+
+/** How many more it fetches each time the viewer nears the end. */
+const SHORTS_PAGE_SIZE = 20;
 
 /** How many Shorts the home shelf peeks at. Smaller than the tab: it is a row, not a screen. */
 const HOME_SHORTS_COUNT = 16;
@@ -366,16 +369,51 @@ function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
     invoke('get_shorts_feed', { limit: SHORTS_COUNT }, { signal }),
   );
 
+  // Everything fetched after the first batch. The view owns the accumulation because the resource
+  // hook models one request, not a growing list.
+  const [more, setMore] = useState<readonly VideoSummary[]>([]);
+  const loadingMore = useRef(false);
+
   // The same test the native side applies, restated here because the vertical player renders
   // whatever it is handed and the invariant otherwise lives only in another crate. Deliberately not
   // the bare `is_short` marker: that marker is absent for most short-form video this extractor
   // returns, and filtering on it emptied the tab.
-  const videos = (shorts.data ?? []).filter(isPortraitVideo);
+  const seen = new Set<string>();
+  const videos = [...(shorts.data ?? []), ...more].filter((video) => {
+    if (!isPortraitVideo(video) || seen.has(video.id)) return false;
+    seen.add(video.id);
+    return true;
+  });
+
+  const loadMore = useCallback(
+    (recent: readonly VideoId[], all: readonly VideoId[]) => {
+      // One request in flight at a time. Without this, three quick swipes near the end fire three
+      // overlapping fetches that mostly return the same videos.
+      if (loadingMore.current) return;
+      loadingMore.current = true;
+      void invoke('get_more_shorts', {
+        seeds: [...recent],
+        exclude: [...all],
+        limit: SHORTS_PAGE_SIZE,
+      })
+        .then((batch) => {
+          setMore((current) => [...current, ...batch]);
+        })
+        .catch(() => {
+          // The feed simply stops growing; the videos already loaded still play.
+        })
+        .finally(() => {
+          loadingMore.current = false;
+        });
+    },
+    [],
+  );
 
   return (
     <ShortsFeed
       videos={videos}
       state={shorts}
+      onNearEnd={loadMore}
       {...(videoId !== undefined ? { initialVideoId: videoId } : {})}
     />
   );

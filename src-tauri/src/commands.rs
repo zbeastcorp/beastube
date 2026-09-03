@@ -1386,3 +1386,84 @@ pub(crate) async fn is_bookmarked(
         .map(|bookmark| bookmark.is_some())
         .map_err(fail)
 }
+
+/// More shorts, continuing from what the viewer has already seen.
+///
+/// This is what makes the tab endless, and it is endless in the way YouTube's is: a short's related
+/// list is mostly other shorts, so the videos just watched become the seeds for the next batch and
+/// the feed bends toward what is actually being watched. No profile and no account are involved —
+/// the seeds are ids the caller already has on screen, and they are sent nowhere except to the
+/// provider as "what is related to this video" (§43).
+///
+/// `exclude` is the set already shown, so the feed does not circle back on itself.
+///
+/// # Errors
+///
+/// Never returns an error. A seed whose related list fails contributes nothing and the rest still
+/// extend the feed.
+#[tauri::command]
+pub(crate) async fn get_more_shorts(
+    state: State<'_, AppState>,
+    seeds: Vec<String>,
+    exclude: Vec<String>,
+    limit: u32,
+) -> CommandResult<Vec<VideoSummary>> {
+    let limit = limit.clamp(1, 60) as usize;
+
+    // Ids arriving from the frontend are re-validated like any other untrusted input.
+    let seeds: Vec<VideoId> = seeds
+        .iter()
+        .filter_map(|raw| VideoId::new(raw).ok())
+        .take(SHORTS_EXPANSION_SEEDS)
+        .collect();
+    if seeds.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let seen: HashSet<String> = exclude.into_iter().collect();
+    let lists: Vec<Vec<VideoSummary>> = related_lists(&state, seeds)
+        .await
+        .into_iter()
+        .map(|list| list.into_iter().filter(is_short_form).collect())
+        .collect();
+
+    Ok(interleave(lists, &seen, limit))
+}
+
+/// Opens a link in the user's own browser.
+///
+/// Validated before it is handed to the system: [`validate_external_url`] admits only `https` and
+/// rejects anything that could name a local resource, so a malformed or hostile link cannot become
+/// an arbitrary shell open.
+///
+/// # Errors
+///
+/// Returns a payload if the URL is not an acceptable external link, or if the system refuses it.
+#[tauri::command]
+pub(crate) fn open_external(app: tauri::AppHandle, url: String) -> CommandResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let validated = beastube_core::security::validate_external_url(&url).map_err(|error| {
+        ErrorPayload {
+            kind: beastube_core::error::ErrorKind::Network,
+            code: "network.blocked_url".to_owned(),
+            message_key: "error.network.blocked_url".to_owned(),
+            params: std::collections::BTreeMap::new(),
+            recovery: beastube_core::error::Recovery::Unrecoverable,
+            diagnostic: Some(error.to_string()),
+            correlation_id: None,
+        }
+    })?;
+
+    app.opener()
+        .open_url(validated.as_str(), None::<&str>)
+        .map_err(|error| ErrorPayload {
+            kind: beastube_core::error::ErrorKind::FileSystem,
+            code: "filesystem.not_found".to_owned(),
+            message_key: "error.filesystem.not_found".to_owned(),
+            params: std::collections::BTreeMap::new(),
+            recovery: beastube_core::error::Recovery::RetryManual,
+            diagnostic: Some(error.to_string()),
+            correlation_id: None,
+        })
+}

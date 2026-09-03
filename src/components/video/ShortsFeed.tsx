@@ -20,7 +20,20 @@
  * without a cooldown a single gesture would skip four or five videos.
  */
 
-import { ChevronDown, ChevronUp, Maximize2, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import {
+  Captions,
+  CaptionsOff,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Link2,
+  Maximize2,
+  MoreVertical,
+  Pause,
+  Play,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -68,10 +81,28 @@ interface ShortsFeedProps {
    * feed, which is better than an error about a video they can see the thumbnail of.
    */
   initialVideoId?: VideoId;
+  /**
+   * Asked for more when the viewer nears the end.
+   *
+   * Receives the ids just watched, to seed the next batch, and every id already shown, so the feed
+   * does not circle back on itself.
+   */
+  onNearEnd?: (recent: readonly VideoId[], all: readonly VideoId[]) => void;
 }
 
+/** How close to the end the viewer gets before more is fetched. */
+const PREFETCH_MARGIN = 6;
+
+/** How many of the most recently shown shorts seed the next batch. */
+const SEED_WINDOW = 3;
+
 /** The Shorts tab. */
-export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): ReactNode {
+export function ShortsFeed({
+  videos,
+  state,
+  initialVideoId,
+  onNearEnd,
+}: ShortsFeedProps): ReactNode {
   const t = useTranslation();
   /**
    * Where the user has navigated to, tagged with the deep link it was relative to.
@@ -86,6 +117,9 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
   const playerRef = useRef<PlayerHandle>(null);
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(false);
+  const [captions, setCaptions] = useState(false);
+  const [captionsAvailable, setCaptionsAvailable] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const touchStartY = useRef<number | null>(null);
   const incognito = useSessionStore((session) => session.incognito);
 
@@ -114,17 +148,43 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
   // navigation.
   const backdrop = current?.thumbnails ? bestThumbnailFor(current.thumbnails, 160)?.url : undefined;
 
+  // Asks for the next batch, seeded with what was just watched. Shared by the prefetch below and by
+  // a press of "next" at the boundary.
+  const requestMoreNow = useCallback(() => {
+    if (!onNearEnd || videos.length === 0) return;
+    const from = Math.min(index, videos.length - 1);
+    const recent = videos
+      .slice(Math.max(0, from - SEED_WINDOW + 1), from + 1)
+      .map((video) => video.id);
+    onNearEnd(
+      recent,
+      videos.map((video) => video.id),
+    );
+  }, [index, onNearEnd, videos]);
+
   // Bounds are clamped rather than wrapped: arriving back at the first short after the last one
   // reads as a bug, not as a loop.
   const move = useCallback(
     (delta: number) => {
-      setNavigated({
-        forId: requested,
-        index: Math.min(Math.max(index + delta, 0), Math.max(0, videos.length - 1)),
-      });
+      const next = Math.min(Math.max(index + delta, 0), Math.max(0, videos.length - 1));
+      setNavigated({ forId: requested, index: next });
+      // Pressing next at the boundary asks for more rather than doing nothing at all, so a viewer
+      // who outruns the prefetch gets the feed to catch up instead of a dead button.
+      if (delta > 0 && next === index) requestMoreNow();
     },
-    [index, requested, videos.length],
+    [index, requested, videos.length, requestMoreNow],
   );
+
+  // Fetched ahead of the end rather than at it, so the next short is already there when the viewer
+  // arrives. An effect event so it can read the current list without re-firing on every change to
+  // the array's identity.
+  const requestMore = useEffectEvent(() => {
+    if (index < videos.length - PREFETCH_MARGIN) return;
+    requestMoreNow();
+  });
+  useEffect(() => {
+    requestMore();
+  }, [index, videos.length]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -268,6 +328,9 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
             controls={false}
             onStateChange={(playbackState) => {
               setPlaying(playbackState === 'playing' || playbackState === 'buffering');
+              // Caption availability is a property of the video, and the embed only knows once it
+              // has loaded one. Asked here so the control is absent for a short that has none.
+              setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
               // Advancing on end is what makes the feed a feed. At the last short it stops, rather
               // than looping back to the top.
               if (playbackState === 'ended') {
@@ -310,9 +373,32 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
               </StageButton>
             </div>
 
-            {/* Captions and a overflow menu belong here on YouTube. Neither is wired to anything
-                this adapter can do, so neither is drawn (§131). */}
-            <div className="pointer-events-auto">
+            <div className="pointer-events-auto relative flex items-center gap-1">
+              {/* Only for a short that actually has captions — the embed is asked, not assumed. */}
+              {captionsAvailable && (
+                <StageButton
+                  label={t.t('player.captions')}
+                  active={captions}
+                  onClick={() => {
+                    const next = !captions;
+                    setCaptions(next);
+                    playerRef.current?.setCaptions(next);
+                  }}
+                >
+                  {captions ? <Captions size={18} /> : <CaptionsOff size={18} />}
+                </StageButton>
+              )}
+
+              <StageButton
+                label={t.t('app.more')}
+                active={menuOpen}
+                onClick={() => {
+                  setMenuOpen((open) => !open);
+                }}
+              >
+                <MoreVertical size={18} />
+              </StageButton>
+
               <StageButton
                 label={t.t('player.fullscreen')}
                 onClick={() => {
@@ -321,39 +407,76 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
               >
                 <Maximize2 size={18} />
               </StageButton>
+
+              {menuOpen && (
+                <div
+                  className="bg-surface border-border absolute top-11 right-0 z-30 min-w-48 overflow-hidden rounded-lg border py-1 shadow-lg"
+                  role="menu"
+                >
+                  <MenuItem
+                    label={t.t('video.copyLink')}
+                    icon={<Link2 size={16} />}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void navigator.clipboard.writeText(`https://youtu.be/${current.id}`);
+                    }}
+                  />
+                  <MenuItem
+                    label={t.t('video.openExternally')}
+                    icon={<ExternalLink size={16} />}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void invoke('open_external', {
+                        url: `https://www.youtube.com/shorts/${current.id}`,
+                      }).catch(() => {
+                        // The link simply does not open; nothing here is recoverable in the UI.
+                      });
+                    }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
           {/* Back at the bottom edge: with the embed's own chrome hidden there is nothing left
               underneath for this band to cover. */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 to-transparent p-4 pt-16">
-            <h2 className="line-clamp-2 text-base leading-snug font-medium text-white">
-              {current.title}
-            </h2>
+            {/* Channel first, then the title — YouTube's order, and the more useful one: the
+                channel is what you act on, the title is what you read. */}
             {current.channel_name !== undefined && (
-              <span className="mt-1 block text-xs text-white/75">
+              <div className="mb-2 flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className="grid size-7 shrink-0 place-items-center rounded-full bg-white/20 text-2xs font-semibold text-white"
+                >
+                  {current.channel_name.trim().charAt(0).toUpperCase()}
+                </span>
                 {current.channel_id ? (
                   <Link
                     to={{ name: 'channel', channelId: current.channel_id, tab: 'videos' }}
-                    className="pointer-events-auto hover:text-white"
+                    className="pointer-events-auto truncate text-sm font-medium text-white hover:underline"
                   >
                     {current.channel_name}
                   </Link>
                 ) : (
-                  current.channel_name
+                  <span className="truncate text-sm font-medium text-white">
+                    {current.channel_name}
+                  </span>
                 )}
-              </span>
+              </div>
             )}
+            <h2 className="line-clamp-2 text-sm leading-snug text-white/90">{current.title}</h2>
           </div>
         </div>
 
-        {/* The action rail sits against the video, the way YouTube's does; navigation is a separate
-            column further out, so a mis-aimed click on "next" cannot land on "save". */}
+        {/* Against the video's right edge, where YouTube puts it. */}
         {/* Keyed on the video so each short gets its own action state, rather than carrying the
             previous short's saved marker across. */}
         <VideoActions key={current.id} video={current} />
 
-        <div className="flex flex-col gap-3">
+        {/* Navigation lives well clear of the action rail, matching YouTube: a large target out at
+            the far right, so a mis-aimed press on "next" cannot land on "save". */}
+        <div className="ml-8 flex flex-col items-center gap-3">
           <NavButton
             label={t.t('shorts.previous')}
             disabled={index === 0}
@@ -361,20 +484,20 @@ export function ShortsFeed({ videos, state, initialVideoId }: ShortsFeedProps): 
               move(-1);
             }}
           >
-            <ChevronUp size={22} />
+            <ChevronUp size={24} />
           </NavButton>
           <NavButton
+            // Never disabled while the feed can still grow. Greying it out at the boundary tells
+            // the viewer they have reached the end when they have only reached the end of what has
+            // loaded so far, which is the moment a feed feels finite.
             label={t.t('shorts.next')}
-            disabled={index >= videos.length - 1}
+            disabled={index >= videos.length - 1 && onNearEnd === undefined}
             onClick={() => {
               move(1);
             }}
           >
-            <ChevronDown size={22} />
+            <ChevronDown size={24} />
           </NavButton>
-          <span className="text-text-muted text-center font-mono text-2xs">
-            {index + 1}/{videos.length}
-          </span>
         </div>
       </div>
     </div>
@@ -386,10 +509,12 @@ function StageButton({
   label,
   onClick,
   children,
+  active = false,
 }: {
   label: string;
   onClick: () => void;
   children: ReactNode;
+  active?: boolean;
 }): ReactNode {
   return (
     <button
@@ -397,9 +522,37 @@ function StageButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="grid size-9 place-items-center rounded-full text-white/90 transition-[background-color,color] duration-150 hover:bg-white/15 hover:text-white"
+      aria-pressed={active}
+      className={[
+        'grid size-9 place-items-center rounded-full text-white/90',
+        'transition-[background-color,color] duration-150 hover:bg-white/15 hover:text-white',
+        active ? 'bg-white/20 text-white' : '',
+      ].join(' ')}
     >
       {children}
+    </button>
+  );
+}
+
+/** One row of the overflow menu. */
+function MenuItem({
+  label,
+  icon,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="transition-surface text-text hover:bg-surface-hover flex w-full items-center gap-3 px-3 py-2 text-left text-sm"
+    >
+      <span className="text-text-muted shrink-0">{icon}</span>
+      {label}
     </button>
   );
 }
@@ -422,7 +575,7 @@ function NavButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="transition-surface bg-surface-translucent hover:bg-surface-translucent-hover text-text grid size-11 place-items-center rounded-full disabled:opacity-30"
+      className="transition-surface bg-surface-translucent hover:bg-surface-translucent-hover text-text grid size-12 place-items-center rounded-full disabled:opacity-30"
     >
       {children}
     </button>

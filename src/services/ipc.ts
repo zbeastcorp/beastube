@@ -155,6 +155,11 @@ export interface CommandMap {
   get_recommended: { args: { limit: number }; result: RecommendedFeed };
   /** Short-form videos for the Shorts tab. */
   get_shorts_feed: { args: { limit: number }; result: VideoSummary[] };
+  /** More shorts, seeded from what has just been watched. Drives the endless feed. */
+  get_more_shorts: {
+    args: { seeds: VideoId[]; exclude: VideoId[]; limit: number };
+    result: VideoSummary[];
+  };
 
   // --- filtering ---
   get_filtering_diagnostics: { args: undefined; result: FilteringSnapshot };
@@ -189,6 +194,8 @@ export interface CommandMap {
 
   // --- window ---
   /** Reports that the first frame has painted, so the shell can reveal the window. */
+  /** Opens an https link in the user's own browser. Validated on the native side. */
+  open_external: { args: { url: string }; result: null };
   frontend_ready: { args: undefined; result: null };
 }
 
