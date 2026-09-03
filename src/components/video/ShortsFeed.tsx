@@ -145,6 +145,18 @@ export function ShortsFeed({
 
   const current = videos[Math.min(index, Math.max(0, videos.length - 1))];
 
+  /**
+   * Toggles playback and flips the icon immediately.
+   *
+   * The player lives in a cross-origin iframe, so every command is a postMessage round trip and the
+   * state change comes back a beat later. Waiting for it made the button feel like it had missed
+   * the press. The optimistic flip is corrected by `onStateChange` if the player disagrees.
+   */
+  const togglePlayback = useCallback(() => {
+    setPlaying((wasPlaying) => !wasPlaying);
+    playerRef.current?.toggle();
+  }, []);
+
   /** Shows the chrome and restarts the idle countdown. Called on any pointer activity. */
   const wakeChrome = useCallback(() => {
     setChromeVisible(true);
@@ -277,7 +289,7 @@ export function ShortsFeed({
       if (event.key === ' ') {
         // The embed's own keyboard handling is off with its chrome, so these are ours to provide.
         event.preventDefault();
-        playerRef.current?.toggle();
+        togglePlayback();
         return;
       }
       if (event.key === 'm') {
@@ -300,7 +312,7 @@ export function ShortsFeed({
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [move]);
+  }, [move, togglePlayback]);
 
   // Watching a short is watching a video, so it is recorded on the same terms as anything else —
   // the native side is the authority on whether the write actually happens.
@@ -378,7 +390,15 @@ export function ShortsFeed({
             >
               <div
                 className="relative h-full overflow-hidden rounded-2xl bg-black"
-                style={{ width: stageHeight > 0 ? stageHeight * ratioOf(video) : '100%' }}
+                style={{
+                  width: stageHeight > 0 ? stageHeight * ratioOf(video) : '100%',
+                  // Forces the box onto its own compositing layer. An `<iframe>` inside an
+                  // `overflow: hidden` parent is not reliably clipped by the parent's radius — the
+                  // embed's square corners poke through — and promoting the clipper is what makes
+                  // the rounding actually apply to it.
+                  transform: 'translateZ(0)',
+                  isolation: 'isolate',
+                }}
               >
                 {/* The poster stands in for the video on every short except the one playing. It is
                     what makes scrolling look continuous: there is always a picture under the
@@ -412,8 +432,16 @@ export function ShortsFeed({
          */}
         {stageHeight > 0 && (
           <div
-            className="absolute left-1/2 -translate-x-1/2"
-            style={{ top: index * stageHeight, height: stageHeight, width: stageWidth }}
+            className="absolute left-1/2 -translate-x-1/2 overflow-hidden rounded-2xl"
+            style={{
+              top: index * stageHeight,
+              height: stageHeight,
+              width: stageWidth,
+              // Same reason as the section box: the player overlay is what actually holds the
+              // iframe, so it is the box that has to clip it.
+              transform: 'translate(-50%, 0) translateZ(0)',
+              isolation: 'isolate',
+            }}
           >
             <YouTubePlayer
               ref={playerRef}
@@ -438,9 +466,7 @@ export function ShortsFeed({
                 a div so it is keyboard reachable and announced; it carries no chrome of its own. */}
             <button
               type="button"
-              onClick={() => {
-                playerRef.current?.toggle();
-              }}
+              onClick={togglePlayback}
               aria-label={t.t(playing ? 'player.pause' : 'player.play')}
               className="absolute inset-0 z-10 cursor-default"
             />

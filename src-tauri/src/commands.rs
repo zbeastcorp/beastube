@@ -936,11 +936,7 @@ pub(crate) async fn get_recommended(
         .collect();
 
     if personalize {
-        let seeds: Vec<VideoId> = history
-            .iter()
-            .take(RECOMMENDATION_SEEDS)
-            .map(|entry| entry.video_id.clone())
-            .collect();
+        let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS);
 
         if !seeds.is_empty() {
             let videos = interleave(related_lists(&state, seeds).await, &watched, limit);
@@ -1020,15 +1016,13 @@ pub(crate) async fn get_shorts_feed(
     let mut lists = if state.settings().privacy.local_recommendations_enabled
         && !state.is_incognito()
     {
-        let seeds: Vec<VideoId> = state
+        let history = state
             .repositories
             .history
-            .list(RECOMMENDATION_SEEDS_U32, 0)
+            .list(WATCHED_LOOKBACK, 0)
             .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|entry| entry.video_id)
-            .collect();
+            .unwrap_or_default();
+        let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS);
         related_lists(&state, seeds)
             .await
             .into_iter()
@@ -1182,6 +1176,42 @@ fn videos_of(items: Vec<SearchItem>) -> Vec<VideoSummary> {
         .collect()
 }
 
+/// Most videos any single channel may contribute to one feed.
+///
+/// Without a cap, seeding from four recently watched videos by the same creator returns four
+/// heavily overlapping related lists and the feed becomes one channel repeated — which is what
+/// "most same video coming" describes.
+const MAX_PER_CHANNEL: usize = 3;
+
+/// Picks seeds spread across the history rather than the newest few.
+///
+/// The last four watched videos are usually four episodes of the same thing, so their related lists
+/// agree with each other and the feed collapses onto one topic. Sampling at a stride across a wider
+/// window gives the merge genuinely different material to interleave, and the offset moves with the
+/// clock so two launches do not produce the same feed.
+fn spread_seeds(history: &[HistoryEntry], count: usize) -> Vec<VideoId> {
+    if history.is_empty() || count == 0 {
+        return Vec::new();
+    }
+    let stride = (history.len() / count).max(1);
+    // Minutes rather than milliseconds: within one launch the feed stays stable, across launches it
+    // moves.
+    let offset = usize::try_from(Timestamp::now().as_millis().div_euclid(60_000).max(0))
+        .unwrap_or(0)
+        % history.len();
+
+    let mut seeds = Vec::with_capacity(count);
+    let mut seen = HashSet::new();
+    for step in 0..count {
+        let index = (offset + step * stride) % history.len();
+        let entry = &history[index];
+        if seen.insert(entry.video_id.as_str().to_owned()) {
+            seeds.push(entry.video_id.clone());
+        }
+    }
+    seeds
+}
+
 /// Merges lists round-robin, dropping duplicates and anything already watched.
 ///
 /// Round-robin rather than concatenation: taking one from each list in turn means the first screen
@@ -1195,6 +1225,7 @@ fn interleave(
     let mut cursors: Vec<std::vec::IntoIter<VideoSummary>> =
         lists.into_iter().map(Vec::into_iter).collect();
     let mut seen: HashSet<String> = HashSet::new();
+    let mut per_channel: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut merged = Vec::with_capacity(limit);
 
     while merged.len() < limit {
@@ -1207,6 +1238,16 @@ fn interleave(
             let id = video.id.as_str().to_owned();
             if exclude.contains(&id) || !seen.insert(id) {
                 continue;
+            }
+            // One channel cannot take over the feed. Related lists are dominated by the seed's own
+            // channel, so without this a feed built from four videos by one creator is that
+            // creator, over and over.
+            if let Some(channel) = video.channel_id.as_ref().map(|id| id.as_str().to_owned()) {
+                let count = per_channel.entry(channel).or_insert(0);
+                if *count >= MAX_PER_CHANNEL {
+                    continue;
+                }
+                *count += 1;
             }
             merged.push(video);
             if merged.len() >= limit {
@@ -1322,6 +1363,31 @@ mod feed_tests {
     }
 
     #[test]
+    fn one_channel_cannot_take_over_the_feed() {
+        // The reported symptom: seeds from one creator return overlapping related lists, and the
+        // feed becomes that creator repeated.
+        let channel = beastube_core::ids::ChannelId::new("UCaaaaaaaaaaaaaaaaaaaaaa").unwrap();
+        let hogging: Vec<VideoSummary> = ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd", "eeeeeeeeeee"]
+            .iter()
+            .map(|id| {
+                let mut item = video(id);
+                item.channel_id = Some(channel.clone());
+                item
+            })
+            .collect();
+
+        let merged = interleave(vec![hogging], &HashSet::new(), 10);
+        assert_eq!(merged.len(), MAX_PER_CHANNEL);
+    }
+
+    #[test]
+    fn a_video_without_a_channel_is_not_capped() {
+        // The cap keys on the channel; an unknown channel must not collapse into one bucket.
+        let anonymous = vec![video("aaaaaaaaaaa"), video("bbbbbbbbbbb"), video("ccccccccccc"), video("ddddddddddd")];
+        assert_eq!(interleave(vec![anonymous], &HashSet::new(), 10).len(), 4);
+    }
+
+    #[test]
     fn an_empty_input_produces_an_empty_feed() {
         assert!(interleave(Vec::new(), &HashSet::new(), 10).is_empty());
         assert!(interleave(vec![Vec::new()], &HashSet::new(), 10).is_empty());
@@ -1408,15 +1474,11 @@ pub(crate) async fn get_more_shorts(
         .map(|list| list.into_iter().filter(is_short_form).collect())
         .collect();
 
-    let expanded = interleave(lists, &seen, limit);
-    if !expanded.is_empty() {
-        return Ok(expanded);
-    }
-
-    // Nothing related was short-form. That happens — a landscape video tagged short has a related
-    // list of landscape videos — and without a second source the feed would simply stop, which is
-    // the failure this command exists to prevent. Falling back to a fresh topic search keeps it
-    // going, at the cost of the batch being less related to what was just watched.
+    // Related *and* fresh, always — not related-with-a-fallback. Relying on related alone made the
+    // feed run dry after a handful of shorts, because a seed whose related list holds no short-form
+    // video contributes nothing and the next batch has nothing new to seed from. Mixing a topic
+    // search into every batch means the feed cannot converge on a dead end, and it keeps introducing
+    // material the viewer has not already been shown.
     let topics = rotating(SHORTS_TOPICS, SHORTS_TOPICS.len());
     let filters = SearchFilters {
         kind: SearchResultKind::All,
@@ -1436,7 +1498,10 @@ pub(crate) async fn get_more_shorts(
     })
     .await;
 
-    Ok(interleave(fallback, &seen, limit))
+    // Interleaved together so each batch is part "more like this" and part "something else".
+    let mut combined = lists;
+    combined.extend(fallback);
+    Ok(interleave(combined, &seen, limit))
 }
 
 /// Opens a link in the user's own browser.

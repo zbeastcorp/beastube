@@ -265,6 +265,10 @@ function HomeView(): ReactNode {
 
   // The shelf carries both what the shorts query returned and any portrait items lifted out of the
   // recommendations, deduplicated: the same short can legitimately arrive from both.
+  const recentSummaries = recentlyWatched.map(historyToSummary);
+  const recentlyWatchedVideos = recentSummaries.filter((video) => !isPortraitVideo(video));
+  const recentlyWatchedShorts = recentSummaries.filter(isPortraitVideo);
+
   const shelfSeen = new Set<string>();
   const shortsShelf = [
     ...(homeShorts.data ?? []),
@@ -335,9 +339,17 @@ function HomeView(): ReactNode {
         </FeedSection>
       )}
 
-      {/* Loading below existing content rather than instead of it: the sections above are already
-          useful, and blanking them to show a spinner would take working content away (§87). */}
-      {suggestions.length === 0 && recommended.loading && <FeedSkeleton />}
+      {/* Skeletons occupy the recommended section's final position while it loads.
+          Rendering nothing there instead meant the sections below sat high on the page and were
+          shoved down a second later when the feed arrived — content moving under the pointer is
+          the single most jarring thing a feed can do. */}
+      {suggestions.length === 0 && recommended.loading && (
+        <FeedSection heading={t.t('home.recommended')}>
+          {Array.from({ length: VIDEOS_BEFORE_SHELF }, (_, index) => (
+            <VideoCardSkeleton key={index} />
+          ))}
+        </FeedSection>
+      )}
 
       {/* Shelves interleaved between rows of videos rather than one at the end, which is how
           YouTube's home is arranged: a row or two of videos, a shelf of shorts, more videos. The
@@ -370,12 +382,31 @@ function HomeView(): ReactNode {
         </Fragment>
       ))}
 
-      {recentlyWatched.length > 0 && (
+      {recentlyWatchedVideos.length > 0 && (
         <FeedSection heading={t.t('home.recentlyWatched')}>
-          {recentlyWatched.map((entry) => (
-            <FeedCard key={entry.video_id} video={historyToSummary(entry)} />
+          {recentlyWatchedVideos.map((video) => (
+            <VideoCard key={video.id} video={video} />
           ))}
         </FeedSection>
+      )}
+
+      {/* Watched shorts get a shelf of their own. Mixed into the landscape grid they were half the
+          width of their column with a gap beside them, and twice the height, so every row they
+          touched was sized by them. */}
+      {recentlyWatchedShorts.length > 0 && (
+        <section className="mb-10 last:mb-0">
+          <h2 className="text-text mb-4 flex items-center gap-2 text-lg font-medium">
+            <Clapperboard size={22} strokeWidth={2} />
+            {t.t('home.recentlyWatched')}
+          </h2>
+          <ShortsShelf>
+            {recentlyWatchedShorts.map((video) => (
+              <div key={video.id} className="shrink-0 snap-start">
+                <ShortsCard video={video} />
+              </div>
+            ))}
+          </ShortsShelf>
+        </section>
       )}
     </>
   );
