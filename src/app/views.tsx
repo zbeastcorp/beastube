@@ -385,29 +385,26 @@ function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
     return true;
   });
 
-  const loadMore = useCallback(
-    (recent: readonly VideoId[], all: readonly VideoId[]) => {
-      // One request in flight at a time. Without this, three quick swipes near the end fire three
-      // overlapping fetches that mostly return the same videos.
-      if (loadingMore.current) return;
-      loadingMore.current = true;
-      void invoke('get_more_shorts', {
-        seeds: [...recent],
-        exclude: [...all],
-        limit: SHORTS_PAGE_SIZE,
+  const loadMore = useCallback((recent: readonly VideoId[], all: readonly VideoId[]) => {
+    // One request in flight at a time. Without this, three quick swipes near the end fire three
+    // overlapping fetches that mostly return the same videos.
+    if (loadingMore.current) return;
+    loadingMore.current = true;
+    void invoke('get_more_shorts', {
+      seeds: [...recent],
+      exclude: [...all],
+      limit: SHORTS_PAGE_SIZE,
+    })
+      .then((batch) => {
+        setMore((current) => [...current, ...batch]);
       })
-        .then((batch) => {
-          setMore((current) => [...current, ...batch]);
-        })
-        .catch(() => {
-          // The feed simply stops growing; the videos already loaded still play.
-        })
-        .finally(() => {
-          loadingMore.current = false;
-        });
-    },
-    [],
-  );
+      .catch(() => {
+        // The feed simply stops growing; the videos already loaded still play.
+      })
+      .finally(() => {
+        loadingMore.current = false;
+      });
+  }, []);
 
   return (
     <ShortsFeed

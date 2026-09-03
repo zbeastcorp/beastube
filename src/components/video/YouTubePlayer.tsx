@@ -246,6 +246,8 @@ export interface PlayerHandle {
   /** Plays if paused, pauses if playing. Reads the live state rather than trusting a cached one. */
   toggle: () => void;
   setMuted: (muted: boolean) => void;
+  /** Sets the volume, `0..100`, as the embed expresses it. */
+  setVolume: (volume: number) => void;
   /** Puts the player's frame into fullscreen, when the browser allows it. */
   requestFullscreen: () => void;
   /**
@@ -605,6 +607,15 @@ export function YouTubePlayer({
           // As above.
         }
       },
+      setVolume: (volume: number) => {
+        const player = playerRef.current;
+        if (!player) return;
+        try {
+          player.setVolume(Math.max(0, Math.min(100, volume)));
+        } catch {
+          // As above.
+        }
+      },
       hasCaptions: () => captionModule() !== null,
       setCaptions: (enabled: boolean) => {
         const player = playerRef.current;
@@ -634,8 +645,10 @@ export function YouTubePlayer({
   return (
     <div
       ref={frameRef}
-      className={`relative overflow-hidden rounded-lg ${transparent ? '' : 'bg-black'} ${
-        fill ? 'size-full' : 'w-full'
+      // No rounding of its own when filling a parent: the parent is doing the clipping, and two
+      // radii on top of each other leave a hairline seam at the corners.
+      className={`relative overflow-hidden ${fill ? 'size-full' : 'w-full rounded-lg'} ${
+        transparent ? '' : 'bg-black'
       }`}
       style={fill ? undefined : { aspectRatio }}
       aria-label={t.t('a11y.playerRegion')}

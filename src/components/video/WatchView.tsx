@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ErrorState } from '@/components/common/ErrorState';
 import { ShortsCard } from '@/components/video/ShortsCard';
+import { VideoActions } from '@/components/video/VideoActions';
 import { VideoCard, VideoGrid } from '@/components/video/VideoCard';
 import { YouTubePlayer } from '@/components/video/YouTubePlayer';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
@@ -142,7 +143,10 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
               src={ambientSource}
               alt=""
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 -z-10 size-full scale-110 object-cover opacity-45 blur-3xl saturate-150"
+              // Reaches well past the player's own box so the colour spills into the space either
+              // side of it, which is where the effect actually reads — inside the frame it is
+              // hidden by the video the moment the embed paints.
+              className="pointer-events-none absolute -inset-x-24 -inset-y-10 -z-10 size-auto scale-105 object-cover opacity-50 blur-[64px] saturate-150"
             />
           )}
 
@@ -174,7 +178,7 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
                 className="size-10 shrink-0 rounded-full object-cover"
               />
             )}
-            <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 flex-1 flex-col">
               <span className="text-text truncate text-sm font-medium">
                 {details?.channel_name ?? ''}
               </span>
@@ -186,6 +190,10 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
                 </span>
               )}
             </div>
+            {/* Save and share, on the row with the channel — where YouTube puts them. There is no
+                download button: this application cannot produce a file, and a control that cannot
+                do its job is worse than its absence (§131). */}
+            {details && <VideoActions video={details} orientation="horizontal" />}
           </div>
 
           {details && (

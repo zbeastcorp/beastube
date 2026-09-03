@@ -36,13 +36,37 @@ function RailButton({
   label,
   onClick,
   active = false,
+  horizontal = false,
   children,
 }: {
   label: string;
   onClick: () => void;
   active?: boolean;
+  horizontal?: boolean;
   children: ReactNode;
 }): ReactNode {
+  if (horizontal) {
+    // A pill with the label beside the icon, matching the row under a video.
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        title={label}
+        aria-pressed={active}
+        className={[
+          'transition-surface flex h-9 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-medium',
+          active
+            ? 'bg-accent text-accent-contrast'
+            : 'bg-surface-translucent hover:bg-surface-translucent-hover text-text',
+        ].join(' ')}
+      >
+        {children}
+        {label}
+      </button>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-1">
       <button
@@ -67,10 +91,17 @@ function RailButton({
 
 export interface VideoActionsProps {
   video: VideoSummary;
+  /**
+   * How the buttons are stacked.
+   *
+   * Vertical is the Shorts rail; horizontal is the row under a video on the watch page, where the
+   * label sits beside the icon instead of under it.
+   */
+  orientation?: 'vertical' | 'horizontal';
 }
 
 /** Save and share, for the video currently on screen. */
-export function VideoActions({ video }: VideoActionsProps): ReactNode {
+export function VideoActions({ video, orientation = 'vertical' }: VideoActionsProps): ReactNode {
   const t = useTranslation();
   const [copied, setCopied] = useState(false);
 
@@ -121,18 +152,26 @@ export function VideoActions({ video }: VideoActionsProps): ReactNode {
     );
   };
 
+  const horizontal = orientation === 'horizontal';
+  const size = horizontal ? 18 : 22;
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className={horizontal ? 'flex shrink-0 items-center gap-2' : 'flex flex-col gap-4'}>
       <RailButton
         label={saved ? t.t('video.removeBookmark') : t.t('video.bookmark')}
         onClick={toggleSave}
         active={saved}
+        horizontal={horizontal}
       >
-        {saved ? <BookmarkCheck size={22} /> : <Bookmark size={22} />}
+        {saved ? <BookmarkCheck size={size} /> : <Bookmark size={size} />}
       </RailButton>
 
-      <RailButton label={copied ? t.t('app.copied') : t.t('video.copyLink')} onClick={share}>
-        {copied ? <Check size={22} /> : <Share2 size={22} />}
+      <RailButton
+        label={copied ? t.t('app.copied') : t.t('video.copyLink')}
+        onClick={share}
+        horizontal={horizontal}
+      >
+        {copied ? <Check size={size} /> : <Share2 size={size} />}
       </RailButton>
     </div>
   );

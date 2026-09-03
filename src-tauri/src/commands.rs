@@ -861,16 +861,17 @@ const SHORTS_TOPICS: &[&str] = &[
     "animals #shorts",
 ];
 
-/// How many pages of each shorts topic to walk.
+/// How many pages of each shorts topic to walk on the first request.
 ///
-/// The extractor marks only a fraction of any result page as short-form — shorts mostly arrive
-/// inside a shelf renderer this build does not read — so a single page per topic yields a handful
-/// of videos. Depth is bought with pages rather than by loosening what counts as a short: a
-/// duration ceiling was tried and admitted letterboxed landscape videos into a vertical player,
-/// which is a worse tab than a shorter one. Pages walk sequentially within a topic (each needs the
-/// previous cursor) while topics run concurrently, so the wall-clock cost is one page's latency
-/// times this, not times the topic count.
-const SHORTS_PAGES_PER_TOPIC: usize = 6;
+/// One, because pages within a topic are *sequential* — each needs the previous page's cursor — so
+/// this number is a straight multiplier on how long the viewer stares at an empty tab. Six pages
+/// meant six round trips before a single short appeared. Topics still run concurrently, so one page
+/// each is one round trip in total.
+///
+/// Depth no longer has to come from here: the endless expansion seeded by what is being watched
+/// fills the feed while the first shorts are already playing. Fetching deeply up front was buying
+/// with latency something that arrives free a moment later.
+const SHORTS_PAGES_PER_TOPIC: usize = 1;
 
 /// Where a set of recommendations came from.
 ///

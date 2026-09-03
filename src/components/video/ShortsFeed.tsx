@@ -93,6 +93,9 @@ const PREFETCH_MARGIN = 6;
 /** How many of the most recently shown shorts seed the next batch. */
 const SEED_WINDOW = 3;
 
+/** How long the pointer must rest before the overlaid chrome fades away. */
+const CHROME_IDLE_MS = 2600;
+
 /** The Shorts tab. */
 export function ShortsFeed({
   videos,
@@ -119,7 +122,20 @@ export function ShortsFeed({
   const [stageHeight, setStageHeight] = useState(0);
 
   const [playing, setPlaying] = useState(true);
-  const [muted, setMuted] = useState(false);
+  /**
+   * Starts muted, and says so.
+   *
+   * Not a preference: a browser refuses to autoplay audio, so an unmuted feed does not start at all
+   * — it shows the embed's poster and a play button, which is what "the feed isn't coming"
+   * actually looked like. Muted autoplay always starts, and the volume control sits in the corner
+   * showing exactly one click to sound.
+   */
+  const [muted, setMuted] = useState(true);
+  const [volume, setVolume] = useState(100);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  /** Whether the overlaid chrome is showing. It hides while the pointer is still, as YouTube's does. */
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [captions, setCaptions] = useState(false);
   const [captionsAvailable, setCaptionsAvailable] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -128,6 +144,22 @@ export function ShortsFeed({
   const incognito = useSessionStore((session) => session.incognito);
 
   const current = videos[Math.min(index, Math.max(0, videos.length - 1))];
+
+  /** Shows the chrome and restarts the idle countdown. Called on any pointer activity. */
+  const wakeChrome = useCallback(() => {
+    setChromeVisible(true);
+    if (idleTimer.current !== null) clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => {
+      setChromeVisible(false);
+    }, CHROME_IDLE_MS);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (idleTimer.current !== null) clearTimeout(idleTimer.current);
+    },
+    [],
+  );
 
   // Portrait-first, and never wider than portrait. Sizing purely from the thumbnail was tried and
   // produced a landscape stage with the video pillar-boxed inside it, because some renditions of a
@@ -161,9 +193,15 @@ export function ShortsFeed({
     });
     observer.observe(node);
     observerRef.current = observer;
-    // Seeded immediately as well: the observer's first callback lands a frame later, and one frame
+    // Seeded immediately, because the observer's first callback lands a frame later and one frame
     // of full-width sections is one frame of visibly wrong layout.
     if (node.clientHeight > 0) setStageHeight(node.clientHeight);
+    // And measured again on the next frame. At ref-attach time the parent's height is still
+    // resolving — it is a `min()` over `dvh` — so the first reading can be short, which leaves every
+    // section shorter than the viewport and the next short peeking in below the current one.
+    requestAnimationFrame(() => {
+      if (node.isConnected && node.clientHeight > 0) setStageHeight(node.clientHeight);
+    });
   }, []);
 
   /** Scrolls to a short. Smooth for a deliberate move, instant for the initial deep link. */
@@ -295,6 +333,10 @@ export function ShortsFeed({
   return (
     <div
       className="relative mx-auto"
+      onPointerMove={wakeChrome}
+      onPointerLeave={() => {
+        setChromeVisible(false);
+      }}
       style={
         {
           // The height budget subtracts the shell chrome rather than guessing at a viewport
@@ -335,7 +377,7 @@ export function ShortsFeed({
               style={{ height: stageHeight > 0 ? stageHeight : '100%' }}
             >
               <div
-                className="bg-bg relative h-full overflow-hidden rounded-xl"
+                className="relative h-full overflow-hidden rounded-2xl bg-black"
                 style={{ width: stageHeight > 0 ? stageHeight * ratioOf(video) : '100%' }}
               >
                 {/* The poster stands in for the video on every short except the one playing. It is
@@ -379,6 +421,7 @@ export function ShortsFeed({
               fill
               transparent
               autoplay
+              muted={muted}
               // The embed's own chrome is hidden and replaced below, which is what YouTube does on
               // its Shorts surface. Every control drawn in its place drives the player for real.
               controls={false}
@@ -402,6 +445,16 @@ export function ShortsFeed({
               className="absolute inset-0 z-10 cursor-default"
             />
 
+            {/*
+             * Covers the embed's own title bar.
+             *
+             * The embed paints a title and channel across its top edge whenever it is paused, and
+             * no player parameter removes it — `showinfo` was withdrawn years ago. A scrim is the
+             * honest fix: the application already shows the channel and title at the bottom, so the
+             * embed's copy is duplication sitting where our own controls live.
+             */}
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-20 bg-gradient-to-b from-black/80 via-black/40 to-transparent" />
+
             {/* Repeated over the player because the player is opaque and covers the section's own
                 copy underneath. Same markup, so the two are indistinguishable mid-scroll. */}
             <div className="pointer-events-none absolute inset-0 z-20">
@@ -415,7 +468,11 @@ export function ShortsFeed({
           shorts scroll underneath it. */}
       <div
         className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center"
-        style={{ paddingTop: 12 }}
+        style={{
+          paddingTop: 12,
+          opacity: chromeVisible || volumeOpen || menuOpen ? 1 : 0,
+          transition: 'opacity var(--duration-chrome) var(--ease-player-out)',
+        }}
       >
         <div
           className="flex items-start justify-between"
@@ -430,16 +487,62 @@ export function ShortsFeed({
             >
               {playing ? <Pause size={18} /> : <Play size={18} />}
             </StageButton>
-            <StageButton
-              label={t.t(muted ? 'player.unmute' : 'player.mute')}
-              onClick={() => {
-                const next = !muted;
-                setMuted(next);
-                playerRef.current?.setMuted(next);
+
+            {/* The slider grows out of the icon on hover, the way YouTube's does. It stays open
+                while the pointer is anywhere over the pair, so travelling from the icon to the
+                slider does not close the thing being travelled to. */}
+            <div
+              className="flex items-center"
+              onPointerEnter={(event) => {
+                if (event.pointerType === 'mouse') setVolumeOpen(true);
+              }}
+              onPointerLeave={() => {
+                setVolumeOpen(false);
               }}
             >
-              {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </StageButton>
+              <StageButton
+                label={t.t(muted ? 'player.unmute' : 'player.mute')}
+                onClick={() => {
+                  const next = !muted;
+                  setMuted(next);
+                  playerRef.current?.setMuted(next);
+                }}
+              >
+                {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </StageButton>
+
+              <div
+                className="overflow-hidden"
+                style={{
+                  width: volumeOpen ? 88 : 0,
+                  opacity: volumeOpen ? 1 : 0,
+                  transition:
+                    'width var(--duration-volume) var(--ease-player-in), opacity var(--duration-volume) var(--ease-player-in)',
+                }}
+              >
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={muted ? 0 : volume}
+                  aria-label={t.t('player.volume')}
+                  tabIndex={volumeOpen ? 0 : -1}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    setVolume(next);
+                    playerRef.current?.setVolume(next);
+                    // Moving the slider off zero is an unmute; nobody drags a slider expecting
+                    // silence to continue.
+                    const shouldMute = next === 0;
+                    if (shouldMute !== muted) {
+                      setMuted(shouldMute);
+                      playerRef.current?.setMuted(shouldMute);
+                    }
+                  }}
+                  className="accent-brand ml-1 w-20 align-middle"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="pointer-events-auto relative flex items-center gap-1">
@@ -601,7 +704,7 @@ function StageButton({
       aria-pressed={active}
       className={[
         'grid size-9 place-items-center rounded-full text-white/90',
-        'transition-[background-color,color] duration-150 hover:bg-white/15 hover:text-white',
+        'transition-[background-color,color] duration-[var(--duration-chrome-button)] ease-[var(--ease-player-out)] hover:bg-white/15 hover:text-white',
         active ? 'bg-white/20 text-white' : '',
       ].join(' ')}
     >

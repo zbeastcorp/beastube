@@ -79,6 +79,17 @@
   --duration-sidebar: 180ms;
   /* YouTube's own easing curve. */
   --ease-yt: cubic-bezier(0.05, 0, 0, 1);
+  /*
+   * The player's own two curves, read off youtube.com rather than guessed: its control bar fades
+   * with `opacity 0.25s cubic-bezier(0, 0, 0.2, 1)`, its buttons with the same curve over 0.1s, and
+   * its volume panel expands with `width 0.2s cubic-bezier(0.4, 0, 1, 1)`. Decelerating out,
+   * accelerating in — matching them is what makes our chrome feel like the player's own.
+   */
+  --ease-player-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-player-in: cubic-bezier(0.4, 0, 1, 1);
+  --duration-chrome: 250ms;
+  --duration-chrome-button: 100ms;
+  --duration-volume: 200ms;
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
