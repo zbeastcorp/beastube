@@ -58,12 +58,7 @@ import { useTranslation } from '@/i18n/context';
 import type { AsyncResource } from '@/hooks/useAsyncResource';
 import { invoke } from '@/services/ipc';
 import { useSessionStore } from '@/stores/session';
-import {
-  bestThumbnailFor,
-  videoAspectRatio,
-  type VideoId,
-  type VideoSummary,
-} from '@/types/domain';
+import { bestThumbnailFor, type VideoId, type VideoSummary } from '@/types/domain';
 
 interface ShortsFeedProps {
   videos: readonly VideoSummary[];
@@ -91,6 +86,26 @@ const PREFETCH_MARGIN = 6;
 
 /** How many of the most recently shown shorts seed the next batch. */
 const SEED_WINDOW = 3;
+
+/**
+ * How much of the embed's top and bottom edge is cropped away, in CSS pixels.
+ *
+ * The embed paints its own title, channel and hashtags across the top of the player and keeps them
+ * there while the video plays, plus a "Shorts" watermark and a link button along the bottom.
+ * Nothing turns any of it off: `showinfo` was withdrawn years ago, `controls=0` does not cover it,
+ * and the privacy host behaves identically — all three measured against the running app rather
+ * than assumed.
+ *
+ * So the player is given this much extra height at the top *and* the bottom, then shifted up by
+ * exactly one of those amounts. The embed fits a 9:16 video to the box's width, so the extra height
+ * becomes an equal letterbox bar above and below the picture, and the visible window lands
+ * precisely on the picture. The embed's bands sit in those bars and are cropped away with them.
+ *
+ * No picture is lost. That symmetry is the entire point, and it is why the extra height is doubled
+ * rather than simply added to the top — adding it to one side only would scale the video down and
+ * cost real frame.
+ */
+const EMBED_CHROME_CROP_PX = 64;
 
 /** How long the pointer must rest before the overlaid chrome fades away. */
 const CHROME_IDLE_MS = 2600;
@@ -172,16 +187,17 @@ export function ShortsFeed({
     [],
   );
 
-  // Portrait-first, and never wider than portrait. Sizing purely from the thumbnail was tried and
-  // produced a landscape stage with the video pillar-boxed inside it, because some renditions of a
-  // short are padded to 16:9 — the very thing this feed exists to not do. A measured ratio is only
-  // trusted when it is itself portrait, which is where it can still help: a 3:4 short then gets a
-  // 3:4 stage instead of black bars.
-  const ratioOf = (video: VideoSummary): number => {
-    const measured = videoAspectRatio(video);
-    return measured < 1 ? measured : 9 / 16;
-  };
-  const stageWidth = current ? stageHeight * ratioOf(current) : 0;
+  /**
+   * Exactly 9:16, for every short.
+   *
+   * Measured on youtube.com/shorts: their player is 460 by 818, which is 0.5625 to the pixel, and
+   * it is that shape whatever the video inside it happens to be. Deriving the ratio from the
+   * thumbnail was tried twice and abandoned — some renditions of a short are padded to 16:9, so the
+   * derivation produced a landscape stage with the video pillar-boxed inside it, which is the exact
+   * defect this surface exists to avoid.
+   */
+  const ratioOf = (): number => 9 / 16;
+  const stageWidth = current ? stageHeight * ratioOf() : 0;
 
   /**
    * Attaches the size observer as the scroll element mounts.
@@ -389,24 +405,10 @@ export function ShortsFeed({
             >
               <div
                 className="relative h-full"
-                style={{ width: stageHeight > 0 ? stageHeight * ratioOf(video) : '100%' }}
+                style={{ width: stageHeight > 0 ? stageHeight * ratioOf() : '100%' }}
               >
-                {/* The glow, sized to the frame rather than to the column.
-                  A halo hugging the video is what YouTube draws; spread across the whole width it
-                  stops reading as light coming off the picture and becomes a wash over the page.
-                  Purely decorative, never a hit target, and entirely outside the frame, so it
-                  cannot dim the video. */}
-                {poster !== undefined && (
-                  <img
-                    src={poster}
-                    alt=""
-                    aria-hidden="true"
-                    className="pointer-events-none absolute -inset-[3%] -z-10 size-auto h-[106%] w-[106%] object-cover opacity-35 blur-[28px] saturate-[1.5]"
-                  />
-                )}
-
                 <div
-                  className="relative h-full overflow-hidden rounded-2xl bg-black"
+                  className="relative h-full overflow-hidden rounded-xl bg-black"
                   style={{
                     width: '100%',
                     // Forces the box onto its own compositing layer. An `<iframe>` inside an
@@ -457,7 +459,7 @@ export function ShortsFeed({
             {/* Only the video and its overlays are clipped. The clip used to sit on the whole
                 positioned box, which cut off the action rail hanging beside it. */}
             <div
-              className="absolute inset-0 overflow-hidden rounded-2xl"
+              className="absolute inset-0 overflow-hidden rounded-xl"
               style={{
                 // Forces the box onto its own compositing layer. An `<iframe>` inside an
                 // `overflow: hidden` parent is not reliably clipped by the parent's radius — the
@@ -467,24 +469,81 @@ export function ShortsFeed({
                 isolation: 'isolate',
               }}
             >
-              <YouTubePlayer
-                ref={playerRef}
-                videoId={current.id}
-                fill
-                transparent
-                autoplay
-                muted={muted}
-                // The embed's own chrome is hidden and replaced below, which is what YouTube does on
-                // its Shorts surface. Every control drawn in its place drives the player for real.
-                controls={false}
-                onStateChange={(playbackState) => {
-                  setPlaying(playbackState === 'playing' || playbackState === 'buffering');
-                  // Caption availability is a property of the video, and the embed only knows once it
-                  // has loaded one. Asked here so the control is absent for a short that has none.
-                  setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
-                  if (playbackState === 'ended') move(1);
+              {/* Taller than the clip on both sides and shifted up by half the difference, so the
+                  embed's own title band and watermark land outside the visible window. See
+                  `EMBED_CHROME_CROP_PX`; the picture itself is untouched. */}
+              <div
+                className="absolute inset-x-0"
+                style={{
+                  top: -EMBED_CHROME_CROP_PX,
+                  height: `calc(100% + ${String(EMBED_CHROME_CROP_PX * 2)}px)`,
                 }}
-              />
+              >
+                <YouTubePlayer
+                  ref={playerRef}
+                  videoId={current.id}
+                  fill
+                  transparent
+                  autoplay
+                  muted={muted}
+                  // The embed's own chrome is hidden and replaced below, which is what YouTube does
+                  // on its Shorts surface. Every control drawn in its place drives the player for
+                  // real.
+                  controls={false}
+                  onStateChange={(playbackState) => {
+                    setPlaying(playbackState === 'playing' || playbackState === 'buffering');
+                    // Caption availability is a property of the video, and the embed only knows once
+                    // it has loaded one. Asked here so the control is absent for a short with none.
+                    setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
+                    if (playbackState === 'ended') move(1);
+                  }}
+                />
+              </div>
+
+              {/* Channel and title along the bottom edge, where YouTube's sit. Ours replaces the
+                  embed's band rather than sitting under it — that band is cropped away above, and
+                  this is drawn at a size and weight measured off youtube.com/shorts.
+
+                  Legibility comes from a text shadow, not a scrim. A gradient wash over the bottom
+                  third is what made the picture look dull and dirty next to YouTube's, and the
+                  shadow reads just as well over a bright frame.
+
+                  No Subscribe button, deliberately. Subscribing is an account action, and this
+                  application has no account — a button that cannot do its job does not belong on
+                  the screen (§131). The channel row is itself absent for a short whose channel the
+                  extractor did not report, for the same reason. */}
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1.5 p-4 pr-14"
+                style={{
+                  textShadow: '0 1px 3px rgba(0,0,0,0.75), 0 0 12px rgba(0,0,0,0.45)',
+                  opacity: chromeVisible || volumeOpen || menuOpen ? 1 : 0,
+                  transition: 'opacity var(--duration-chrome) var(--ease-player-out)',
+                }}
+              >
+                {current.channel_name !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="grid size-8 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-semibold text-white"
+                      aria-hidden="true"
+                    >
+                      {current.channel_name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="truncate text-sm font-medium text-white">
+                      {current.channel_name}
+                    </span>
+                  </div>
+                )}
+                <p className="line-clamp-2 text-sm leading-snug font-medium text-white">
+                  {current.title}
+                </p>
+                {current.view_count !== undefined && (
+                  <span className="text-xs text-white/80">
+                    {t.plural('video.views', current.view_count, {
+                      count: t.compact(current.view_count),
+                    })}
+                  </span>
+                )}
+              </div>
 
               {/* The whole frame is the play/pause target, as it is on YouTube. A button rather than
                 a div so it is keyboard reachable and announced; it carries no chrome of its own. */}
@@ -697,9 +756,12 @@ function StageButton({
       title={label}
       aria-pressed={active}
       className={[
-        'grid size-9 place-items-center rounded-full text-white/90',
-        'transition-[background-color,color] duration-[var(--duration-chrome-button)] ease-[var(--ease-player-out)] hover:bg-white/15 hover:text-white',
-        active ? 'bg-white/20 text-white' : '',
+        // A filled translucent disc, not a bare glyph. Measured on youtube.com/shorts: their
+        // controls carry their own dark disc so they stay readable over a bright frame — ours were
+        // white-on-transparent and vanished against anything pale.
+        'grid size-9 place-items-center rounded-full text-white',
+        'transition-[background-color] duration-[var(--duration-chrome-button)] ease-[var(--ease-player-out)]',
+        active ? 'bg-black/70' : 'bg-black/45 hover:bg-black/70',
       ].join(' ')}
     >
       {children}

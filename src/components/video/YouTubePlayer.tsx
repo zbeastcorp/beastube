@@ -353,6 +353,9 @@ export function YouTubePlayer({
     }
   });
 
+  /** Whether the caller wants playback to begin by itself. Read live, not captured. */
+  const autoplayNow = useEffectEvent(() => autoplay);
+
   /**
    * Constructs the player against the current render's props.
    *
@@ -407,6 +410,18 @@ export function YouTubePlayer({
             if (isCancelled()) return;
             reportState('ready');
 
+            // Asked explicitly rather than trusting the `autoplay` player var. The embed honours it
+            // inconsistently once the player is constructed programmatically, and a short that does
+            // not start shows the embed's poster chrome — its title bar and a play button — which
+            // is the single most visible defect on the Shorts surface.
+            if (autoplayNow()) {
+              try {
+                playerRef.current?.playVideo();
+              } catch {
+                // Nothing to play yet; the state handler will not report `playing` either.
+              }
+            }
+
             // A resume that arrived while the API was still loading is applied now rather than
             // dropped — the position request and the script fetch race, and either can win.
             const pending = pendingResumeRef.current;
@@ -460,7 +475,11 @@ export function YouTubePlayer({
       // video at the old one's timestamp. The resume effect applies the right position once it
       // actually belongs to this video.
       player.loadVideoById({ videoId: id });
-      if (!autoplay) player.pauseVideo();
+      // `loadVideoById` is documented to start playback, but does not always do so for a player
+      // that was paused before the swap — and a short that sits on its poster is exactly what the
+      // Shorts feed must never show.
+      if (autoplay) player.playVideo();
+      else player.pauseVideo();
     } catch {
       // A swap during teardown throws; the player is going away regardless.
     }
