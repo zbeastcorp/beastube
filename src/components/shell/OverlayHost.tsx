@@ -94,12 +94,20 @@ function Dialog({
     };
   }, [onClose]);
 
-  // Focus moves into the panel on open, so the keyboard is where the eye is. The first field if
-  // there is one, otherwise the panel itself — never left behind on whatever opened this.
+  // Focus moves into the panel on open, so the keyboard is where the eye is.
+  //
+  // Fields only, and never a button. `querySelector('input, button, ...')` returns the first match
+  // in *document order*, and the close control is above the form — so focus landed on the X, and
+  // pressing space, which activates a focused button, closed the dialog. Typing any playlist name
+  // with a space in it dismissed the thing you were typing into.
+  //
+  // Falling back to the panel rather than to some other control is deliberate: the panel carries
+  // `tabIndex={-1}`, so Escape and Tab still work from it, and nothing can be triggered by a
+  // keystroke meant as text.
   useEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
-    const field = panel.querySelector<HTMLElement>('input, button, [tabindex]');
+    const field = panel.querySelector<HTMLElement>('input, textarea, select');
     (field ?? panel).focus();
   }, []);
 
@@ -154,6 +162,7 @@ function NameForm({
   const t = useTranslation();
   const [name, setName] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
   const trimmed = name.trim();
 
   const submit = () => {
@@ -161,10 +170,21 @@ function NameForm({
     // back to say so.
     if (trimmed.length === 0 || busy) return;
     setBusy(true);
-    void onSubmit(trimmed).finally(() => {
-      setBusy(false);
-      onClose();
-    });
+    setFailed(false);
+    void onSubmit(trimmed).then(
+      () => {
+        setBusy(false);
+        onClose();
+      },
+      () => {
+        // Closed only on success. An earlier version closed in a `finally`, so a failed create
+        // dismissed the dialog and left the screen exactly as it had been — the user pressed the
+        // button, everything vanished, and nothing had happened. Staying open with the typed name
+        // intact is the difference between a retry and a mystery.
+        setBusy(false);
+        setFailed(true);
+      },
+    );
   };
 
   return (
@@ -184,6 +204,12 @@ function NameForm({
         placeholder={t.t('library.playlistName')}
         className="border-border bg-bg text-text focus-visible:border-border-focus w-full rounded-md border px-3 py-2 text-sm outline-none"
       />
+      {failed && (
+        <p role="alert" className="text-danger mt-2 text-xs">
+          {t.t('error.generic')}
+        </p>
+      )}
+
       <div className="mt-5 flex justify-end gap-2">
         <button
           type="button"
@@ -212,7 +238,7 @@ function CreatePlaylist({ onClose }: { onClose: () => void }): ReactNode {
       confirmKey="library.create"
       onClose={onClose}
       onSubmit={async (name) => {
-        await invoke('create_playlist', { name });
+        await invoke('create_playlist', { name, description: null });
         bump();
       }}
     />

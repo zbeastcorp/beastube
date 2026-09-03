@@ -195,7 +195,14 @@ export interface CommandMap {
   // sync (§42). `playlists_containing` answers the whole "add to playlist" menu in one call rather
   // than asking once per playlist.
   get_playlists: { args: undefined; result: LocalPlaylist[] };
-  create_playlist: { args: { name: string; description?: string }; result: LocalPlaylist };
+  /**
+   * `description` is `string | null`, never optional.
+   *
+   * Tauri deserializes each argument out of the object by key, so an omitted key is a missing
+   * argument rather than a defaulted one — which is why every other command here spells out its
+   * nullable arguments too (see `checkpoint_playback`).
+   */
+  create_playlist: { args: { name: string; description: string | null }; result: LocalPlaylist };
   /** Answers `false` for a built-in list, which cannot be renamed. */
   rename_playlist: { args: { playlistId: number; name: string }; result: boolean };
   /** Answers `false` for a built-in list, which cannot be deleted. */
