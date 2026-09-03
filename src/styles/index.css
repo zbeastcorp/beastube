@@ -578,15 +578,11 @@
   }
 
   /*
-   * Off-screen cards are skipped entirely during layout and paint.
+   * Containment for a card, so one card's layout cannot reach the rest of the grid.
    *
-   * A feed can hold hundreds of cards, and without this every one of them is laid out and painted
-   * on every scroll frame — which is the difference between a grid that keeps up with a 144Hz
-   * display and one that does not. `contain-intrinsic-size` supplies the height a skipped card
-   * would have had, so the scrollbar stays honest and nothing jumps when one comes into view.
-   *
-   * The value is a starting guess; `auto` lets the browser remember each card's real size once it
-   * has been rendered, so the estimate stops mattering after first paint.
+   * This block used to describe `content-visibility: auto` and the reasoning for it. That rule is
+   * gone — see the note inside — and the description outlived it by one commit. A comment that
+   * describes code which is no longer there is worse than none, because it is read as true.
    */
   .feed-card {
     /* No `content-visibility: auto` here, deliberately. It was measured against youtube.com, which
