@@ -247,6 +247,9 @@ export function ShortsFeed({
   // frame, with the fetched value filling in for the rest.
   const channelName = current?.channel_name ?? channelNow?.name ?? null;
 
+  const currentPoster =
+    current?.thumbnails !== undefined ? bestThumbnailFor(current.thumbnails, 480)?.url : undefined;
+
   const nextId = videos[index + 1]?.id;
   const warmNext = useEffectEvent(() => {
     prefetchShortChannel(nextId);
@@ -648,6 +651,25 @@ export function ShortsFeed({
                 isolation: 'isolate',
               }}
             >
+              {/* The poster, under the player, until the video itself paints.
+                  The embed takes a moment to bootstrap however fast the feed was, and for that
+                  moment the frame was flat black — which reads as stuck rather than as loading,
+                  and is exactly what "it's stuck" describes. The same image the section behind it
+                  is already showing, so scrolling onto a short never crosses an empty box.
+                  Faded rather than removed, so the handover to the first frame is not a cut. */}
+              {currentPoster !== undefined && (
+                <img
+                  src={currentPoster}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 size-full object-cover"
+                  style={{
+                    opacity: startedId === current.id ? 0 : 1,
+                    transition: 'opacity 220ms var(--ease-player-out)',
+                  }}
+                />
+              )}
+
               {/* Taller than the clip on both sides and shifted up by half the difference, so the
                   embed's own title band and watermark land outside the visible window. See
                   `EMBED_CHROME_CROP_PX`; the picture itself is untouched. */}
