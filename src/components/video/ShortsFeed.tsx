@@ -51,6 +51,7 @@ import {
 } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
+import { LazyImage } from '@/components/common/LazyImage';
 import { ErrorState } from '@/components/common/ErrorState';
 import { VideoActions } from '@/components/video/VideoActions';
 import { YouTubePlayer, type PlayerHandle } from '@/components/video/YouTubePlayer';
@@ -601,17 +602,20 @@ export function ShortsFeed({
                     isolation: 'isolate',
                   }}
                 >
-                  {/* The poster stands in for the video on every short except the one playing. It is
-                    what makes scrolling look continuous: there is always a picture under the
+                  {/* The poster stands in for the video on every short except the one playing. It
+                    is what makes scrolling look continuous: there is always a picture under the
                     gesture, rather than an empty box waiting for a player that will never mount
-                    here. */}
+                    here.
+
+                    Through `LazyImage`, not a bare `loading="lazy"`. A batch of forty shorts meant
+                    forty poster requests the moment the tab opened, for forty full-height sections
+                    of which one is on screen — measured as the single biggest cost of arriving
+                    here after the feed itself. The observer's runway is deep enough to cover the
+                    next section either way, so scrolling still never crosses an empty box. */}
                   {poster !== undefined && (
-                    <img
+                    <LazyImage
                       src={poster}
                       alt=""
-                      aria-hidden="true"
-                      loading="lazy"
-                      decoding="async"
                       className="absolute inset-0 size-full object-cover"
                     />
                   )}

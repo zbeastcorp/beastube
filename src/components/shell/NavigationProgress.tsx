@@ -57,6 +57,16 @@ export function NavigationProgress(): ReactNode {
   const trackRef = useRef<HTMLDivElement>(null);
   const fillRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * How far along the bar currently is, kept across runs.
+   *
+   * Clicking Home twice in quick succession finishes one run and starts another. Without this the
+   * second run began its ramp at zero while the bar was still sitting at full from the first, so
+   * the bar visibly snapped backwards — the one motion a progress indicator must never make. The
+   * next run picks up from where the last one got to instead.
+   */
+  const reached = useRef(0);
+
   useEffect(() => {
     const track = trackRef.current;
     const fill = fillRef.current;
@@ -67,11 +77,13 @@ export function NavigationProgress(): ReactNode {
       // up (the common case — most renders are not navigations) this is a no-op.
       if (track.style.opacity === '0') return undefined;
       fill.style.transform = 'scaleX(1)';
+      reached.current = 1;
       const timer = setTimeout(() => {
         track.style.opacity = '0';
         // Reset only once hidden, so the bar does not visibly rewind to the left.
         fill.style.transition = 'none';
         fill.style.transform = 'scaleX(0)';
+        reached.current = 0;
         // Read back to flush the transition removal before the next navigation re-enables it,
         // otherwise the reset itself animates. The value is discarded; the read is the point.
         fill.getBoundingClientRect();
@@ -84,14 +96,43 @@ export function NavigationProgress(): ReactNode {
 
     // Work started — but not shown yet. If it finishes inside the grace period the viewer never
     // sees anything, which is correct: nothing was slow enough to be worth reporting.
+    //
+    // A bar already on screen means a second navigation overtook the first. It keeps going from
+    // wherever it had reached rather than restarting, and it is not re-delayed: it is visible, so
+    // there is nothing left to decide about whether to show it.
+    const visible = track.style.opacity === '1';
+    const from = visible ? Math.min(reached.current, HOLD_AT) : 0;
+
+    // The remaining distance is travelled in the remaining share of the ramp, so a run that picks
+    // up near the hold point does not crawl the last few percent over the full duration.
+    const distance = HOLD_AT - from;
+    const duration = RAMP_MS * (distance / HOLD_AT);
+
     let frame = 0;
     let start = 0;
     const step = (now: number) => {
       if (start === 0) start = now;
-      const progress = Math.min(1, (now - start) / RAMP_MS);
-      fill.style.transform = `scaleX(${String(progress * HOLD_AT)})`;
-      if (progress < 1) frame = requestAnimationFrame(step);
+      // Already at the hold point: nothing to animate, so hold rather than spin a rAF loop
+      // recomputing the same number sixty times a second.
+      if (duration <= 0) {
+        fill.style.transform = `scaleX(${String(HOLD_AT)})`;
+        reached.current = HOLD_AT;
+        return;
+      }
+      const elapsed = Math.min(1, (now - start) / duration);
+      const scale = from + distance * elapsed;
+      reached.current = scale;
+      fill.style.transform = `scaleX(${String(scale)})`;
+      if (elapsed < 1) frame = requestAnimationFrame(step);
     };
+
+    if (visible) {
+      frame = requestAnimationFrame(step);
+      return () => {
+        cancelAnimationFrame(frame);
+      };
+    }
+
     const reveal = setTimeout(() => {
       track.style.opacity = '1';
       frame = requestAnimationFrame(step);
