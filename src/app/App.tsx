@@ -140,8 +140,15 @@ export function App(): ReactNode {
 
   // Tell the native side the first frame is on screen, so it can reveal the window. Two frames,
   // because one only guarantees the commit has been scheduled, not that it has been painted.
+  //
+  // Held until settings have resolved. The shell paints with defaults — an expanded sidebar, a
+  // 100% interface scale — and settings can disagree with every one of them, so revealing the
+  // window first meant watching the layout jump into place a moment after it appeared. The shell
+  // reads settings from a local SQLite row, so this waits milliseconds; the watchdog in the native
+  // side reveals the window anyway if it ever waits longer.
+  const settingsLoaded = useSettingsStore((state) => state.loaded);
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!isTauriRuntime() || !settingsLoaded) return undefined;
     const frame = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         void invoke('frontend_ready', undefined).catch(() => {
@@ -152,7 +159,7 @@ export function App(): ReactNode {
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [settingsLoaded]);
 
   return (
     <Providers>

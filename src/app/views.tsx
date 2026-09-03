@@ -11,7 +11,7 @@
  */
 
 import { Clapperboard } from 'lucide-react';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useRef, useState, type ReactNode } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -54,6 +54,15 @@ const SHORTS_PAGE_SIZE = 20;
 
 /** How many Shorts the home shelf peeks at. Smaller than the tab: it is a row, not a screen. */
 const HOME_SHORTS_COUNT = 16;
+
+/** Videos shown before the first Shorts shelf breaks the grid. */
+const VIDEOS_BEFORE_SHELF = 6;
+
+/** Videos between one shelf and the next. */
+const VIDEOS_BETWEEN_SHELVES = 9;
+
+/** Shorts in each shelf. */
+const SHORTS_PER_SHELF = 8;
 
 function PageHeading({ children }: { children: ReactNode }): ReactNode {
   return <h1 className="text-text mb-4 text-xl font-medium">{children}</h1>;
@@ -266,6 +275,19 @@ function HomeView(): ReactNode {
     return true;
   });
 
+  // Alternating blocks: a shelf of shorts, then a row of videos, repeated. Sliced here rather than
+  // in the markup so the two lists are consumed in step and neither repeats an item.
+  const shelfBreaks: { shorts: VideoSummary[]; videos: VideoSummary[] }[] = [];
+  for (let cursor = VIDEOS_BEFORE_SHELF, shelfCursor = 0; cursor < recommendedAll.length;) {
+    shelfBreaks.push({
+      shorts: shortsShelf.slice(shelfCursor, shelfCursor + SHORTS_PER_SHELF),
+      videos: suggestions.slice(cursor, cursor + VIDEOS_BETWEEN_SHELVES),
+    });
+    cursor += VIDEOS_BETWEEN_SHELVES;
+    shelfCursor += SHORTS_PER_SHELF;
+    if (shelfCursor >= shortsShelf.length && cursor >= suggestions.length) break;
+  }
+
   // Named from what the videos were actually derived from, so a feed of broad topics is not
   // presented as personalization that did not happen (§131).
   const feedHeading: TranslationKey =
@@ -307,7 +329,7 @@ function HomeView(): ReactNode {
 
       {suggestions.length > 0 && (
         <FeedSection heading={t.t(feedHeading)}>
-          {suggestions.map((video) => (
+          {suggestions.slice(0, VIDEOS_BEFORE_SHELF).map((video) => (
             <FeedCard key={video.id} video={video} />
           ))}
         </FeedSection>
@@ -317,24 +339,36 @@ function HomeView(): ReactNode {
           useful, and blanking them to show a spinner would take working content away (§87). */}
       {suggestions.length === 0 && recommended.loading && <FeedSkeleton />}
 
-      {/* A shelf, as YouTube has. Nothing at all when it is empty or still loading — a row of
-          skeletons for a secondary surface would claim more attention than it deserves, and this
-          fetch is the most expensive one on the page. */}
-      {shortsShelf.length > 0 && (
-        <section className="mb-10">
-          <h2 className="text-text mb-4 flex items-center gap-2 text-lg font-medium">
-            <Clapperboard size={22} strokeWidth={2} />
-            {t.t('shorts.title')}
-          </h2>
-          <ShortsShelf>
-            {shortsShelf.map((video) => (
-              <div key={video.id} className="shrink-0 snap-start">
-                <ShortsCard video={video} />
-              </div>
-            ))}
-          </ShortsShelf>
-        </section>
-      )}
+      {/* Shelves interleaved between rows of videos rather than one at the end, which is how
+          YouTube's home is arranged: a row or two of videos, a shelf of shorts, more videos. The
+          shelf is split across the breaks so each one holds different shorts. */}
+      {shelfBreaks.map((chunk, breakIndex) => (
+        <Fragment key={chunk.shorts[0]?.id ?? `break-${breakIndex}`}>
+          {chunk.shorts.length > 0 && (
+            <section className="mb-10">
+              <h2 className="text-text mb-4 flex items-center gap-2 text-lg font-medium">
+                <Clapperboard size={22} strokeWidth={2} />
+                {t.t('shorts.title')}
+              </h2>
+              <ShortsShelf>
+                {chunk.shorts.map((video) => (
+                  <div key={video.id} className="shrink-0 snap-start">
+                    <ShortsCard video={video} />
+                  </div>
+                ))}
+              </ShortsShelf>
+            </section>
+          )}
+
+          {chunk.videos.length > 0 && (
+            <FeedSection heading="">
+              {chunk.videos.map((video) => (
+                <FeedCard key={video.id} video={video} />
+              ))}
+            </FeedSection>
+          )}
+        </Fragment>
+      ))}
 
       {recentlyWatched.length > 0 && (
         <FeedSection heading={t.t('home.recentlyWatched')}>
@@ -351,7 +385,7 @@ function HomeView(): ReactNode {
 function FeedSection({ heading, children }: { heading: string; children: ReactNode }): ReactNode {
   return (
     <section className="mb-10 last:mb-0">
-      <h2 className="text-text mb-4 text-lg font-medium">{heading}</h2>
+      {heading !== '' && <h2 className="text-text mb-4 text-lg font-medium">{heading}</h2>}
       <VideoGrid>{children}</VideoGrid>
     </section>
   );

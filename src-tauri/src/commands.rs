@@ -1068,33 +1068,13 @@ pub(crate) async fn get_shorts_feed(
     .await;
 
     lists.extend(searched);
-    let mut collected = interleave(lists, &HashSet::new(), limit);
 
-    // Expansion. A short's related list is mostly other shorts — it is the one place this extractor
-    // reliably hands back short-form video, because those results arrive as ordinary video items
-    // rather than inside the shelf renderer it discards. So the shorts already found are used as
-    // seeds for more, which is what turns a handful of search hits into a feed worth scrolling.
-    if collected.len() < limit && !collected.is_empty() {
-        let seeds: Vec<VideoId> = collected
-            .iter()
-            .take(SHORTS_EXPANSION_SEEDS)
-            .map(|video| video.id.clone())
-            .collect();
-        let seen: HashSet<String> = collected
-            .iter()
-            .map(|video| video.id.as_str().to_owned())
-            .collect();
-
-        let expanded: Vec<Vec<VideoSummary>> = related_lists(&state, seeds)
-            .await
-            .into_iter()
-            .map(|list| list.into_iter().filter(is_short_form).collect())
-            .collect();
-
-        collected.extend(interleave(expanded, &seen, limit - collected.len()));
-    }
-
-    Ok(collected)
+    // Returned as soon as the concurrent wave lands. There used to be a second, sequential
+    // expansion pass here, which roughly doubled the time before the first short appeared — and
+    // bought nothing, because `get_more_shorts` performs exactly that expansion a moment later
+    // while the viewer is already watching. Latency on the first batch is the only thing this
+    // command is really competing on.
+    Ok(interleave(lists, &HashSet::new(), limit))
 }
 
 /// How many of the shorts already found are used to look for more.
@@ -1428,7 +1408,35 @@ pub(crate) async fn get_more_shorts(
         .map(|list| list.into_iter().filter(is_short_form).collect())
         .collect();
 
-    Ok(interleave(lists, &seen, limit))
+    let expanded = interleave(lists, &seen, limit);
+    if !expanded.is_empty() {
+        return Ok(expanded);
+    }
+
+    // Nothing related was short-form. That happens — a landscape video tagged short has a related
+    // list of landscape videos — and without a second source the feed would simply stop, which is
+    // the failure this command exists to prevent. Falling back to a fresh topic search keeps it
+    // going, at the cost of the batch being less related to what was just watched.
+    let topics = rotating(SHORTS_TOPICS, SHORTS_TOPICS.len());
+    let filters = SearchFilters {
+        kind: SearchResultKind::All,
+        ..SearchFilters::default()
+    };
+    let fallback = fan_out(topics, |topic| {
+        let provider = Arc::clone(&state.provider);
+        let filters = filters.clone();
+        async move {
+            let cancel = CancellationToken::new();
+            provider
+                .search(&topic, &filters, None, &cancel)
+                .await
+                .map(|results| videos_of(results.page.items).into_iter().filter(is_short_form).collect())
+                .unwrap_or_default()
+        }
+    })
+    .await;
+
+    Ok(interleave(fallback, &seen, limit))
 }
 
 /// Opens a link in the user's own browser.

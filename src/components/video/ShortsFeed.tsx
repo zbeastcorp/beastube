@@ -445,182 +445,162 @@ export function ShortsFeed({
               className="absolute inset-0 z-10 cursor-default"
             />
 
-            {/*
-             * Covers the embed's own title bar.
-             *
-             * The embed paints a title and channel across its top edge whenever it is paused, and
-             * no player parameter removes it — `showinfo` was withdrawn years ago. A scrim is the
-             * honest fix: the application already shows the channel and title at the bottom, so the
-             * embed's copy is duplication sitting where our own controls live.
-             */}
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-20 bg-gradient-to-b from-black/80 via-black/40 to-transparent" />
+            {/* Chrome belongs to the short it controls, so it lives inside the overlay and travels
+                with it. Pinned to the feed instead, it hung in mid-air over whatever was sliding
+                past during a scroll. */}
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-3"
+              style={{
+                opacity: chromeVisible || volumeOpen || menuOpen ? 1 : 0,
+                transition: 'opacity var(--duration-chrome) var(--ease-player-out)',
+              }}
+            >
+              <div className="pointer-events-auto flex items-center gap-1">
+                <StageButton
+                  label={t.t(playing ? 'player.pause' : 'player.play')}
+                  onClick={() => {
+                    playerRef.current?.toggle();
+                  }}
+                >
+                  {playing ? <Pause size={18} /> : <Play size={18} />}
+                </StageButton>
+
+                {/* The slider grows out of the icon on hover, the way YouTube's does. It stays open
+                while the pointer is anywhere over the pair, so travelling from the icon to the
+                slider does not close the thing being travelled to. */}
+                <div
+                  className="flex items-center"
+                  onPointerEnter={(event) => {
+                    if (event.pointerType === 'mouse') setVolumeOpen(true);
+                  }}
+                  onPointerLeave={() => {
+                    setVolumeOpen(false);
+                  }}
+                >
+                  <StageButton
+                    label={t.t(muted ? 'player.unmute' : 'player.mute')}
+                    onClick={() => {
+                      const next = !muted;
+                      setMuted(next);
+                      playerRef.current?.setMuted(next);
+                    }}
+                  >
+                    {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  </StageButton>
+
+                  <div
+                    className="overflow-hidden"
+                    style={{
+                      width: volumeOpen ? 88 : 0,
+                      opacity: volumeOpen ? 1 : 0,
+                      transition:
+                        'width var(--duration-volume) var(--ease-player-in), opacity var(--duration-volume) var(--ease-player-in)',
+                    }}
+                  >
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={muted ? 0 : volume}
+                      aria-label={t.t('player.volume')}
+                      tabIndex={volumeOpen ? 0 : -1}
+                      onChange={(event) => {
+                        const next = Number(event.target.value);
+                        setVolume(next);
+                        playerRef.current?.setVolume(next);
+                        // Moving the slider off zero is an unmute; nobody drags a slider expecting
+                        // silence to continue.
+                        const shouldMute = next === 0;
+                        if (shouldMute !== muted) {
+                          setMuted(shouldMute);
+                          playerRef.current?.setMuted(shouldMute);
+                        }
+                      }}
+                      className="accent-brand ml-1 w-20 align-middle"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pointer-events-auto relative flex items-center gap-1">
+                {/* Only for a short that actually has captions — the embed is asked, not assumed. */}
+                {captionsAvailable && (
+                  <StageButton
+                    label={t.t('player.captions')}
+                    active={captions}
+                    onClick={() => {
+                      const next = !captions;
+                      setCaptions(next);
+                      playerRef.current?.setCaptions(next);
+                    }}
+                  >
+                    {captions ? <Captions size={18} /> : <CaptionsOff size={18} />}
+                  </StageButton>
+                )}
+
+                <StageButton
+                  label={t.t('app.more')}
+                  active={menuOpen}
+                  onClick={() => {
+                    setMenuOpen((open) => !open);
+                  }}
+                >
+                  <MoreVertical size={18} />
+                </StageButton>
+
+                <StageButton
+                  label={t.t('player.fullscreen')}
+                  onClick={() => {
+                    playerRef.current?.requestFullscreen();
+                  }}
+                >
+                  <Maximize2 size={18} />
+                </StageButton>
+
+                {menuOpen && (
+                  <div
+                    className="bg-surface border-border absolute top-11 right-0 z-40 min-w-48 overflow-hidden rounded-lg border py-1 shadow-lg"
+                    role="menu"
+                  >
+                    <MenuItem
+                      label={t.t('video.copyLink')}
+                      icon={<Link2 size={16} />}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void navigator.clipboard.writeText(`https://youtu.be/${current.id}`);
+                      }}
+                    />
+                    <MenuItem
+                      label={t.t('video.openExternally')}
+                      icon={<ExternalLink size={16} />}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void invoke('open_external', {
+                          url: `https://www.youtube.com/shorts/${current.id}`,
+                        }).catch(() => {
+                          // The link simply does not open; nothing here is recoverable in the UI.
+                        });
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Repeated over the player because the player is opaque and covers the section's own
                 copy underneath. Same markup, so the two are indistinguishable mid-scroll. */}
             <div className="pointer-events-none absolute inset-0 z-20">
               <ShortsMeta video={current} />
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* Chrome that belongs to the feed rather than to any one short, so it stays put while the
-          shorts scroll underneath it. */}
-      <div
-        className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center"
-        style={{
-          paddingTop: 12,
-          opacity: chromeVisible || volumeOpen || menuOpen ? 1 : 0,
-          transition: 'opacity var(--duration-chrome) var(--ease-player-out)',
-        }}
-      >
-        <div
-          className="flex items-start justify-between"
-          style={{ width: stageWidth > 0 ? stageWidth : '100%', paddingInline: 12 }}
-        >
-          <div className="pointer-events-auto flex items-center gap-1">
-            <StageButton
-              label={t.t(playing ? 'player.pause' : 'player.play')}
-              onClick={() => {
-                playerRef.current?.toggle();
-              }}
-            >
-              {playing ? <Pause size={18} /> : <Play size={18} />}
-            </StageButton>
-
-            {/* The slider grows out of the icon on hover, the way YouTube's does. It stays open
-                while the pointer is anywhere over the pair, so travelling from the icon to the
-                slider does not close the thing being travelled to. */}
-            <div
-              className="flex items-center"
-              onPointerEnter={(event) => {
-                if (event.pointerType === 'mouse') setVolumeOpen(true);
-              }}
-              onPointerLeave={() => {
-                setVolumeOpen(false);
-              }}
-            >
-              <StageButton
-                label={t.t(muted ? 'player.unmute' : 'player.mute')}
-                onClick={() => {
-                  const next = !muted;
-                  setMuted(next);
-                  playerRef.current?.setMuted(next);
-                }}
-              >
-                {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
-              </StageButton>
-
-              <div
-                className="overflow-hidden"
-                style={{
-                  width: volumeOpen ? 88 : 0,
-                  opacity: volumeOpen ? 1 : 0,
-                  transition:
-                    'width var(--duration-volume) var(--ease-player-in), opacity var(--duration-volume) var(--ease-player-in)',
-                }}
-              >
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={muted ? 0 : volume}
-                  aria-label={t.t('player.volume')}
-                  tabIndex={volumeOpen ? 0 : -1}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    setVolume(next);
-                    playerRef.current?.setVolume(next);
-                    // Moving the slider off zero is an unmute; nobody drags a slider expecting
-                    // silence to continue.
-                    const shouldMute = next === 0;
-                    if (shouldMute !== muted) {
-                      setMuted(shouldMute);
-                      playerRef.current?.setMuted(shouldMute);
-                    }
-                  }}
-                  className="accent-brand ml-1 w-20 align-middle"
-                />
-              </div>
+            {/* Save and share, against the video's right edge — inside the overlay, so they move
+                with the short rather than hanging over the one scrolling past.
+                Keyed on the video so each short gets its own action state. */}
+            <div className="pointer-events-auto absolute top-1/2 left-full z-30 ml-4 -translate-y-1/2">
+              <VideoActions key={current.id} video={current} />
             </div>
           </div>
-
-          <div className="pointer-events-auto relative flex items-center gap-1">
-            {/* Only for a short that actually has captions — the embed is asked, not assumed. */}
-            {captionsAvailable && (
-              <StageButton
-                label={t.t('player.captions')}
-                active={captions}
-                onClick={() => {
-                  const next = !captions;
-                  setCaptions(next);
-                  playerRef.current?.setCaptions(next);
-                }}
-              >
-                {captions ? <Captions size={18} /> : <CaptionsOff size={18} />}
-              </StageButton>
-            )}
-
-            <StageButton
-              label={t.t('app.more')}
-              active={menuOpen}
-              onClick={() => {
-                setMenuOpen((open) => !open);
-              }}
-            >
-              <MoreVertical size={18} />
-            </StageButton>
-
-            <StageButton
-              label={t.t('player.fullscreen')}
-              onClick={() => {
-                playerRef.current?.requestFullscreen();
-              }}
-            >
-              <Maximize2 size={18} />
-            </StageButton>
-
-            {menuOpen && (
-              <div
-                className="bg-surface border-border absolute top-11 right-0 z-40 min-w-48 overflow-hidden rounded-lg border py-1 shadow-lg"
-                role="menu"
-              >
-                <MenuItem
-                  label={t.t('video.copyLink')}
-                  icon={<Link2 size={16} />}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void navigator.clipboard.writeText(`https://youtu.be/${current.id}`);
-                  }}
-                />
-                <MenuItem
-                  label={t.t('video.openExternally')}
-                  icon={<ExternalLink size={16} />}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void invoke('open_external', {
-                      url: `https://www.youtube.com/shorts/${current.id}`,
-                    }).catch(() => {
-                      // The link simply does not open; nothing here is recoverable in the UI.
-                    });
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Save and share, against the video's right edge. */}
-      <div
-        className="pointer-events-none absolute inset-y-0 z-30 flex items-center"
-        style={{ left: `calc(50% + ${stageWidth / 2}px + 16px)` }}
-      >
-        {/* Keyed on the video so each short gets its own action state, rather than carrying the
-            previous short's saved marker across. */}
-        <div className="pointer-events-auto">
-          <VideoActions key={current.id} video={current} />
-        </div>
+        )}
       </div>
 
       {/* Navigation in the corner, well clear of everything else: a mis-aimed press on "next"
@@ -655,7 +635,7 @@ export function ShortsFeed({
 /** The channel and title, drawn over the bottom of a short. */
 function ShortsMeta({ video }: { video: VideoSummary }): ReactNode {
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4 pt-16">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent p-4 pt-14">
       {/* Channel first, then the title — YouTube's order, and the more useful one: the channel is
           what you act on, the title is what you read. */}
       {video.channel_name !== undefined && (
