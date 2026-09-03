@@ -159,7 +159,11 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
             videoId={videoId}
             {...(resumeAt !== undefined ? { startAtMs: resumeAt } : {})}
             autoplay={settings.playback.autoplay_on_open}
-            onStateChange={setPlaybackState}
+            onStateChange={(state) => {
+              // The video id the change belongs to is ignored here: this page holds one video for
+              // its whole life, so there is no other short it could be about.
+              setPlaybackState(state);
+            }}
             onPosition={(positionMs, durationMs) => {
               positionRef.current = { positionMs, durationMs };
             }}

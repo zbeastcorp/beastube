@@ -209,7 +209,15 @@ export interface YouTubePlayerProps {
   /** Begin playing as soon as the player is ready. */
   autoplay?: boolean;
   /** Called on every state transition. */
-  onStateChange?: (state: PlaybackState) => void;
+  /**
+   * Called when playback state changes, with the video the change belongs to.
+   *
+   * The id is not decoration. One player serves a whole feed, and an event queued for the outgoing
+   * video can be delivered after the caller has already re-rendered around the incoming one — so a
+   * handler that assumed "the current one" would record the *previous* short as having started.
+   * `null` only before any video has been loaded.
+   */
+  onStateChange?: (state: PlaybackState, videoId: VideoId | null) => void;
   /**
    * Called with the playhead position while playing.
    *
@@ -347,7 +355,11 @@ export function YouTubePlayer({
   // Callbacks are wrapped as effect events so changing one does not tear down and rebuild the
   // player — which would restart playback from the beginning every time a parent re-rendered.
   const reportState = useEffectEvent((state: PlaybackState) => {
-    onStateChange?.(state);
+    // `loadedIdRef` is set synchronously by `swapVideo`, before `loadVideoById` is issued, so it is
+    // the player's own view of which video an event belongs to — and during the window between a
+    // re-render and the swap effect that follows it, that is the *old* video, which is exactly the
+    // case this exists to distinguish.
+    onStateChange?.(state, loadedIdRef.current);
   });
   const reportPosition = useEffectEvent((positionMs: number, durationMs: number) => {
     onPosition?.(positionMs, durationMs);

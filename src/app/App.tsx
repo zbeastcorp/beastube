@@ -110,7 +110,7 @@ function Shell(): ReactNode {
           // view's scroll offset, and so its enter animation replays.
           key={route.name}
         >
-          <div className="animate-fade-in mx-auto max-w-[var(--layout-content-max)] px-6 pt-2 pb-16">
+          <div className="animate-route-in mx-auto max-w-[var(--layout-content-max)] px-6 pt-2 pb-16">
             {renderRoute(route)}
           </div>
         </main>

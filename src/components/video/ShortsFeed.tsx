@@ -691,7 +691,13 @@ export function ShortsFeed({
                   // on its Shorts surface. Every control drawn in its place drives the player for
                   // real.
                   controls={false}
-                  onStateChange={(playbackState) => {
+                  onStateChange={(playbackState, forId) => {
+                    // Events for the short just scrolled away from are dropped. The embed can
+                    // deliver the outgoing video's `playing` after this component has re-rendered
+                    // around the incoming one, and crediting it to the wrong short faded the
+                    // poster off a video that had not started — a black frame, intermittently,
+                    // which is the shape of the original complaint.
+                    if (forId !== null && forId !== current.id) return;
                     setPlaying(playbackState === 'playing' || playbackState === 'buffering');
                     // Something played, so the run of failures is over. Reset here rather than on
                     // arrival at a short: arriving proves nothing, playing does.

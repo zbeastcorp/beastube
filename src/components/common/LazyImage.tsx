@@ -32,10 +32,16 @@ import { useCallback, useRef, useState, type ReactNode, type SyntheticEvent } fr
 /**
  * How far outside the viewport counts as "near".
  *
- * Roughly a screen and a half of runway at typical window heights, so an image is requested and
- * decoded well before it is scrolled to and appears already there rather than fading in late.
+ * Roughly a screen and a half of vertical runway at typical window heights, so an image is
+ * requested and decoded well before it is scrolled to and appears already there rather than
+ * fading in late.
+ *
+ * The horizontal margin is not incidental. The shorts shelves scroll sideways, and with no
+ * horizontal runway a card just off the right edge held no image at all until it was dragged into
+ * view — so every sideways scroll popped in blank tiles that then filled. Six hundred pixels is
+ * about three shelf cards ahead.
  */
-const ROOT_MARGIN = '900px 0px';
+const ROOT_MARGIN = '900px 600px';
 
 const callbacks = new WeakMap<Element, () => void>();
 let observer: IntersectionObserver | null = null;

@@ -77,6 +77,8 @@
   --duration-normal: 150ms;
   --duration-slow: 200ms;
   --duration-sidebar: 180ms;
+  /* Screen-to-screen. Deliberately short: see `.animate-route-in`. */
+  --duration-route: 110ms;
   /* YouTube's own easing curve. */
   --ease-yt: cubic-bezier(0.05, 0, 0, 1);
   /*
@@ -436,14 +438,22 @@
     }
   }
 
-  /* Cards and rows: YouTube fades in newly loaded content rather than popping it in. */
-  .animate-fade-in {
-    animation: fade-in var(--duration-slow) var(--ease-yt) both;
+  /*
+   * The transition between screens.
+   *
+   * Short, and it does not start from nothing. This used to be a 200ms fade from `opacity: 0`, and
+   * once feeds began painting from cache on their first frame that fade became the slowest part of
+   * a navigation — the content was fully laid out and simply invisible for the first hundred
+   * milliseconds of it. Starting part-way up means the screen is legible from the first frame and
+   * merely settles, which is what makes a click feel like it landed rather than like it queued.
+   */
+  .animate-route-in {
+    animation: route-in var(--duration-route) var(--ease-yt) both;
   }
 
-  @keyframes fade-in {
+  @keyframes route-in {
     from {
-      opacity: 0;
+      opacity: 0.55;
     }
     to {
       opacity: 1;
