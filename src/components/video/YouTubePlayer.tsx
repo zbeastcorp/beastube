@@ -277,6 +277,8 @@ export interface PlayerHandle {
   pause: () => void;
   /** Plays if paused, pauses if playing. Reads the live state rather than trusting a cached one. */
   toggle: () => void;
+  /** Moves the playhead, in milliseconds from the start. */
+  seek: (positionMs: number) => void;
   setMuted: (muted: boolean) => void;
   /** Sets the volume, `0..100`, as the embed expresses it. */
   setVolume: (volume: number) => void;
@@ -643,6 +645,15 @@ export function YouTubePlayer({
           playerRef.current?.playVideo();
         } catch {
           // The player throws once torn down; a command with nothing to command is a no-op.
+        }
+      },
+      seek: (positionMs: number) => {
+        try {
+          // `true` allows the request to be served before the buffer catches up, which is what
+          // makes a scrub feel like scrubbing rather than like waiting.
+          playerRef.current?.seekTo(Math.max(0, positionMs) / 1000, true);
+        } catch {
+          // Seeking before the media is cued throws; there is nothing to move yet.
         }
       },
       pause: () => {

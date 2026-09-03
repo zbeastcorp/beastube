@@ -165,6 +165,7 @@ export const en = {
     captions: 'Subtitles',
     captionsOff: 'Off',
     audioTrack: 'Audio track',
+    seek: 'Seek',
     seekForward: 'Forward {seconds}s',
     seekBackward: 'Back {seconds}s',
     autoplay: 'Autoplay',
