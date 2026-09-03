@@ -42,6 +42,12 @@ public static class Win32Window {
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT value, int size);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+    // Asks the window to draw itself into a device context. Unlike a screen grab this is unaffected
+    // by whatever happens to be on top of it, which is the whole reason it is used here.
+    // PW_RENDERFULLCONTENT = 2 is the flag that makes it work for hardware-composited windows such
+    // as WebView2; without it a Chromium surface renders blank.
+    [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
 }
 "@
 
@@ -75,9 +81,24 @@ if ($width -le 0 -or $height -le 0) {
     exit 1
 }
 
+# PrintWindow first, and a screen grab only as a fallback.
+#
+# A screen grab captures whatever pixels are at those coordinates, so any window sitting on top of
+# the app ends up in the file — which has produced screenshots of entirely unrelated applications
+# and, worse, conclusions drawn from them. PrintWindow asks the app to render itself and is immune
+# to that.
 $bitmap = New-Object System.Drawing.Bitmap $width, $height
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+$hdc = $graphics.GetHdc()
+$printed = [Win32Window]::PrintWindow($handle, $hdc, 2)
+$graphics.ReleaseHdc($hdc)
+
+if (-not $printed) {
+    # Some windows refuse it. A screen grab is better than nothing, but say so, because the result
+    # is only trustworthy while the window is genuinely on top.
+    Write-Warning 'PrintWindow failed; falling back to a screen grab, which captures anything on top'
+    $graphics.CopyFromScreen($rect.Left, $rect.Top, 0, 0, $bitmap.Size)
+}
 $graphics.Dispose()
 
 $directory = Split-Path -Parent $OutFile
