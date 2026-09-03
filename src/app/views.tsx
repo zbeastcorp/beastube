@@ -10,10 +10,12 @@
  * is never gated on a request (§87).
  */
 
-import { Clapperboard } from 'lucide-react';
+import { Clapperboard, ListVideo } from 'lucide-react';
 import { Fragment, useCallback, useRef, useState, type ReactNode } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
+import { LazyImage } from '@/components/common/LazyImage';
+import { playlistName } from '@/components/library/playlistName';
 import { ErrorState } from '@/components/common/ErrorState';
 import { DiagnosticsView } from '@/components/settings/DiagnosticsView';
 import { SettingsView } from '@/components/settings/SettingsView';
@@ -39,16 +41,20 @@ import {
 import { invoke } from '@/services/ipc';
 import type { RecommendedFeed } from '@/services/ipc';
 import { useFeedStore } from '@/stores/feed';
+import { useUiStore } from '@/stores/ui';
 import {
+  bestThumbnailFor,
   isPortraitVideo,
   type ChannelTab,
+  type LocalPlaylist,
+  type LocalPlaylistId,
   type SearchItem,
   type SearchResultKind,
   type VideoId,
   type VideoSummary,
 } from '@/types/domain';
 
-import { Link } from './router';
+import { Link, useNavigate } from './router';
 import type { Route } from './routes';
 
 /** Placeholder cards for a first load. Roughly one screenful at 1080p. */
@@ -59,6 +65,9 @@ const HISTORY_PAGE_SIZE = 60;
 
 /** How many recommendations the home feed asks for. Roughly three screenfuls at 1080p. */
 const RECOMMENDED_COUNT = 36;
+
+/** How many playlist items one screen loads. */
+const PLAYLIST_PAGE_SIZE = 200;
 
 /** How many Shorts the tab loads at once. */
 const SHORTS_COUNT = 40;
@@ -724,16 +733,224 @@ function ChannelView({
   );
 }
 
-function LibraryView(): ReactNode {
+/**
+ * The user's playlists.
+ *
+ * Local only, and the screen says so by what it offers: rename and delete, but no share, no
+ * collaborators, no sync. These lists exist on this machine and nowhere else (§42).
+ *
+ * Built-in lists come first and cannot be renamed or deleted. The storage layer enforces that; the
+ * controls are also absent here rather than present-and-refusing, which is the rule the rest of the
+ * application follows (§131).
+ */
+function PlaylistsView(): ReactNode {
   const t = useTranslation();
+  const openOverlay = useUiStore((state) => state.openOverlay);
+  const revision = useUiStore((state) => state.playlistRevision);
+
+  const playlists = useAsyncResource(
+    `playlists:${String(revision)}`,
+    () => invoke('get_playlists', undefined),
+    { navigation: true },
+  );
+  const lists = playlists.data ?? [];
+
   return (
     <>
-      <PageHeading>{t.t('library.title')}</PageHeading>
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <h1 className="text-text text-xl font-medium">{t.t('library.playlists')}</h1>
+        <button
+          type="button"
+          onClick={() => {
+            openOverlay({ kind: 'createPlaylist' });
+          }}
+          className="transition-surface bg-surface hover:bg-surface-hover text-text shrink-0 rounded-full px-4 py-2 text-sm font-medium"
+        >
+          {t.t('library.newPlaylist')}
+        </button>
+      </div>
+
+      {playlists.error && lists.length === 0 ? (
+        <ErrorState error={playlists.error} onRetry={playlists.reload} />
+      ) : lists.length === 0 && playlists.loading ? (
+        <FeedSkeleton />
+      ) : (
+        <VideoGrid>
+          {lists.map((list) => (
+            <PlaylistCard key={list.id} list={list} />
+          ))}
+        </VideoGrid>
+      )}
+    </>
+  );
+}
+
+/** One playlist in the grid: its cover, its name, and how much is in it. */
+function PlaylistCard({ list }: { list: LocalPlaylist }): ReactNode {
+  const t = useTranslation();
+  const cover = list.thumbnails ? bestThumbnailFor(list.thumbnails, 640) : undefined;
+
+  return (
+    <article className="feed-card flex flex-col gap-3">
+      <Link
+        to={{ name: 'localPlaylist', id: list.id }}
+        className="bg-surface relative block overflow-hidden rounded-md"
+        style={{ aspectRatio: '16 / 9' }}
+      >
+        {cover ? (
+          <LazyImage
+            src={cover.url}
+            alt=""
+            className="size-full object-cover"
+            placeholder={<div className="bg-surface size-full" aria-hidden="true" />}
+          />
+        ) : (
+          <div className="bg-surface text-text-muted grid size-full place-items-center">
+            <ListVideo size={28} />
+          </div>
+        )}
+        {/* The count sits on the cover, as YouTube's does, so the row below stays one line. */}
+        <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
+          {t.plural('library.itemCount', list.item_count, { count: String(list.item_count) })}
+        </span>
+      </Link>
+      <h3 className="text-text line-clamp-2 text-sm leading-snug font-medium">
+        {playlistName(list, t.t)}
+      </h3>
+    </article>
+  );
+}
+
+/**
+ * One playlist, and what is in it.
+ *
+ * The route has carried an identifier from the beginning and rendered the generic library page, so
+ * every playlist link landed on the same screen.
+ */
+function LocalPlaylistView({ id }: { id: LocalPlaylistId }): ReactNode {
+  const t = useTranslation();
+  const navigate = useNavigate();
+  const openOverlay = useUiStore((state) => state.openOverlay);
+  const closeOverlay = useUiStore((state) => state.closeOverlay);
+  const bump = useUiStore((state) => state.notePlaylistsChanged);
+  const revision = useUiStore((state) => state.playlistRevision);
+
+  const loaded = useAsyncResource(
+    `playlist:${String(id)}:${String(revision)}`,
+    async () => {
+      const [lists, items] = await Promise.all([
+        invoke('get_playlists', undefined),
+        invoke('get_playlist_items', { playlistId: id, limit: PLAYLIST_PAGE_SIZE, offset: 0 }),
+      ]);
+      return { list: lists.find((candidate) => candidate.id === id), items };
+    },
+    { navigation: true },
+  );
+
+  const list = loaded.data?.list;
+  const items = loaded.data?.items ?? [];
+
+  if (loaded.error && !loaded.data) {
+    return <ErrorState error={loaded.error} onRetry={loaded.reload} />;
+  }
+  // Settled, and no such playlist: deleted in another window, or a stale link.
+  if (!loaded.loading && !list) {
+    return (
       <EmptyState
         titleKey="library.empty.playlists"
         bodyKey="library.empty.playlistsHint"
         icon="library"
       />
+    );
+  }
+
+  return (
+    <>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-text truncate text-xl font-medium">
+            {list ? playlistName(list, t.t) : ''}
+          </h1>
+          {list && (
+            <p className="text-text-muted mt-1 text-sm">
+              {t.plural('library.itemCount', list.item_count, {
+                count: String(list.item_count),
+              })}
+            </p>
+          )}
+        </div>
+
+        {/* Absent for a built-in list rather than disabled: it cannot be renamed or deleted, and a
+            control that refuses is worse than one that is not there (§131). */}
+        {list && list.is_system !== true && (
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                openOverlay({ kind: 'renamePlaylist', id: list.id, currentName: list.name });
+              }}
+              className="transition-surface bg-surface hover:bg-surface-hover text-text rounded-full px-4 py-2 text-sm"
+            >
+              {t.t('app.rename')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                openOverlay({
+                  kind: 'confirm',
+                  titleKey: 'library.deletePlaylist',
+                  bodyKey: 'library.deletePlaylistHint',
+                  confirmKey: 'app.delete',
+                  onConfirm: () => {
+                    void invoke('delete_playlist', { playlistId: list.id }).then(() => {
+                      bump();
+                      closeOverlay();
+                      // Back to the list: staying on a playlist that no longer exists would show
+                      // the "no such playlist" state as though something had gone wrong.
+                      navigate({ name: 'library' });
+                    });
+                  },
+                });
+              }}
+              className="transition-surface border-danger text-danger hover:bg-danger rounded-full border px-4 py-2 text-sm hover:text-white"
+            >
+              {t.t('app.delete')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {loaded.loading && items.length === 0 ? (
+        <FeedSkeleton />
+      ) : items.length === 0 ? (
+        <EmptyState
+          titleKey="library.empty.playlistItems"
+          bodyKey="library.empty.playlistsHint"
+          icon="library"
+        />
+      ) : (
+        <VideoGrid>
+          {items.map((item) => (
+            <div key={item.video.id} className="flex flex-col gap-2">
+              <VideoCard video={item.video} />
+              <button
+                type="button"
+                onClick={() => {
+                  void invoke('remove_from_playlist', {
+                    playlistId: id,
+                    videoId: item.video.id,
+                  }).then(() => {
+                    bump();
+                  });
+                }}
+                className="transition-surface text-text-muted hover:text-text self-start text-xs"
+              >
+                {t.t('library.removeFromPlaylist')}
+              </button>
+            </div>
+          ))}
+        </VideoGrid>
+      )}
     </>
   );
 }
@@ -769,8 +986,9 @@ export function renderRoute(route: Route): ReactNode {
     case 'playlist':
       return <NotFoundView path={route.playlistId} />;
     case 'localPlaylist':
+      return <LocalPlaylistView id={route.id} />;
     case 'library':
-      return <LibraryView />;
+      return <PlaylistsView />;
     case 'history':
       return <HistoryView />;
     case 'bookmarks':

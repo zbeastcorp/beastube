@@ -31,12 +31,14 @@
 
 pub mod bookmarks;
 pub mod history;
+pub mod playlists;
 pub mod positions;
 pub mod searches;
 pub mod settings;
 
 pub use bookmarks::{BookmarksRepo, NewBookmark};
 pub use history::{HistoryRepo, WatchRecord};
+pub use playlists::PlaylistsRepo;
 pub use positions::PositionsRepo;
 pub use searches::{SearchEntry, SearchesRepo};
 pub use settings::SettingsRepo;
@@ -67,6 +69,8 @@ pub struct Repositories {
     pub history: HistoryRepo,
     /// Resume positions.
     pub positions: PositionsRepo,
+    /// The user's own playlists.
+    pub playlists: PlaylistsRepo,
     /// Bookmarks and their tags.
     pub bookmarks: BookmarksRepo,
     /// Remembered search queries.
@@ -81,6 +85,7 @@ impl Repositories {
             settings: SettingsRepo::new(db.clone()),
             history: HistoryRepo::new(db.clone()),
             positions: PositionsRepo::new(db.clone()),
+            playlists: PlaylistsRepo::new(db.clone()),
             bookmarks: BookmarksRepo::new(db.clone()),
             searches: SearchesRepo::new(db.clone()),
         }

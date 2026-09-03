@@ -27,6 +27,7 @@ use beastube_core::Settings;
 use beastube_core::error::{DomainError, ErrorPayload};
 use beastube_core::ids::{ChannelId, VideoId};
 use beastube_core::model::channel::{ChannelDetails, ChannelTab};
+use beastube_core::model::playlist::{LocalPlaylist, LocalPlaylistId, PlaylistItem};
 use beastube_core::model::search::{SearchItem, SearchResultKind};
 use beastube_core::model::video::{VideoDetails, VideoSummary};
 use beastube_core::model::{
@@ -582,6 +583,189 @@ pub(crate) async fn set_bookmark(
         .repositories
         .bookmarks
         .add(&bookmark, Timestamp::now())
+        .await
+        .map_err(fail)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Playlists
+// ---------------------------------------------------------------------------------------------
+//
+// Local only, and deliberately so. These are lists the user builds on this machine; nothing here
+// talks to the provider, nothing syncs, and no account is involved (§42). The schema, the model and
+// the ordering algorithm all shipped in the first migration — these commands are the layer that
+// finally makes the Playlists screen more than a promise.
+
+/// How many playlist items one request may return.
+const MAX_PLAYLIST_PAGE: u32 = 500;
+
+/// Every playlist, built-in ones first.
+///
+/// # Errors
+///
+/// Returns a payload if the read fails.
+#[tauri::command]
+pub(crate) async fn get_playlists(state: State<'_, AppState>) -> CommandResult<Vec<LocalPlaylist>> {
+    state.repositories.playlists.list().await.map_err(fail)
+}
+
+/// Creates a playlist and returns it as it now stands.
+///
+/// Returns the whole record rather than just an identifier, so the caller can render the new list
+/// without a second round trip.
+///
+/// # Errors
+///
+/// Returns a payload if the name is blank or too long, or if the write fails.
+#[tauri::command]
+pub(crate) async fn create_playlist(
+    state: State<'_, AppState>,
+    name: String,
+    description: Option<String>,
+) -> CommandResult<LocalPlaylist> {
+    let repo = &state.repositories.playlists;
+    let id = repo
+        .create(&name, description.as_deref(), Timestamp::now())
+        .await
+        .map_err(fail)?;
+
+    // Read back rather than assembling a record here: the derived count and cover belong to the
+    // storage layer, and inventing them at this level is how the two drift apart.
+    //
+    // A miss is not a "not found" the user can act on — the row was inserted a statement ago, so
+    // its absence means the database contradicted itself. It is reported as such rather than as an
+    // empty result the caller would have to invent a meaning for.
+    repo.get(id).await.map_err(fail)?.ok_or_else(|| ErrorPayload {
+        kind: beastube_core::error::ErrorKind::Database,
+        code: "database.write_lost".to_owned(),
+        message_key: "error.generic".to_owned(),
+        params: std::collections::BTreeMap::new(),
+        recovery: beastube_core::error::Recovery::RetryManual,
+        diagnostic: Some(format!("playlist {id} vanished between insert and read")),
+        correlation_id: None,
+    })
+}
+
+/// Renames a user playlist. Answers `false` for a built-in one, which cannot be renamed.
+///
+/// # Errors
+///
+/// Returns a payload if the name is blank or too long, or if the write fails.
+#[tauri::command]
+pub(crate) async fn rename_playlist(
+    state: State<'_, AppState>,
+    playlist_id: i64,
+    name: String,
+) -> CommandResult<bool> {
+    state
+        .repositories
+        .playlists
+        .rename(LocalPlaylistId::new(playlist_id), &name, Timestamp::now())
+        .await
+        .map_err(fail)
+}
+
+/// Deletes a user playlist and its items. Answers `false` for a built-in one.
+///
+/// # Errors
+///
+/// Returns a payload if the write fails.
+#[tauri::command]
+pub(crate) async fn delete_playlist(
+    state: State<'_, AppState>,
+    playlist_id: i64,
+) -> CommandResult<bool> {
+    state
+        .repositories
+        .playlists
+        .delete(LocalPlaylistId::new(playlist_id))
+        .await
+        .map_err(fail)
+}
+
+/// The videos in a playlist, in playlist order.
+///
+/// # Errors
+///
+/// Returns a payload if the read fails.
+#[tauri::command]
+pub(crate) async fn get_playlist_items(
+    state: State<'_, AppState>,
+    playlist_id: i64,
+    limit: u32,
+    offset: u32,
+) -> CommandResult<Vec<PlaylistItem>> {
+    state
+        .repositories
+        .playlists
+        .items(
+            LocalPlaylistId::new(playlist_id),
+            limit.clamp(1, MAX_PLAYLIST_PAGE),
+            offset,
+        )
+        .await
+        .map_err(fail)
+}
+
+/// Adds a video to a playlist. Answers `false` if it was already there.
+///
+/// Like bookmarking, this is an explicit user action and is recorded even in incognito: the user
+/// asked for it, and silently discarding it would be the surprising behaviour.
+///
+/// # Errors
+///
+/// Returns a payload if the write fails.
+#[tauri::command]
+pub(crate) async fn add_to_playlist(
+    state: State<'_, AppState>,
+    playlist_id: i64,
+    video: VideoSummary,
+) -> CommandResult<bool> {
+    state
+        .repositories
+        .playlists
+        .add_item(LocalPlaylistId::new(playlist_id), &video, Timestamp::now())
+        .await
+        .map_err(fail)
+}
+
+/// Removes a video from a playlist. Answers `false` if it was not in it.
+///
+/// # Errors
+///
+/// Returns a payload if the identifier is invalid or the write fails.
+#[tauri::command]
+pub(crate) async fn remove_from_playlist(
+    state: State<'_, AppState>,
+    playlist_id: i64,
+    video_id: String,
+) -> CommandResult<bool> {
+    let id = self::video_id(&video_id)?;
+    state
+        .repositories
+        .playlists
+        .remove_item(LocalPlaylistId::new(playlist_id), &id, Timestamp::now())
+        .await
+        .map_err(fail)
+}
+
+/// Which playlists already hold a video.
+///
+/// One query for the whole "add to playlist" menu, rather than one per playlist.
+///
+/// # Errors
+///
+/// Returns a payload if the identifier is invalid or the read fails.
+#[tauri::command]
+pub(crate) async fn playlists_containing(
+    state: State<'_, AppState>,
+    video_id: String,
+) -> CommandResult<Vec<LocalPlaylistId>> {
+    let id = self::video_id(&video_id)?;
+    state
+        .repositories
+        .playlists
+        .containing(&id)
         .await
         .map_err(fail)
 }

@@ -25,8 +25,11 @@ import type {
   ContinuationToken,
   ErrorPayload,
   HistoryEntry,
+  LocalPlaylist,
+  LocalPlaylistId,
   Page,
   PlaybackPosition,
+  PlaylistItem,
   SearchFilters,
   SearchResults,
   Settings,
@@ -187,6 +190,24 @@ export interface CommandMap {
   set_bookmark: { args: { video: VideoSummary }; result: null };
   remove_bookmark: { args: { videoId: VideoId }; result: boolean };
   is_bookmarked: { args: { videoId: VideoId }; result: boolean };
+
+  // Playlists. Local only: these are lists the user builds on this machine, with no account and no
+  // sync (§42). `playlists_containing` answers the whole "add to playlist" menu in one call rather
+  // than asking once per playlist.
+  get_playlists: { args: undefined; result: LocalPlaylist[] };
+  create_playlist: { args: { name: string; description?: string }; result: LocalPlaylist };
+  /** Answers `false` for a built-in list, which cannot be renamed. */
+  rename_playlist: { args: { playlistId: number; name: string }; result: boolean };
+  /** Answers `false` for a built-in list, which cannot be deleted. */
+  delete_playlist: { args: { playlistId: number }; result: boolean };
+  get_playlist_items: {
+    args: { playlistId: number; limit: number; offset: number };
+    result: PlaylistItem[];
+  };
+  /** Answers `false` if the video was already in the list. */
+  add_to_playlist: { args: { playlistId: number; video: VideoSummary }; result: boolean };
+  remove_from_playlist: { args: { playlistId: number; videoId: VideoId }; result: boolean };
+  playlists_containing: { args: { videoId: VideoId }; result: LocalPlaylistId[] };
 
   // --- session ---
   set_incognito: { args: { enabled: boolean }; result: boolean };

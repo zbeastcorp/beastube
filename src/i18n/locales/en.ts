@@ -223,6 +223,16 @@ export const en = {
       watch_later: 'Watch later',
       favorites: 'Favorites',
     },
+    newPlaylist: 'New playlist',
+    renamePlaylist: 'Rename playlist',
+    addToPlaylist: 'Save to playlist',
+    playlistName: 'Playlist name',
+    create: 'Create',
+    deletePlaylist: 'Delete this playlist?',
+    deletePlaylistHint:
+      'The playlist is removed from this device. The videos themselves are not affected.',
+    removeFromPlaylist: 'Remove from playlist',
+    systemPlaylistFixed: 'Built-in lists cannot be renamed or deleted.',
     empty: {
       history: 'Nothing watched yet',
       historyHint: 'Videos you watch will appear here. History is stored only on this device.',

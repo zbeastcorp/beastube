@@ -16,12 +16,13 @@
  * user pressing it again to find out whether it worked.
  */
 
-import { Bookmark, BookmarkCheck, Check, Share2 } from 'lucide-react';
+import { Bookmark, BookmarkCheck, Check, ListPlus, Share2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
 import { invoke } from '@/services/ipc';
+import { useUiStore } from '@/stores/ui';
 import type { VideoSummary } from '@/types/domain';
 
 /** How long a confirmation stays on the button before it returns to its resting label. */
@@ -103,6 +104,7 @@ export interface VideoActionsProps {
 /** Save and share, for the video currently on screen. */
 export function VideoActions({ video, orientation = 'vertical' }: VideoActionsProps): ReactNode {
   const t = useTranslation();
+  const openOverlay = useUiStore((state) => state.openOverlay);
   const [copied, setCopied] = useState(false);
 
   // The stored answer, so the control shows the library's real state rather than assuming "not
@@ -164,6 +166,18 @@ export function VideoActions({ video, orientation = 'vertical' }: VideoActionsPr
         horizontal={horizontal}
       >
         {saved ? <BookmarkCheck size={size} /> : <Bookmark size={size} />}
+      </RailButton>
+
+      {/* Opens the dialog rather than acting: which playlist is the question, and a button that
+          picked one for you would be answering it on your behalf. */}
+      <RailButton
+        label={t.t('library.addToPlaylist')}
+        onClick={() => {
+          openOverlay({ kind: 'addToPlaylist', video });
+        }}
+        horizontal={horizontal}
+      >
+        <ListPlus size={size} />
       </RailButton>
 
       <RailButton

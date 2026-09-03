@@ -15,6 +15,7 @@
 import { useEffect, type ReactNode } from 'react';
 
 import { NavigationProgress } from '@/components/shell/NavigationProgress';
+import { OverlayHost } from '@/components/shell/OverlayHost';
 import { preloadPlayerApi } from '@/components/video/YouTubePlayer';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
@@ -140,6 +141,9 @@ function Shell(): ReactNode {
           moves anything — as on YouTube, where the bar overlays the masthead rather than shifting
           it down two pixels. */}
       <NavigationProgress />
+      {/* At the root, so a dialog outlives whatever opened it — a menu that closes on click would
+          otherwise take the dialog it just opened down with it. */}
+      <OverlayHost />
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar collapsed={collapsed} />

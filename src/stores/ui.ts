@@ -9,6 +9,7 @@
 
 import { create } from 'zustand';
 
+import type { TranslationKey } from '@/i18n';
 import type { ErrorPayload, VideoSummary } from '@/types/domain';
 
 /** A transient message shown in the corner. */
@@ -32,9 +33,11 @@ export type Overlay =
   | { kind: 'renamePlaylist'; id: number; currentName: string }
   | {
       kind: 'confirm';
-      titleKey: string;
-      bodyKey: string;
-      confirmKey: string;
+      // Catalogue keys, not free strings: a dialog is the last place a missing translation should
+      // surface, and the type is what stops one being written by hand.
+      titleKey: TranslationKey;
+      bodyKey: TranslationKey;
+      confirmKey: TranslationKey;
       onConfirm: () => void;
     }
   | { kind: 'shortcuts' };
@@ -48,9 +51,21 @@ interface UiState {
   /** Set when a fatal shell-level error occurs, rendered by the root error surface. */
   fatalError: ErrorPayload | null;
 
+  /**
+   * Bumped whenever a playlist changes: created, renamed, deleted, or an item added or removed.
+   *
+   * Playlist views fold it into their request key, so an edit made in a dialog is reflected by
+   * whichever screen is behind that dialog without either of them knowing about the other. The
+   * alternative — having the dialog call back into the view that opened it — only works while that
+   * view is the one on screen, which is exactly when it is least true.
+   */
+  playlistRevision: number;
+
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   openOverlay: (overlay: Overlay) => void;
+  /** Tells every playlist view that what it is showing may be out of date. */
+  notePlaylistsChanged: () => void;
   closeOverlay: () => void;
   setFullscreen: (fullscreen: boolean) => void;
   setFatalError: (error: ErrorPayload | null) => void;
@@ -66,6 +81,7 @@ let toastSequence = 0;
 export const useUiStore = create<UiState>((set, get) => ({
   sidebarCollapsed: false,
   overlay: { kind: 'none' },
+  playlistRevision: 0,
   toasts: [],
   fullscreen: false,
   fatalError: null,
@@ -78,6 +94,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   },
   openOverlay: (overlay) => {
     set({ overlay });
+  },
+  notePlaylistsChanged: () => {
+    set((state) => ({ playlistRevision: state.playlistRevision + 1 }));
   },
   closeOverlay: () => {
     set({ overlay: { kind: 'none' } });
