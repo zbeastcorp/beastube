@@ -21,6 +21,7 @@ import { LazyImage } from '@/components/common/LazyImage';
 import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
 import { cachedDominantColor, sampleDominantColor } from '@/services/dominantColor';
+import { prefetchVideoDetails } from '@/services/videoCache';
 import { bestThumbnailFor, type VideoSummary } from '@/types/domain';
 
 /** Below this width the provider's grey "no thumbnail" placeholder is what came back. */
@@ -118,6 +119,9 @@ export const VideoCard = memo(function VideoCard({
         // every tap would fire an enter and start a preview the user never asked for.
         if (event.pointerType !== 'mouse') return;
         setHovered(true);
+        // The watch page's first request, issued now instead of on the click. Costs one request
+        // that is discarded when the guess is wrong, and saves the whole round trip when it is not.
+        prefetchVideoDetails(video.id);
 
         // Sampled on hover rather than on load. A screen holds around forty cards and a viewer
         // hovers one or two; measuring every thumbnail as it decodes would do forty times the work

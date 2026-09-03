@@ -15,6 +15,7 @@
 import { useEffect, type ReactNode } from 'react';
 
 import { NavigationProgress } from '@/components/shell/NavigationProgress';
+import { preloadPlayerApi } from '@/components/video/YouTubePlayer';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
 import { detectLocale, resolveLocale } from '@/i18n';
@@ -154,6 +155,11 @@ export function App(): ReactNode {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     preloadFeeds([SHORTS_FEED_LIMIT, HOME_SHORTS_LIMIT]);
+    // And the player API, for the same reason. It is a cross-origin script that must be fetched,
+    // parsed and run before the first player can exist, and paying for that on the first click
+    // means the viewer waits for it with nothing on screen. Started here, it has almost always
+    // resolved before a video is opened.
+    preloadPlayerApi();
   }, []);
 
   // Tell the native side the first frame is on screen, so it can reveal the window. Two frames,

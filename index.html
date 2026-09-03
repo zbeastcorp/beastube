@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <title>BEASTUBE</title>
+
+    <!--
+      Connections opened before anything asks for them.
+
+      Every one of these hosts is contacted within the first seconds of use, and each first contact
+      otherwise costs a DNS lookup, a TCP handshake and a TLS negotiation *in series* before a single
+      byte of the thing actually wanted is requested. Doing that work up front, while the window is
+      still painting, is the difference between a video starting when it is clicked and a video
+      starting a few hundred milliseconds after it is clicked.
+
+      `preconnect` for the two that are always used immediately; `dns-prefetch` for the rest, which
+      is cheaper and does not hold sockets open for hosts a given session might never touch.
+
+      Deliberately not listed: `*.googlevideo.com`, which serves the media itself. The subdomain is
+      chosen per request, so there is no fixed host to warm and a guess would open a connection to
+      the wrong one.
+    -->
+    <link rel="preconnect" href="https://www.youtube-nocookie.com" />
+    <link rel="preconnect" href="https://i.ytimg.com" crossorigin />
+    <link rel="dns-prefetch" href="https://www.youtube.com" />
+    <link rel="dns-prefetch" href="https://s.ytimg.com" />
+    <link rel="dns-prefetch" href="https://yt3.ggpht.com" />
   </head>
   <body>
     <div id="root"></div>

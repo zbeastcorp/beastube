@@ -26,6 +26,7 @@ import { YouTubePlayer } from '@/components/video/YouTubePlayer';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
 import { invoke } from '@/services/ipc';
+import { videoDetails } from '@/services/videoCache';
 import { useSettingsStore } from '@/stores/settings';
 import { isPortraitVideo, type PlaybackState, type VideoId } from '@/types/domain';
 
@@ -46,11 +47,11 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   const t = useTranslation();
   const settings = useSettingsStore((state) => state.settings);
 
-  const video = useAsyncResource(
-    `video:${videoId}`,
-    (signal) => invoke('get_video', { videoId }, { signal }),
-    { navigation: true },
-  );
+  // Through the shared cache, so a card the pointer rested on has already answered this by the
+  // time it is clicked and the page paints in one go rather than filling in around the player.
+  const video = useAsyncResource(`video:${videoId}`, (signal) => videoDetails(videoId, signal), {
+    navigation: true,
+  });
   const related = useAsyncResource(`related:${videoId}`, (signal) =>
     invoke('get_related', { videoId }, { signal }),
   );

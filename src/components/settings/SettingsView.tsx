@@ -26,7 +26,9 @@ import {
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { LOCALE_NAMES, SUPPORTED_LOCALES } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
+import { clearFeedCache } from '@/services/feedCache';
 import { invoke } from '@/services/ipc';
+import { clearVideoCache } from '@/services/videoCache';
 import { activePlaybackCapabilities } from '@/services/playback';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
@@ -286,6 +288,11 @@ function PrivacyPanel(): ReactNode {
     setBusy(true);
     void invoke('clear_cache', undefined)
       .then(() => {
+        // The in-memory caches too. Clearing only the native side left this session still holding
+        // feeds and video metadata fetched before the click, so the button did not mean what it
+        // said until the application was restarted.
+        clearFeedCache();
+        clearVideoCache();
         storage.reload();
       })
       .finally(() => {

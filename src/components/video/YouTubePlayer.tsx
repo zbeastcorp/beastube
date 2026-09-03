@@ -145,6 +145,23 @@ function errorKeyFor(code: number): string {
 /** Loads the IFrame API once per process, resolving when `window.YT` is usable. */
 let apiPromise: Promise<YouTubeApi> | null = null;
 
+/**
+ * Fetches the IFrame API before anything needs it.
+ *
+ * Called once at launch. The API is a cross-origin script that has to be fetched, parsed and
+ * executed before the first player can be constructed, and doing that on the first click means the
+ * viewer waits for it with nothing on screen. Started at launch, it is almost always resolved by
+ * the time a video is opened, and `loadPlayerApi` then returns an already-settled promise.
+ *
+ * Failure is swallowed: this is speculative, and a real mount reports its own failure through the
+ * same shared promise.
+ */
+export function preloadPlayerApi(): void {
+  void loadPlayerApi().catch(() => {
+    // Speculative; a real player mount surfaces the failure.
+  });
+}
+
 function loadPlayerApi(): Promise<YouTubeApi> {
   if (apiPromise) return apiPromise;
 
