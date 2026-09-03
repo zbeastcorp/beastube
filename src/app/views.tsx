@@ -29,8 +29,15 @@ import { WatchView } from '@/components/video/WatchView';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import type { TranslationKey } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
-import { sharedShortsFeed } from '@/services/feedCache';
+import {
+  lastFeed,
+  recommendedKey,
+  sharedRecommended,
+  sharedShortsFeed,
+  shortsKey,
+} from '@/services/feedCache';
 import { invoke } from '@/services/ipc';
+import type { RecommendedFeed } from '@/services/ipc';
 import { useFeedStore } from '@/stores/feed';
 import {
   isPortraitVideo,
@@ -261,14 +268,14 @@ function HomeView(): ReactNode {
   const revision = useFeedStore((state) => state.revision);
   const recommended = useAsyncResource(
     `home:recommended:${String(revision)}`,
-    (signal) => invoke('get_recommended', { limit: RECOMMENDED_COUNT }, { signal }),
+    (signal) => sharedRecommended(RECOMMENDED_COUNT, revision, signal),
     { navigation: true },
   );
   // Its own resource key rather than the tab's: the shelf asks for far fewer, and sharing a key
   // would make the two fight over one cache entry every time the user moved between them.
   const homeShorts = useAsyncResource(
     `home:shorts:${String(revision)}`,
-    (signal) => sharedShortsFeed(HOME_SHORTS_COUNT, signal),
+    (signal) => sharedShortsFeed(HOME_SHORTS_COUNT, revision, signal),
     { navigation: true },
   );
 
@@ -276,7 +283,12 @@ function HomeView(): ReactNode {
   const recentlyWatched = recent.data ?? [];
   // The grid stays landscape and the portrait ones move to the shelf, which is how YouTube's home
   // is arranged and is also what keeps grid rows from being sized by a card twice their height.
-  const recommendedAll = recommended.data?.videos ?? [];
+  // Falls back to whatever was last fetched, which is what makes arriving here instant. The shell
+  // keys the routed view on the route name, so coming back from a video remounts this component
+  // with no state at all — without the cache behind it, every return to Home is a skeleton.
+  const recommendedAll =
+    (recommended.data ?? lastFeed<RecommendedFeed>(recommendedKey(RECOMMENDED_COUNT)))?.videos ??
+    [];
   const suggestions = recommendedAll.filter((video) => !isPortraitVideo(video));
 
   // The shelf carries both what the shorts query returned and any portrait items lifted out of the
@@ -287,7 +299,7 @@ function HomeView(): ReactNode {
 
   const shelfSeen = new Set<string>();
   const shortsShelf = [
-    ...(homeShorts.data ?? []),
+    ...(homeShorts.data ?? lastFeed<VideoSummary[]>(shortsKey(HOME_SHORTS_COUNT)) ?? []),
     ...recommendedAll.filter(isPortraitVideo),
   ].filter((video) => {
     if (shelfSeen.has(video.id)) return false;
@@ -470,13 +482,22 @@ function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
   const revision = useFeedStore((state) => state.revision);
   const shorts = useAsyncResource(
     `shorts:feed:${String(revision)}`,
-    (signal) => sharedShortsFeed(SHORTS_COUNT, signal),
+    (signal) => sharedShortsFeed(SHORTS_COUNT, revision, signal),
     { navigation: true },
   );
 
   // Everything fetched after the first batch. The view owns the accumulation because the resource
   // hook models one request, not a growing list.
-  const [more, setMore] = useState<readonly VideoSummary[]>([]);
+  //
+  // Tagged with the revision it was fetched for, and read back only when that still matches. A
+  // refresh replaces the base feed, and pages fetched against the *previous* feed have no business
+  // being appended to the new one — deriving that here rather than resetting in an effect, which
+  // would be a render-cascade for something already knowable.
+  const [more, setMore] = useState<{ revision: number; items: readonly VideoSummary[] }>({
+    revision,
+    items: [],
+  });
+  const carried = more.revision === revision ? more.items : [];
   const loadingMore = useRef(false);
 
   // The same test the native side applies, restated here because the vertical player renders
@@ -484,32 +505,40 @@ function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
   // the bare `is_short` marker: that marker is absent for most short-form video this extractor
   // returns, and filtering on it emptied the tab.
   const seen = new Set<string>();
-  const videos = [...(shorts.data ?? []), ...more].filter((video) => {
+  const base = shorts.data ?? lastFeed<VideoSummary[]>(shortsKey(SHORTS_COUNT)) ?? [];
+  const videos = [...base, ...carried].filter((video) => {
     if (!isPortraitVideo(video) || seen.has(video.id)) return false;
     seen.add(video.id);
     return true;
   });
 
-  const loadMore = useCallback((recent: readonly VideoId[], all: readonly VideoId[]) => {
-    // One request in flight at a time. Without this, three quick swipes near the end fire three
-    // overlapping fetches that mostly return the same videos.
-    if (loadingMore.current) return;
-    loadingMore.current = true;
-    void invoke('get_more_shorts', {
-      seeds: [...recent],
-      exclude: [...all],
-      limit: SHORTS_PAGE_SIZE,
-    })
-      .then((batch) => {
-        setMore((current) => [...current, ...batch]);
+  const loadMore = useCallback(
+    (recent: readonly VideoId[], all: readonly VideoId[]) => {
+      // One request in flight at a time. Without this, three quick swipes near the end fire three
+      // overlapping fetches that mostly return the same videos.
+      if (loadingMore.current) return;
+      loadingMore.current = true;
+      void invoke('get_more_shorts', {
+        seeds: [...recent],
+        exclude: [...all],
+        limit: SHORTS_PAGE_SIZE,
       })
-      .catch(() => {
-        // The feed simply stops growing; the videos already loaded still play.
-      })
-      .finally(() => {
-        loadingMore.current = false;
-      });
-  }, []);
+        .then((batch) => {
+          setMore((current) =>
+            current.revision === revision
+              ? { revision, items: [...current.items, ...batch] }
+              : { revision, items: batch },
+          );
+        })
+        .catch(() => {
+          // The feed simply stops growing; the videos already loaded still play.
+        })
+        .finally(() => {
+          loadingMore.current = false;
+        });
+    },
+    [revision],
+  );
 
   return (
     <ShortsFeed

@@ -11,6 +11,11 @@
  * and its seeds per call, so the fetch genuinely returns something different rather than the same
  * list again.
  *
+ * ## Stale while revalidate
+ *
+ * Bumping this does not blank anything. `feedCache` keeps the previous batch and swaps the new one
+ * in when it arrives, so a click gives you a feed instantly *and* a different feed a moment later.
+ *
  * ## Why a revision rather than calling `reload()`
  *
  * Because the click happens in the sidebar and the fetch happens in a view that may not be mounted
@@ -20,10 +25,8 @@
 
 import { create } from 'zustand';
 
-import { clearFeedCache } from '@/services/feedCache';
-
 interface FeedState {
-  /** Bumped to mean "throw away what you have and fetch again". */
+  /** Bumped to mean "fetch again"; what you already have stays on screen meanwhile. */
   revision: number;
   /** Called when the user asks for a feed they may already be looking at. */
   refresh: () => void;
@@ -32,8 +35,10 @@ interface FeedState {
 export const useFeedStore = create<FeedState>((set) => ({
   revision: 0,
   refresh: () => {
-    // The shared cache is dropped first, so the refetch cannot be answered out of it.
-    clearFeedCache();
+    // Deliberately does NOT drop the cached feed. The revision alone tells the cache to fetch
+    // again; the old batch stays readable and on screen for as long as that takes. Dropping it
+    // first is what turned every click into a skeleton for the length of the slowest request in
+    // the application — the refresh was working, it just had nothing to show while it worked.
     set((state) => ({ revision: state.revision + 1 }));
   },
 }));

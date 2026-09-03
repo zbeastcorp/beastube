@@ -135,6 +135,9 @@ function Providers({ children }: { children: ReactNode }): ReactNode {
 const SHORTS_FEED_LIMIT = 40;
 const HOME_SHORTS_LIMIT = 16;
 
+/** Matches `RECOMMENDED_COUNT` in the views; the preload must ask for the same size to be reused. */
+const RECOMMENDED_LIMIT = 36;
+
 /** The application root. */
 export function App(): ReactNode {
   const load = useSettingsStore((state) => state.load);
@@ -154,7 +157,7 @@ export function App(): ReactNode {
   // which is the difference between arriving at a feed and arriving at a spinner.
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    preloadFeeds([SHORTS_FEED_LIMIT, HOME_SHORTS_LIMIT]);
+    preloadFeeds([SHORTS_FEED_LIMIT, HOME_SHORTS_LIMIT], RECOMMENDED_LIMIT);
     // And the player API, for the same reason. It is a cross-origin script that must be fetched,
     // parsed and run before the first player can exist, and paying for that on the first click
     // means the viewer waits for it with nothing on screen. Started here, it has almost always

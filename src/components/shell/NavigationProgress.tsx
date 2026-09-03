@@ -37,6 +37,16 @@ const RAMP_MS = 600;
 /** How long the full bar stays on screen after the work completes. */
 const FINISH_MS = 90;
 
+/**
+ * How long work must run before the bar appears at all.
+ *
+ * Most navigations are now answered out of the feed cache and settle within a microtask. Showing
+ * the bar for those would mean a red flicker across the top on every click that was *fast* — the
+ * exact opposite of what it is for. Below this threshold nothing is drawn, so the bar means "this
+ * is taking a moment", which is the only thing worth telling someone.
+ */
+const SHOW_DELAY_MS = 140;
+
 /** The navigation progress bar. Renders nothing at all while idle. */
 export function NavigationProgress(): ReactNode {
   // The *boolean*, not the count. Home starts two fetches, so the count goes 0 → 1 → 2, and an
@@ -72,8 +82,8 @@ export function NavigationProgress(): ReactNode {
       };
     }
 
-    // Work started. Show the bar and ramp toward the hold point.
-    track.style.opacity = '1';
+    // Work started — but not shown yet. If it finishes inside the grace period the viewer never
+    // sees anything, which is correct: nothing was slow enough to be worth reporting.
     let frame = 0;
     let start = 0;
     const step = (now: number) => {
@@ -82,8 +92,12 @@ export function NavigationProgress(): ReactNode {
       fill.style.transform = `scaleX(${String(progress * HOLD_AT)})`;
       if (progress < 1) frame = requestAnimationFrame(step);
     };
-    frame = requestAnimationFrame(step);
+    const reveal = setTimeout(() => {
+      track.style.opacity = '1';
+      frame = requestAnimationFrame(step);
+    }, SHOW_DELAY_MS);
     return () => {
+      clearTimeout(reveal);
       cancelAnimationFrame(frame);
     };
   }, [active]);
