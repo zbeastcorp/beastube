@@ -850,15 +850,26 @@ const DISCOVERY_TOPICS: &[&str] = &[
 /// the provider marks as short-form. The topics rotate with the day so the tab is not identical on
 /// every launch.
 const SHORTS_TOPICS: &[&str] = &[
-    "shorts",
-    "funny shorts",
-    "music shorts",
-    "cooking shorts",
-    "sports shorts",
-    "science shorts",
-    "art shorts",
-    "animal shorts",
+    "#shorts",
+    "funny #shorts",
+    "music #shorts",
+    "cooking #shorts",
+    "sports #shorts",
+    "science #shorts",
+    "art #shorts",
+    "animals #shorts",
 ];
+
+/// How many pages of each shorts topic to walk.
+///
+/// The extractor marks only a fraction of any result page as short-form — shorts mostly arrive
+/// inside a shelf renderer this build does not read — so a single page per topic yields a handful
+/// of videos. Depth is bought with pages rather than by loosening what counts as a short: a
+/// duration ceiling was tried and admitted letterboxed landscape videos into a vertical player,
+/// which is a worse tab than a shorter one. Pages walk sequentially within a topic (each needs the
+/// previous cursor) while topics run concurrently, so the wall-clock cost is one page's latency
+/// times this, not times the topic count.
+const SHORTS_PAGES_PER_TOPIC: usize = 6;
 
 /// Where a set of recommendations came from.
 ///
@@ -991,6 +1002,8 @@ pub(crate) async fn get_shorts_feed(
     // any result page as short-form, so a narrow fan-out yields a feed of two or three videos —
     // which is what a Shorts tab must not be.
     let topics = rotating(SHORTS_TOPICS, SHORTS_TOPICS.len());
+    // The extractor's own marker is the criterion, because it is the only signal that means
+    // "vertical". Duration is not a substitute: plenty of three-minute videos are landscape.
     let filters = SearchFilters {
         kind: SearchResultKind::Shorts,
         ..SearchFilters::default()
@@ -1001,11 +1014,26 @@ pub(crate) async fn get_shorts_feed(
         let filters = filters.clone();
         async move {
             let cancel = CancellationToken::new();
-            provider
-                .search(&topic, &filters, None, &cancel)
-                .await
-                .map(|results| videos_of(results.page.items))
-                .unwrap_or_default()
+            let mut collected = Vec::new();
+            let mut cursor = None;
+
+            for _ in 0..SHORTS_PAGES_PER_TOPIC {
+                let Ok(results) = provider
+                    .search(&topic, &filters, cursor.as_ref(), &cancel)
+                    .await
+                else {
+                    break;
+                };
+                collected.extend(videos_of(results.page.items));
+                // A page without a cursor is the end of the collection; asking again would repeat
+                // the first page forever.
+                cursor = results.page.continuation;
+                if cursor.is_none() {
+                    break;
+                }
+            }
+
+            collected
         }
     })
     .await;

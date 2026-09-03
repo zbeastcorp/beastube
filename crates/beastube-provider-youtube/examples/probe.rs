@@ -157,6 +157,61 @@ async fn main() {
         .await,
     );
 
+    // The Shorts tab depends on this far more than on search: a channel's Shorts tab is a real
+    // listing, whereas shorts in search results arrive inside a shelf the extractor mostly drops.
+    outcomes.push(
+        probe("channel shorts tab", || async {
+            client
+                .query()
+                .channel_videos_tab(
+                    "UCuAXFkgsw1L7xaCfnd5JJOw",
+                    rustypipe::param::ChannelVideoTab::Shorts,
+                )
+                .await
+                .map(|channel| {
+                    let shorts = channel.content.items.iter().filter(|v| v.is_short).count();
+                    format!(
+                        "{} items, {shorts} marked short, more: {}",
+                        channel.content.items.len(),
+                        channel.content.ctoken.is_some()
+                    )
+                })
+                .map_err(|error| error.to_string())
+        })
+        .await,
+    );
+
+    // Paging depends on this: without a working continuation endpoint a feed cannot scroll and the
+    // Shorts tab ends after whatever the first page happened to contain.
+    outcomes.push(
+        probe("search page 2", || async {
+            let first = client
+                .query()
+                .search::<YouTubeItem, _>("lofi hip hop")
+                .await
+                .map_err(|error| error.to_string())?;
+            let Some(ctoken) = first.items.ctoken.clone() else {
+                return Err("the first page reported no continuation".to_owned());
+            };
+            let second = client
+                .query()
+                .continuation::<YouTubeItem, _>(
+                    ctoken,
+                    rustypipe::model::paginator::ContinuationEndpoint::Search,
+                    None,
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(format!(
+                "page 1: {} items, page 2: {} items, more: {}",
+                first.items.items.len(),
+                second.items.len(),
+                second.ctoken.is_some()
+            ))
+        })
+        .await,
+    );
+
     // The home feed depends on this: without it there is no login-free discovery surface and the
     // first screen can only be built from the local library.
     outcomes.push(

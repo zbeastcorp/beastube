@@ -91,6 +91,29 @@ function useSuggestions(query: string, open: boolean): Suggestion[] {
   return resource.data ?? [];
 }
 
+/**
+ * Renders a suggestion with the part you have not typed in bold.
+ *
+ * YouTube's own weighting, and it earns its place: the bold run is exactly the new information, so
+ * a list of near-identical completions can be scanned by the differences rather than re-read in
+ * full. Falls back to plain text when the suggestion does not start with what was typed — which
+ * happens for spelling corrections and for entries recalled from history.
+ */
+function Completion({ text, typed }: { text: string; typed: string }): ReactNode {
+  const prefix = typed.trim();
+  const matches = prefix.length > 0 && text.toLowerCase().startsWith(prefix.toLowerCase());
+  if (!matches) return <span className="font-medium">{text}</span>;
+
+  // Sliced from the suggestion rather than rendering what was typed: the stored casing is the one
+  // to show, so typing "nasa" against a remembered "NASA launch" does not render two casings.
+  return (
+    <>
+      {text.slice(0, prefix.length)}
+      <span className="font-medium">{text.slice(prefix.length)}</span>
+    </>
+  );
+}
+
 /** The dropdown. Renders nothing when there is nothing to offer. */
 export function SearchSuggestions({
   query,
@@ -180,7 +203,9 @@ export function SearchSuggestions({
                 ) : (
                   <Search size={18} className="text-text-muted shrink-0" />
                 )}
-                <span className="text-text truncate text-md">{suggestion.text}</span>
+                <span className="text-text truncate text-md">
+                  <Completion text={suggestion.text} typed={query} />
+                </span>
               </button>
 
               {suggestion.from_history === true && (

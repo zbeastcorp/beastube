@@ -192,7 +192,7 @@ impl SearchProvider for YouTubeProvider {
         &self,
         query: &str,
         filters: &SearchFilters,
-        _continuation: Option<&ContinuationToken>,
+        continuation_token: Option<&ContinuationToken>,
         cancel: &CancellationToken,
     ) -> ProviderResult<SearchResults> {
         let trimmed = query.trim();
@@ -206,18 +206,36 @@ impl SearchProvider for YouTubeProvider {
         let filters = filters.clone().normalized();
         let client = self.query();
         let owned = trimmed.to_owned();
+        let cursor_in = continuation_token.map(|token| token.as_str().to_owned());
 
-        let items = Self::with_cancellation(cancel, async move {
-            client
-                .search::<YouTubeItem, _>(owned)
-                .await
-                .map_err(|error| classify(&error, "search"))
+        // A continuation is resumed through the extractor's continuation endpoint rather than by
+        // re-running the search: re-running would return page one again, which reads as a feed that
+        // refuses to scroll. The query is still required and echoed back, so a late page can be
+        // matched to the search it belongs to (§32).
+        let (page, corrected_query) = Self::with_cancellation(cancel, async move {
+            match cursor_in {
+                Some(token) => client
+                    .continuation::<YouTubeItem, _>(
+                        token,
+                        rustypipe::model::paginator::ContinuationEndpoint::Search,
+                        None,
+                    )
+                    .await
+                    // A continuation carries no spelling correction; the first page already
+                    // reported one if there was one.
+                    .map(|page| (page, None))
+                    .map_err(|error| classify(&error, "search_continuation")),
+                None => client
+                    .search::<YouTubeItem, _>(owned)
+                    .await
+                    .map(|results| (results.items, results.corrected_query))
+                    .map_err(|error| classify(&error, "search")),
+            }
         })
         .await?;
 
-        let cursor = continuation(items.items.ctoken.clone());
-        let mapped: Vec<SearchItem> = items
-            .items
+        let cursor = continuation(page.ctoken.clone());
+        let mapped: Vec<SearchItem> = page
             .items
             .into_iter()
             .filter_map(map::search_item)
@@ -236,7 +254,7 @@ impl SearchProvider for YouTubeProvider {
                 total_estimate: None,
             },
             estimated_total: None,
-            corrected_query: items.corrected_query,
+            corrected_query,
         })
     }
 
@@ -422,19 +440,26 @@ impl ChannelProvider for YouTubeProvider {
         _continuation: Option<&ContinuationToken>,
         cancel: &CancellationToken,
     ) -> ProviderResult<Page<VideoSummary>> {
-        if tab != ChannelTab::Videos {
-            return Err(ProviderError::Unsupported {
-                operation: "channel_content",
-                provider: PROVIDER_NAME,
-            });
-        }
+        // Videos, Shorts and Live are three tabs of the same endpoint. Playlists is a different
+        // shape entirely and is refused rather than mapped onto this one.
+        let extractor_tab = match tab {
+            ChannelTab::Videos => rustypipe::param::ChannelVideoTab::Videos,
+            ChannelTab::Shorts => rustypipe::param::ChannelVideoTab::Shorts,
+            ChannelTab::Live => rustypipe::param::ChannelVideoTab::Live,
+            ChannelTab::Playlists => {
+                return Err(ProviderError::Unsupported {
+                    operation: "channel_content",
+                    provider: PROVIDER_NAME,
+                });
+            }
+        };
 
         let client = self.query();
         let owned = id.as_str().to_owned();
 
         let channel = Self::with_cancellation(cancel, async move {
             client
-                .channel_videos(owned)
+                .channel_videos_tab(owned, extractor_tab)
                 .await
                 .map_err(|error| classify(&error, "channel_content"))
         })
@@ -500,7 +525,10 @@ impl MetadataProvider for YouTubeProvider {
             // The kind filter is applied locally; date and duration filters are not implemented,
             // so the UI must not offer them.
             search_filters: false,
-            pagination: false,
+            // Search resumes through the extractor's continuation endpoint. Other surfaces still
+            // return a single page, which is why this flag lives with the search capabilities
+            // rather than standing for the provider as a whole.
+            pagination: true,
         }
     }
 
