@@ -19,7 +19,8 @@
         "minWidth": 480,
         "minHeight": 320,
         "visible": false,
-        "center": true
+        "center": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling"
       }
     ],
     "security": {
