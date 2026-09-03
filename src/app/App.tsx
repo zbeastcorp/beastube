@@ -18,7 +18,7 @@ import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
 import { detectLocale, resolveLocale } from '@/i18n';
 import { TranslationProvider } from '@/i18n/context';
-import { listen } from '@/services/ipc';
+import { invoke, isTauriRuntime, listen } from '@/services/ipc';
 import { applyPresentation, useSettingsStore } from '@/stores/settings';
 import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
@@ -137,6 +137,22 @@ export function App(): ReactNode {
       setSidebarCollapsed(settings.appearance.sidebar_collapsed);
     });
   }, [load, setSidebarCollapsed]);
+
+  // Tell the native side the first frame is on screen, so it can reveal the window. Two frames,
+  // because one only guarantees the commit has been scheduled, not that it has been painted.
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        void invoke('frontend_ready', undefined).catch(() => {
+          // The watchdog in the shell shows the window regardless; a failure here is not fatal.
+        });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, []);
 
   return (
     <Providers>

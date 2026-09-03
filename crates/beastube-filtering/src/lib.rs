@@ -19,8 +19,18 @@
 // Lint policy is set workspace-wide in Cargo.toml. Pure logic with no FFI.
 #![forbid(unsafe_code)]
 
+pub mod adapter;
+pub mod diagnostics;
+pub mod engine;
 pub mod error;
 pub mod rule;
+pub mod ruleset;
+pub mod segment;
 
+pub use adapter::{ContentFilterAdapter, FilteringProvider, RequestFilterAdapter};
+pub use diagnostics::{FilteringDiagnostics, FilteringSnapshot, RuleCounts};
+pub use engine::{Decision, EngineConfig, FilterEngine, NeverBlockList};
 pub use error::{FilterError, FilterResult};
 pub use rule::{Rule, RuleKind, RuleMode};
+pub use ruleset::{RuleSet, RuleSetManager, RuleSetSource};
+pub use segment::{Segment, SegmentAction, SegmentSkipper, SkipTarget};

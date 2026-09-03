@@ -46,6 +46,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use beastube_core::error::DomainError;
 use beastube_core::settings::{FilteringMode, FilteringSettings};
 use beastube_core::time_util::Timestamp;
 use parking_lot::{Mutex, RwLock};
@@ -56,8 +57,8 @@ use tokio::sync::watch;
 use crate::adapter::FilteringProvider;
 use crate::diagnostics::{FilteringDiagnostics, RuleCounts};
 use crate::engine::{EngineConfig, FilterEngine};
-use crate::error::{FilterError, FilterResult, PatternRisk, SegmentProblem, VersionProblem};
-use crate::rule::{Rule, RuleKind, RuleMode};
+use crate::error::{FilterError, FilterResult, PatternRisk, VersionProblem};
+use crate::rule::{Rule, RuleKind};
 
 /// Maximum number of rules in one set.
 ///
@@ -523,6 +524,10 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
 }
 
 /// Validates one rule and prepares its matcher.
+///
+/// Takes the rule by value because the compiled form owns it; the pattern is only borrowed while
+/// the matcher is built.
+#[allow(clippy::needless_pass_by_value)]
 fn compile_rule(rule: Rule) -> FilterResult<CompiledRule> {
     let kind = rule.kind;
     let pattern = rule.pattern.trim();
@@ -547,7 +552,9 @@ fn compile_rule(rule: Rule) -> FilterResult<CompiledRule> {
 
     let matcher = match kind {
         RuleKind::BlockHost | RuleKind::AllowHost => Matcher::Host(compile_host(kind, pattern)?),
-        RuleKind::BlockUrl | RuleKind::AllowUrl => Matcher::Url(Box::new(compile_regex(kind, pattern)?)),
+        RuleKind::BlockUrl | RuleKind::AllowUrl => {
+            Matcher::Url(Box::new(compile_regex(kind, pattern)?))
+        }
         RuleKind::HideChannel => Matcher::Channel(pattern.to_owned()),
         RuleKind::HideKeyword => Matcher::Keyword(pattern.to_owned()),
         RuleKind::SkipSegment => Matcher::Category(compile_category(pattern)?),
@@ -973,6 +980,14 @@ struct ManagerState {
     previous: Option<Arc<ValidatedRuleSet>>,
     config: EngineConfig,
     activated_at: Instant,
+    /// Whether automatic rollback may still fire.
+    ///
+    /// Armed by an activation, disarmed by a rollback. Automatic rollback exists to protect a
+    /// *newly activated* set; once we have fallen back to the previous one, further automatic
+    /// rollback would discard known-good rules on the strength of failures that may have nothing
+    /// to do with filtering — and, with reports still in flight from the burst that caused the
+    /// first rollback, would do so immediately.
+    auto_rollback_armed: bool,
     failures: VecDeque<Instant>,
     last_rollback: Option<RollbackRecord>,
     rolled_back_versions: BTreeSet<String>,
@@ -1027,6 +1042,7 @@ impl RuleSetManager {
                 previous: None,
                 config,
                 activated_at: clock.now(),
+                auto_rollback_armed: false,
                 failures: VecDeque::new(),
                 last_rollback: None,
                 rolled_back_versions: BTreeSet::new(),
@@ -1165,6 +1181,8 @@ impl RuleSetManager {
             state.engine = Arc::clone(&engine);
             state.activated_at = self.clock.now();
             state.failures.clear();
+            // A newly activated set is what automatic rollback protects.
+            state.auto_rollback_armed = true;
             engine
         };
 
@@ -1216,6 +1234,11 @@ impl RuleSetManager {
         let now = self.clock.now();
         let expected_from = {
             let mut state = self.state.write();
+
+            // Only a newly activated set is subject to automatic rollback.
+            if !state.auto_rollback_armed {
+                return None;
+            }
 
             // A failure long after activation says more about the network than about the rules.
             if now.saturating_duration_since(state.activated_at) > self.policy.observation_period {
@@ -1304,6 +1327,9 @@ impl RuleSetManager {
             state.engine = Arc::clone(&engine);
             state.activated_at = self.clock.now();
             state.failures.clear();
+            // Disarm: the restored set is the known-good one, and reports still in flight from the
+            // burst that caused this rollback must not immediately roll it back again.
+            state.auto_rollback_armed = false;
             state.last_rollback = Some(record.clone());
             (record, engine)
         };
@@ -1341,6 +1367,7 @@ impl RuleSetManager {
 mod tests {
     use super::*;
     use crate::engine::NeverBlockList;
+    use crate::rule::RuleMode;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     /// A clock the test drives by hand, so windows are exercised without sleeping.
@@ -1586,7 +1613,14 @@ mod tests {
 
     #[test]
     fn versions_are_validated_like_identifiers() {
-        for version in ["", " ", "v 1", "v/1", "../etc", &"v".repeat(MAX_VERSION_LEN + 1)] {
+        for version in [
+            "",
+            " ",
+            "v 1",
+            "v/1",
+            "../etc",
+            &"v".repeat(MAX_VERSION_LEN + 1),
+        ] {
             assert!(
                 matches!(
                     RuleSet::new(version, RuleSetSource::Update).validate(),
@@ -1715,9 +1749,11 @@ mod tests {
 
     #[test]
     fn user_settings_become_a_user_owned_set() {
-        let mut settings = FilteringSettings::default();
-        settings.allowlist = vec!["cdn.example".to_owned()];
-        settings.blocklist = vec!["tracker.example".to_owned()];
+        let settings = FilteringSettings {
+            allowlist: vec!["cdn.example".to_owned()],
+            blocklist: vec!["tracker.example".to_owned()],
+            ..FilteringSettings::default()
+        };
 
         let set = RuleSet::from_user_settings(&settings, "user.1");
         assert_eq!(set.source, RuleSetSource::User);
@@ -1736,10 +1772,16 @@ mod tests {
         let before = manager.engine();
 
         let err = manager
-            .activate(rule_set("bad.1", vec![Rule::new(RuleKind::BlockUrl, "(a+)+")]))
+            .activate(rule_set(
+                "bad.1",
+                vec![Rule::new(RuleKind::BlockUrl, "(a+)+")],
+            ))
             .unwrap_err();
 
-        assert!(matches!(err.root_cause(), FilterError::UnsafePattern { .. }));
+        assert!(matches!(
+            err.root_cause(),
+            FilterError::UnsafePattern { .. }
+        ));
         assert_eq!(manager.active_version(), "good.1");
         assert!(Arc::ptr_eq(&before, &manager.engine()));
         assert_eq!(manager.previous_version(), None);
@@ -1761,7 +1803,9 @@ mod tests {
         assert_eq!(manager.active_version(), "bad.2");
         assert!(manager.engine().evaluate_host("cdn.example").is_blocked());
 
-        let record = manager.rollback(RollbackReason::Manual).expect("rolled back");
+        let record = manager
+            .rollback(RollbackReason::Manual)
+            .expect("rolled back");
 
         assert_eq!(record.from_version, "bad.2");
         assert_eq!(record.to_version, "good.1");
@@ -1784,7 +1828,9 @@ mod tests {
             vec![Rule::new(RuleKind::BlockHost, "tracker.example")],
         ));
 
-        let record = manager.rollback(RollbackReason::Manual).expect("rolled back");
+        let record = manager
+            .rollback(RollbackReason::Manual)
+            .expect("rolled back");
         assert_eq!(record.to_version, INERT_VERSION);
         assert!(manager.active().is_inert());
 
@@ -1907,7 +1953,9 @@ mod tests {
                 vec![Rule::new(RuleKind::BlockHost, "cdn.example")],
             ))
             .expect("valid");
-        manager.rollback(RollbackReason::Manual).expect("rolled back");
+        manager
+            .rollback(RollbackReason::Manual)
+            .expect("rolled back");
 
         let err = manager
             .activate(rule_set(
@@ -1967,16 +2015,29 @@ mod tests {
             vec![Rule::new(RuleKind::BlockHost, "tracker.example").with_min_mode(RuleMode::Strict)],
         ));
         assert!(
-            manager.engine().evaluate_host("tracker.example").is_allowed(),
+            manager
+                .engine()
+                .evaluate_host("tracker.example")
+                .is_allowed(),
             "a strict rule is inert in standard mode"
         );
 
         manager.set_filtering(true, FilteringMode::Strict);
-        assert!(manager.engine().evaluate_host("tracker.example").is_blocked());
+        assert!(
+            manager
+                .engine()
+                .evaluate_host("tracker.example")
+                .is_blocked()
+        );
         assert_eq!(manager.active_version(), "v1", "rules were not reloaded");
 
         manager.set_filtering(false, FilteringMode::Strict);
-        assert!(manager.engine().evaluate_host("tracker.example").is_allowed());
+        assert!(
+            manager
+                .engine()
+                .evaluate_host("tracker.example")
+                .is_allowed()
+        );
     }
 
     #[tokio::test]
@@ -1995,8 +2056,99 @@ mod tests {
         let engine = updates.borrow_and_update().clone();
         assert_eq!(engine.rule_set().version(), "v2");
 
-        manager.rollback(RollbackReason::Manual).expect("rolled back");
+        manager
+            .rollback(RollbackReason::Manual)
+            .expect("rolled back");
         updates.changed().await.expect("rollback publishes too");
         assert_eq!(updates.borrow().rule_set().version(), "v1");
+    }
+}
+
+#[cfg(test)]
+mod rollback_arming_tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use super::*;
+    use crate::engine::NeverBlockList;
+
+    fn armed_manager() -> Arc<RuleSetManager> {
+        let manager = Arc::new(
+            RuleSetManager::new(
+                ValidatedRuleSet::inert(),
+                EngineConfig::new(
+                    true,
+                    FilteringMode::Standard,
+                    NeverBlockList::playback_critical(),
+                ),
+                Arc::new(FilteringDiagnostics::new()),
+            )
+            .with_policy(RollbackPolicy {
+                failure_threshold: 2,
+                failure_window: Duration::from_secs(60),
+                observation_period: Duration::from_secs(600),
+            }),
+        );
+        manager
+            .activate(RuleSet::new("candidate.1", RuleSetSource::Update))
+            .expect("valid candidate");
+        manager
+    }
+
+    #[test]
+    fn automatic_rollback_is_disarmed_until_something_is_activated() {
+        // A freshly constructed manager has activated nothing, so failures reported against the
+        // initial set must not roll it back.
+        let manager = RuleSetManager::new(
+            ValidatedRuleSet::inert(),
+            EngineConfig::standard(),
+            Arc::new(FilteringDiagnostics::new()),
+        )
+        .with_policy(RollbackPolicy {
+            failure_threshold: 1,
+            failure_window: Duration::from_secs(60),
+            observation_period: Duration::from_secs(600),
+        });
+
+        assert!(manager.report_playback_failure().is_none());
+        assert!(manager.report_playback_failure().is_none());
+    }
+
+    #[test]
+    fn a_burst_of_failures_rolls_back_exactly_once() {
+        // Regression: reports still in flight when the first rollback lands used to roll the
+        // *restored* set back too, dropping the application to the inert set.
+        let manager = armed_manager();
+
+        let rollbacks: usize = (0..16)
+            .filter(|_| manager.report_playback_failure().is_some())
+            .count();
+
+        assert_eq!(
+            rollbacks, 1,
+            "a single burst must produce a single rollback"
+        );
+    }
+
+    #[test]
+    fn activating_again_re_arms_automatic_rollback() {
+        let manager = armed_manager();
+        assert!(
+            (0..2).any(|_| manager.report_playback_failure().is_some()),
+            "the armed set rolls back"
+        );
+        assert!(
+            manager.report_playback_failure().is_none(),
+            "and stays disarmed afterwards"
+        );
+
+        manager
+            .activate(RuleSet::new("candidate.2", RuleSetSource::Update))
+            .expect("valid candidate");
+
+        assert!(
+            (0..2).any(|_| manager.report_playback_failure().is_some()),
+            "a new activation must be protected again"
+        );
     }
 }

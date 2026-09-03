@@ -3,6 +3,46 @@
 //! Wires the native subsystems together and hands them to the Tauri runtime. Subsystem logic lives
 //! in the `beastube-*` crates; this crate is composition and OS integration only, so that no
 //! subsystem depends on Tauri and each can be tested without a running webview.
+//!
+//! ## Startup ordering
+//!
+//! The window is created hidden and shown once the frontend reports it has painted (§86). Showing
+//! it immediately produces a white flash followed by the dark theme — small, but the first thing a
+//! user sees. A watchdog shows the window anyway after a short deadline, so a frontend that fails
+//! to load can never leave the application running with no visible window.
+
+use std::time::Duration;
+
+use tauri::{Manager, WindowEvent};
+
+/// How long to wait for the frontend's ready signal before showing the window regardless.
+///
+/// Long enough for a cold Vite dev server to compile and paint, short enough that a genuinely
+/// broken frontend surfaces as a visible window with an error rather than as nothing at all.
+const SHOW_WINDOW_DEADLINE: Duration = Duration::from_secs(10);
+
+/// Label of the main window, matching `tauri.conf.json`.
+const MAIN_WINDOW: &str = "main";
+
+/// Called by the frontend once it has rendered its first frame.
+///
+/// Idempotent: showing an already-visible window is a no-op, so the watchdog and the frontend
+/// racing each other is harmless.
+// Tauri's command macro requires state arguments by value; the handle is a cheap refcounted
+// clone, so this is not the allocation it appears to be.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+fn frontend_ready(app: tauri::AppHandle) {
+    show_main_window(&app);
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+        // Errors here mean the window is already gone (a fast quit), which is not worth surfacing.
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
 
 /// Builds and runs the desktop application.
 ///
@@ -12,6 +52,36 @@
 /// `tauri.conf.json` — a build-time defect rather than a runtime condition worth recovering from.
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .invoke_handler(tauri::generate_handler![frontend_ready])
+        .setup(|app| {
+            let handle = app.handle().clone();
+
+            // Watchdog: if the frontend never reports ready — a bundling failure, a JavaScript
+            // error before the first paint — show the window anyway rather than leaving a process
+            // running with nothing on screen.
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(SHOW_WINDOW_DEADLINE).await;
+                if let Some(window) = handle.get_webview_window(MAIN_WINDOW)
+                    && !window.is_visible().unwrap_or(false)
+                {
+                    tracing::warn!(
+                        "frontend did not report ready within {}s; showing the window anyway",
+                        SHOW_WINDOW_DEADLINE.as_secs()
+                    );
+                    show_main_window(&handle);
+                }
+            });
+
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { .. } = event {
+                tracing::info!(label = window.label(), "window close requested");
+            }
+        })
         .run(tauri::generate_context!())
         .expect("failed to start the BEASTUBE application shell");
 }

@@ -191,6 +191,8 @@ export interface CommandMap {
   get_diagnostics: { args: undefined; result: Diagnostics };
 
   // --- window and OS ---
+  /** Reports that the first frame has painted, so the shell can reveal the window. */
+  frontend_ready: { args: undefined; result: null };
   open_external: { args: { url: string }; result: null };
   set_always_on_top: { args: { enabled: boolean }; result: null };
   toggle_mini_player: { args: { enabled: boolean }; result: null };
