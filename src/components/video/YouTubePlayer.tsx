@@ -49,6 +49,9 @@ interface YouTubePlayerInstance {
   mute: () => void;
   unMute: () => void;
   setPlaybackRate: (rate: number) => void;
+  getPlaybackRate: () => number;
+  /** The rates this player will actually accept. Asked rather than assumed. */
+  getAvailablePlaybackRates: () => number[];
   loadVideoById: (options: { videoId: string; startSeconds?: number }) => void;
   /** Names of the option modules the player currently has, e.g. `captions`. */
   getOptions: () => string[];
@@ -279,6 +282,16 @@ export interface PlayerHandle {
   toggle: () => void;
   /** Moves the playhead, in milliseconds from the start. */
   seek: (positionMs: number) => void;
+  /**
+   * Playback speed, and the speeds on offer.
+   *
+   * These are asked of the player rather than hardcoded, so the menu can never list a rate the
+   * player would refuse. Unlike quality — which the IFrame API documents as a no-op — speed is
+   * genuinely supported, which is why it is the one thing the settings menu can actually change.
+   */
+  rate: () => number;
+  availableRates: () => number[];
+  setRate: (rate: number) => void;
   setMuted: (muted: boolean) => void;
   /** Sets the volume, `0..100`, as the embed expresses it. */
   setVolume: (volume: number) => void;
@@ -643,6 +656,28 @@ export function YouTubePlayer({
       play: () => {
         try {
           playerRef.current?.playVideo();
+        } catch {
+          // The player throws once torn down; a command with nothing to command is a no-op.
+        }
+      },
+      rate: () => {
+        try {
+          return playerRef.current?.getPlaybackRate() ?? 1;
+        } catch {
+          return 1;
+        }
+      },
+      availableRates: () => {
+        try {
+          return playerRef.current?.getAvailablePlaybackRates() ?? [];
+        } catch {
+          // Nothing to offer is the honest answer; the menu omits the section entirely.
+          return [];
+        }
+      },
+      setRate: (rate: number) => {
+        try {
+          playerRef.current?.setPlaybackRate(rate);
         } catch {
           // The player throws once torn down; a command with nothing to command is a no-op.
         }

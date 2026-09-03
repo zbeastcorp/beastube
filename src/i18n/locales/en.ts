@@ -161,6 +161,7 @@ export const en = {
     miniPlayer: 'Mini player',
     theatre: 'Theatre mode',
     speed: 'Playback speed',
+    speedNormal: 'Normal',
     quality: 'Quality',
     captions: 'Subtitles',
     captionsOff: 'Off',
