@@ -14,6 +14,8 @@ import type { ReactNode } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
+import { DiagnosticsView } from '@/components/settings/DiagnosticsView';
+import { SettingsView } from '@/components/settings/SettingsView';
 import { VideoCard, VideoCardSkeleton, VideoGrid } from '@/components/video/VideoCard';
 import { WatchView } from '@/components/video/WatchView';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
@@ -86,7 +88,10 @@ function SearchResultCard({ item }: { item: SearchItem }): ReactNode {
   const cover = item.thumbnails?.at(-1);
   return (
     <Link to={{ name: 'playlist', playlistId: item.id }} className="flex flex-col gap-3">
-      <div className="bg-surface relative overflow-hidden rounded-md" style={{ aspectRatio: '16 / 9' }}>
+      <div
+        className="bg-surface relative overflow-hidden rounded-md"
+        style={{ aspectRatio: '16 / 9' }}
+      >
         {cover && <img src={cover.url} alt="" loading="lazy" className="size-full object-cover" />}
         {item.video_count !== undefined && (
           <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1.5 py-0.5 text-2xs font-medium text-white">
@@ -232,9 +237,9 @@ function historyToSummary(entry: {
 }
 
 /** Watched fraction, or undefined when the duration is unknown. */
-function progressOf(entry: { position: { position_ms: number; duration_ms?: number } }):
-  | number
-  | undefined {
+function progressOf(entry: {
+  position: { position_ms: number; duration_ms?: number };
+}): number | undefined {
   const { position_ms, duration_ms } = entry.position;
   if (duration_ms === undefined || duration_ms <= 0) return undefined;
   return Math.min(1, position_ms / duration_ms);
@@ -392,26 +397,6 @@ function LibraryView(): ReactNode {
         bodyKey="library.empty.playlistsHint"
         icon="library"
       />
-    </>
-  );
-}
-
-function SettingsView(): ReactNode {
-  const t = useTranslation();
-  return (
-    <>
-      <PageHeading>{t.t('settings.title')}</PageHeading>
-      <p className="text-text-muted max-w-prose text-base">{t.t('settings.privacy.subtitle')}</p>
-    </>
-  );
-}
-
-function DiagnosticsView(): ReactNode {
-  const t = useTranslation();
-  return (
-    <>
-      <PageHeading>{t.t('diagnostics.title')}</PageHeading>
-      <p className="text-text-muted max-w-prose text-base">{t.t('diagnostics.subtitle')}</p>
     </>
   );
 }

@@ -41,48 +41,72 @@ import { isErrorPayload } from '@/types/domain';
 // Command contract
 // ---------------------------------------------------------------------------------------------
 
-/** Storage and cache footprint, for the storage panel. */
+/**
+ * What the application is storing on this device.
+ *
+ * Mirrors `commands::StorageStats`. Paths are included so the privacy panel can name the exact
+ * files rather than describing them, which is what makes the local-only claim checkable (§100).
+ */
 export interface StorageStats {
   database_bytes: number;
-  cache_disk_bytes: number;
-  cache_memory_bytes: number;
-  cache_entries: number;
-  disk_free_bytes: number;
+  cache_bytes: number;
+  history_entries: number;
+  bookmark_entries: number;
+  position_entries: number;
+  database_path: string;
+  cache_path: string;
 }
 
-/** Content-filtering state, counts only — never which videos or URLs were seen (§99). */
-export interface FilteringDiagnostics {
+/** Rule counts by category, from `filtering::diagnostics::RuleCounts`. */
+export interface RuleCounts {
+  total: number;
+  allow: number;
+  block: number;
+  hide: number;
+  segment: number;
+}
+
+/**
+ * Content-filtering state, counts only.
+ *
+ * Mirrors `filtering::diagnostics::FilteringSnapshot`. There is deliberately no field here that
+ * could name a URL, host, video or channel — a filtering layer sees every request, so a diagnostic
+ * that carried one would amount to a browsing log (§99).
+ */
+export interface FilteringSnapshot {
   enabled: boolean;
   mode: string;
   active_rule_version: string | null;
-  rule_count: number;
-  matched_count: number;
-  filtered_count: number;
-  allowlist_count: number;
-  blocklist_count: number;
+  active_checksum: string | null;
+  counts: RuleCounts;
+  evaluated: number;
+  blocked: number;
+  allowed_by_rule: number;
+  allowed_never_block: number;
   failed_updates: number;
   rolled_back: boolean;
+  rollbacks: number;
+  rollback_reason_key: string | null;
   last_updated_at: number | null;
 }
 
-/** Everything the diagnostics screen shows. Never transmitted anywhere (§121). */
-export interface Diagnostics {
+/**
+ * Build and environment facts, from `commands::AppInfo`.
+ *
+ * Read out of the running process and rendered locally. Nothing on the diagnostics screen is
+ * transmitted anywhere (§121); "copy report" puts it on the clipboard so the user decides where it
+ * goes.
+ */
+export interface AppInfo {
   app_version: string;
-  os_version: string;
-  cpu: string;
-  cpu_cores: number;
-  total_memory_bytes: number;
-  process_memory_bytes: number;
-  gpu: string | null;
+  target: string;
+  os: string;
+  arch: string;
+  debug_build: boolean;
+  /** `null` when the runtime version cannot be determined — absent rather than guessed. */
   webview_version: string | null;
-  hardware_acceleration: boolean | null;
-  storage: StorageStats;
-  filtering: FilteringDiagnostics;
-  network_status: string;
-  tasks_in_flight: number;
-  tasks_queued: number;
-  provider_status: string;
   playback_adapter: string;
+  cpu_cores: number;
   uptime_ms: number;
 }
 
@@ -113,6 +137,10 @@ export interface CommandMap {
     result: SearchResults;
   };
   get_suggestions: { args: { prefix: string }; result: Suggestion[] };
+  /** The user's own most recent queries; empty in incognito. */
+  get_recent_searches: { args: { limit: number }; result: Suggestion[] };
+  delete_search: { args: { query: string }; result: boolean };
+  clear_search_history: { args: undefined; result: number };
   get_video: { args: { videoId: VideoId }; result: VideoDetails };
   get_related: { args: { videoId: VideoId }; result: Page<VideoSummary> };
   get_channel: { args: { channelId: ChannelId }; result: ChannelDetails };
@@ -121,6 +149,16 @@ export interface CommandMap {
     result: Page<VideoSummary>;
   };
   get_provider_capabilities: { args: undefined; result: ProviderCapabilities };
+
+  // --- filtering ---
+  get_filtering_diagnostics: { args: undefined; result: FilteringSnapshot };
+  reset_filter_rules: { args: undefined; result: FilteringSnapshot };
+
+  // --- storage ---
+  get_storage_stats: { args: undefined; result: StorageStats };
+  /** Deletes the extractor cache only; history, bookmarks and settings are untouched. */
+  clear_cache: { args: undefined; result: StorageStats };
+  get_app_info: { args: undefined; result: AppInfo };
 
   // --- library ---
   record_watch: { args: { video: VideoSummary }; result: null };

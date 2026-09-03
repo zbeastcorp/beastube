@@ -33,6 +33,27 @@ pub(crate) fn thumbnails(source: &[YtThumbnail]) -> ThumbnailSet {
         .collect()
 }
 
+/// Thumbnail renditions for a video the extractor did not report any for.
+///
+/// The watch-page payload carries no thumbnail list at all — `rustypipe`'s `VideoDetails` has no
+/// such field — so a video opened directly would be recorded into history as a grey rectangle. The
+/// image host serves a stable, documented path per video id, and it is the same host the embedded
+/// player itself loads its poster frame from, so deriving the URL asks for nothing that is not
+/// already being fetched.
+///
+/// Only `mqdefault` is emitted. It is the one rendition present for every video and genuinely
+/// 16:9; `hqdefault` and `sddefault` are 4:3 with black bars baked in, and `maxresdefault` is
+/// absent for a large share of videos, so both would trade a grey card for a wrong-looking one.
+///
+/// The identifier is a validated [`VideoId`], so it cannot introduce a path segment.
+pub(crate) fn derived_thumbnails(id: &VideoId) -> ThumbnailSet {
+    ThumbnailSet::new(vec![Thumbnail::sized(
+        format!("https://i.ytimg.com/vi/{}/mqdefault.jpg", id.as_str()),
+        320,
+        180,
+    )])
+}
+
 /// Converts a publication date into the domain timestamp.
 fn published_at(date: Option<time::OffsetDateTime>) -> Option<Timestamp> {
     date.map(Timestamp::from)
@@ -260,6 +281,18 @@ mod tests {
         let mut json = video_json("dQw4w9WgXcQ");
         json["is_short"] = serde_json::json!(true);
         assert!(video_summary(from_json(json)).expect("maps").is_short);
+    }
+
+    #[test]
+    fn a_derived_thumbnail_names_the_video_and_nothing_else() {
+        // The watch-page payload carries no thumbnails, so this is what history rows get. A
+        // validated id cannot introduce a path segment, and the assertion pins that.
+        let id = VideoId::new("dQw4w9WgXcQ").expect("valid");
+        let set = derived_thumbnails(&id);
+        let best = set.largest().expect("one rendition");
+        assert_eq!(best.url, "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg");
+        assert_eq!((best.width, best.height), (Some(320), Some(180)));
+        assert_eq!(set.len(), 1, "one rendition, the only universally present one");
     }
 
     #[test]

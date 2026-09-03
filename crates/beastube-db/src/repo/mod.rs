@@ -32,11 +32,13 @@
 pub mod bookmarks;
 pub mod history;
 pub mod positions;
+pub mod searches;
 pub mod settings;
 
 pub use bookmarks::{BookmarksRepo, NewBookmark};
 pub use history::{HistoryRepo, WatchRecord};
 pub use positions::PositionsRepo;
+pub use searches::{SearchEntry, SearchesRepo};
 pub use settings::SettingsRepo;
 
 use serde::Serialize;
@@ -67,6 +69,8 @@ pub struct Repositories {
     pub positions: PositionsRepo,
     /// Bookmarks and their tags.
     pub bookmarks: BookmarksRepo,
+    /// Remembered search queries.
+    pub searches: SearchesRepo,
 }
 
 impl Repositories {
@@ -78,6 +82,7 @@ impl Repositories {
             history: HistoryRepo::new(db.clone()),
             positions: PositionsRepo::new(db.clone()),
             bookmarks: BookmarksRepo::new(db.clone()),
+            searches: SearchesRepo::new(db.clone()),
         }
     }
 }
@@ -126,8 +131,6 @@ pub(crate) fn like_contains(needle: &str) -> String {
 }
 
 /// Builds a `LIKE` pattern matching rows starting with `needle`.
-// Consumed by the search-suggestion repository.
-#[allow(dead_code)]
 pub(crate) fn like_prefix(needle: &str) -> String {
     format!("{}%", escape_like(needle))
 }

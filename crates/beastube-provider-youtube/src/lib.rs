@@ -38,7 +38,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use beastube_core::ids::{ChannelId, PlaylistId, VideoId};
 use beastube_core::model::channel::{ChannelDetails, ChannelTab};
-use beastube_core::model::thumbnail::ThumbnailSet;
 use beastube_core::model::video::{LiveStatus, VideoDetails, VideoSummary};
 use beastube_core::model::{
     ContinuationToken, Page, PlaylistDetails, SearchFilters, SearchItem, SearchResultKind,
@@ -312,7 +311,12 @@ impl VideoProvider for YouTubeProvider {
             title: details.name,
             channel_id: ChannelId::new(channel.id.clone()).ok(),
             channel_name: Some(channel.name.clone()),
-            thumbnails: ThumbnailSet::empty(),
+            // The watch-page payload reports neither a thumbnail list nor a duration. The
+            // thumbnail is derived from the video id (see `map::derived_thumbnails`) so a video
+            // opened directly is not recorded into history as a grey rectangle; the duration is
+            // left unknown here and filled in by the first playback checkpoint, which reads it
+            // from the player rather than inventing it.
+            thumbnails: map::derived_thumbnails(id),
             duration_ms: None,
             published_at: details
                 .publish_date

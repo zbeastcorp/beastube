@@ -171,7 +171,9 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
                     })}
                   </span>
                 )}
-                {details.published_at !== undefined && <span>{t.relative(details.published_at)}</span>}
+                {details.published_at !== undefined && (
+                  <span>{t.relative(details.published_at)}</span>
+                )}
                 {details.published_at === undefined && details.published_text !== undefined && (
                   <span>{details.published_text}</span>
                 )}

@@ -28,6 +28,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use beastube_core::Settings;
 use beastube_db::{Database, DbError, Repositories};
+use beastube_filtering::builtin::builtin_rule_set;
+use beastube_filtering::diagnostics::{FilteringDiagnostics, FilteringSnapshot};
+use beastube_filtering::engine::{EngineConfig, NeverBlockList};
+use beastube_filtering::ruleset::{RuleSetManager, ValidatedRuleSet};
 use beastube_provider::MetadataProvider;
 use beastube_provider_youtube::YouTubeProvider;
 use parking_lot::RwLock;
@@ -47,6 +51,12 @@ pub(crate) struct AppState {
     incognito: AtomicBool,
     /// Where the provider keeps its extractor cache, for the storage panel.
     pub(crate) provider_cache_dir: PathBuf,
+    /// Owns the active filtering rule set and the decision to roll it back.
+    pub(crate) filtering: Arc<RuleSetManager>,
+    /// Live filtering counters, shared with the engine.
+    pub(crate) filtering_diagnostics: Arc<FilteringDiagnostics>,
+    /// When the state was constructed, for the uptime reading on the diagnostics screen.
+    started_at: std::time::Instant,
 }
 
 /// Why startup failed.
@@ -103,6 +113,24 @@ impl AppState {
 
         let provider = YouTubeProvider::new(&provider_cache_dir).map_err(StartupError::Provider)?;
 
+        // Filtering starts from the compiled-in rule set, so it works on first launch and offline.
+        // A validation failure here would mean the shipped set is broken — a build defect — so it
+        // degrades to the inert set rather than preventing startup.
+        let filtering_diagnostics = Arc::new(FilteringDiagnostics::new());
+        let active = builtin_rule_set().validate().unwrap_or_else(|error| {
+            tracing::error!(%error, "the built-in rule set failed validation; filtering is inert");
+            ValidatedRuleSet::inert()
+        });
+        let filtering = Arc::new(RuleSetManager::new(
+            active,
+            EngineConfig::new(
+                settings.filtering.enabled,
+                settings.filtering.mode,
+                NeverBlockList::playback_critical(),
+            ),
+            Arc::clone(&filtering_diagnostics),
+        ));
+
         let incognito = settings.privacy.incognito_by_default;
 
         Ok(Self {
@@ -112,6 +140,9 @@ impl AppState {
             settings: RwLock::new(settings),
             incognito: AtomicBool::new(incognito),
             provider_cache_dir,
+            filtering,
+            filtering_diagnostics,
+            started_at: std::time::Instant::now(),
         })
     }
 
@@ -127,8 +158,27 @@ impl AppState {
     /// from any source — a hand-edited file, an older build, a bug — is corrected in one place.
     pub(crate) fn set_settings(&self, settings: Settings) -> Settings {
         let sanitized = settings.sanitized();
+        // Filtering configuration is pushed to the engine here rather than being read from settings
+        // on the request path: a decision happens per request, and re-reading a lock each time
+        // would put the settings store on the hot path.
+        self.filtering
+            .set_filtering(sanitized.filtering.enabled, sanitized.filtering.mode);
         *self.settings.write() = sanitized.clone();
         sanitized
+    }
+
+    /// A snapshot of the filtering counters, for the settings and diagnostics screens.
+    #[must_use]
+    pub(crate) fn filtering_snapshot(&self) -> FilteringSnapshot {
+        self.filtering_diagnostics.snapshot()
+    }
+
+    /// How long the application has been serving commands, in milliseconds.
+    #[must_use]
+    pub(crate) fn uptime_ms(&self) -> u64 {
+        // Saturating rather than `as`: an uptime beyond `u64::MAX` milliseconds is impossible, but
+        // a silent wrap would be a nonsense reading rather than a clamped one.
+        u64::try_from(self.started_at.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
 
     /// Whether this session is incognito.

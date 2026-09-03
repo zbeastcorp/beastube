@@ -20,6 +20,7 @@
 #![forbid(unsafe_code)]
 
 pub mod adapter;
+pub mod builtin;
 pub mod diagnostics;
 pub mod engine;
 pub mod error;
@@ -28,6 +29,7 @@ pub mod ruleset;
 pub mod segment;
 
 pub use adapter::{ContentFilterAdapter, FilteringProvider, RequestFilterAdapter};
+pub use builtin::{builtin_rule_set, BUILTIN_VERSION};
 pub use diagnostics::{FilteringDiagnostics, FilteringSnapshot, RuleCounts};
 pub use engine::{Decision, EngineConfig, FilterEngine, NeverBlockList};
 pub use error::{FilterError, FilterResult};

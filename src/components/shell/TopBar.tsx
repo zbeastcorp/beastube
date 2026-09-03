@@ -10,9 +10,19 @@
  */
 
 import { EyeOff, Menu, Search, X } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
+} from 'react';
 
 import { useNavigate, useRoute } from '@/app/router';
+import { SearchSuggestions } from '@/components/shell/SearchSuggestions';
 import { useTranslation } from '@/i18n/context';
 import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
@@ -42,7 +52,7 @@ function Wordmark(): ReactNode {
   );
 }
 
-/** The pill search field with its attached submit button. */
+/** The pill search field, its suggestion dropdown, and the attached submit button. */
 function SearchField(): ReactNode {
   const t = useTranslation();
   const navigate = useNavigate();
@@ -50,6 +60,14 @@ function SearchField(): ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
   const routeQuery = route.name === 'search' ? route.query : '';
   const [value, setValue] = useState(routeQuery);
+
+  // Combobox state. `highlighted` is -1 when nothing is chosen, which is the state Enter treats as
+  // "search for what I typed" rather than "accept a suggestion".
+  const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(-1);
+  const [options, setOptions] = useState<readonly string[]>([]);
+  const listboxId = useId();
+  const optionId = useCallback((index: number) => `${listboxId}-option-${index}`, [listboxId]);
 
   // Reset the field whenever the route's query changes, by remounting rather than by syncing in an
   // effect. An effect would render once with the stale value and again with the fresh one; keying
@@ -78,19 +96,75 @@ function SearchField(): ReactNode {
     };
   }, []);
 
+  const runSearch = useCallback(
+    (raw: string) => {
+      const query = raw.trim();
+      if (query.length === 0) return;
+      setValue(query);
+      setOpen(false);
+      setHighlighted(-1);
+      inputRef.current?.blur();
+      navigate({ name: 'search', query });
+    },
+    [navigate],
+  );
+
   const submit = (event: SyntheticEvent) => {
     event.preventDefault();
-    const query = value.trim();
-    if (query.length > 0) {
-      navigate({ name: 'search', query });
+    runSearch(value);
+  };
+
+  /**
+   * Keyboard handling for the combobox.
+   *
+   * Enter is deliberately not handled here when nothing is highlighted: letting the form's own
+   * submit fire keeps the field working exactly as a plain search box when the dropdown is closed
+   * or empty.
+   */
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      // Closes the list, keeps the text. Doing both on one key is the behaviour people complain
+      // about in every search box that does it.
+      if (open) {
+        event.preventDefault();
+        setOpen(false);
+        setHighlighted(-1);
+      }
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      if (options.length === 0) return;
+      event.preventDefault();
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      // Wraps through -1, so arrowing past either end returns to the typed text rather than
+      // sticking at the first or last option.
+      setHighlighted((current) => {
+        const next = current + delta;
+        if (next >= options.length) return -1;
+        if (next < -1) return options.length - 1;
+        return next;
+      });
+      return;
+    }
+
+    if (event.key === 'Enter' && highlighted >= 0) {
+      event.preventDefault();
+      runSearch(options[highlighted] ?? value);
     }
   };
+
+  const listOpen = open && options.length > 0;
 
   return (
     <form
       onSubmit={submit}
       role="search"
-      className="no-drag flex max-w-[640px] flex-1 items-center"
+      className="no-drag relative flex max-w-[640px] flex-1 items-center"
     >
       <div className="border-border bg-bg focus-within:border-border-focus flex h-10 flex-1 items-center rounded-l-full border py-0 pr-1 pl-4 transition-colors">
         <input
@@ -99,9 +173,29 @@ function SearchField(): ReactNode {
           value={value}
           onChange={(event) => {
             setValue(event.target.value);
+            // Typing reopens the list and abandons any highlight: the options are about to change,
+            // and keeping an index into the old ones would accept the wrong suggestion.
+            setOpen(true);
+            setHighlighted(-1);
           }}
+          onFocus={() => {
+            setOpen(true);
+          }}
+          onBlur={() => {
+            setOpen(false);
+            setHighlighted(-1);
+          }}
+          onKeyDown={onKeyDown}
           placeholder={t.t('search.placeholder')}
           aria-label={t.t('app.search')}
+          role="combobox"
+          aria-expanded={listOpen}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={listOpen && highlighted >= 0 ? optionId(highlighted) : undefined}
+          // Both the browser's own autofill list and any password-manager overlay would cover the
+          // suggestion dropdown with a second, unrelated list.
+          autoComplete="off"
           // The native clear affordance is suppressed so the custom one below can match the theme.
           className="text-text placeholder:text-text-subtle h-full w-full bg-transparent text-md outline-none [&::-webkit-search-cancel-button]:appearance-none"
         />
@@ -126,6 +220,17 @@ function SearchField(): ReactNode {
       >
         <Search size={20} strokeWidth={1.8} />
       </button>
+
+      <SearchSuggestions
+        query={value}
+        open={open}
+        highlighted={highlighted}
+        onItemsChange={setOptions}
+        onHighlight={setHighlighted}
+        onAccept={runSearch}
+        listboxId={listboxId}
+        optionId={optionId}
+      />
     </form>
   );
 }
