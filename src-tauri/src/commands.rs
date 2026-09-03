@@ -1347,6 +1347,13 @@ async fn search_lists(
     .await
 }
 
+/// How many requests in a wave may be in flight at once.
+///
+/// Chosen to be comfortably above what the early stop usually needs, so the cap costs no latency in
+/// the ordinary case, while keeping a launch — where three feeds fan out at once — from opening
+/// dozens of simultaneous connections to a single host.
+const FAN_OUT_CONCURRENCY: usize = 6;
+
 /// How long a concurrent wave is given before whatever has landed is used.
 ///
 /// Not a network timeout — the provider has its own. This bounds the *wave*: a dozen searches run
@@ -1368,9 +1375,33 @@ where
     F: Fn(I) -> Fut,
     Fut: std::future::Future<Output = Vec<VideoSummary>> + Send + 'static,
 {
+    // Bounded, not unbounded. At launch three feeds preload together, each fanning out over a dozen
+    // topics, so an unbounded wave opened dozens of simultaneous connections to one host — more
+    // than the remote will answer well and more than there is any use for, since the wave stops as
+    // soon as it holds enough anyway.
+    //
+    // This is connection hygiene, not a bug fix. It was first written believing it would stop the
+    // extractor's visitor-data panics; that was wrong, and the note is left here rather than
+    // removed because the measurement is worth keeping. Those panics come from a *detached* task
+    // rustypipe spawns to refresh visitor data, they report `302 Found` rather than a transport
+    // failure, and no amount of concurrency limiting touches them.
+    //
+    // The cap costs almost nothing here because the wave already stops as soon as it holds enough,
+    // so the tail was usually being abandoned anyway.
+    let permits = Arc::new(tokio::sync::Semaphore::new(FAN_OUT_CONCURRENCY));
     let mut set = tokio::task::JoinSet::new();
     for input in inputs {
-        set.spawn(operation(input));
+        let gate = Arc::clone(&permits);
+        let work = operation(input);
+        set.spawn(async move {
+            // Dropped with the task, so aborting the wave releases the slot immediately.
+            let Ok(_permit) = gate.acquire_owned().await else {
+                // The semaphore is never closed; if that ever changes, contributing nothing is the
+                // right answer rather than panicking inside a feed.
+                return Vec::new();
+            };
+            work.await
+        });
     }
 
     let deadline = tokio::time::Instant::now() + FAN_OUT_DEADLINE;

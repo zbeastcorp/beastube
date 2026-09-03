@@ -120,11 +120,15 @@ impl YouTubeProvider {
     ///
     /// # Why a panic is caught here
     ///
-    /// The extractor unwraps in places where a network failure is possible — `visitor_data.rs`
-    /// calls `.unwrap()` on the result of fetching `music.youtube.com`, so a momentary DNS or
-    /// connectivity blip becomes a panic rather than an error. Observed thirty-three times in a
-    /// single session. Unguarded, that panic propagates out of whichever command was running and
-    /// the user is shown a failed screen for something a retry would have fixed.
+    /// The extractor unwraps in places where a failure is possible — `visitor_data.rs` calls
+    /// `.unwrap()` on the result of fetching `music.youtube.com`, which currently answers `302
+    /// Found`. Unguarded, that panic propagates out of whichever command was running and the user
+    /// is shown a failed screen for something a retry would have fixed.
+    ///
+    /// What this does *not* catch, and it is worth being exact: rustypipe also refreshes visitor
+    /// data from a detached `tokio::spawn`, and a panic there is unreachable from here — nothing
+    /// awaits that task. Those are the panics visible in the log. This guard covers the
+    /// synchronous path, where a panic would otherwise reach the user.
     ///
     /// Catching it converts the panic into [`ProviderError::Transport`], which is classified as
     /// automatically retryable — so the same blip now costs a retry rather than a screen. This is
