@@ -16,7 +16,7 @@
  * user pressing it again to find out whether it worked.
  */
 
-import { Bookmark, BookmarkCheck, Check, ListPlus, Share2 } from 'lucide-react';
+import { Bookmark, BookmarkCheck, Check, ExternalLink, ListPlus, Share2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { useAsyncResource } from '@/hooks/useAsyncResource';
@@ -178,6 +178,24 @@ export function VideoActions({ video, orientation = 'vertical' }: VideoActionsPr
         horizontal={horizontal}
       >
         <ListPlus size={size} />
+      </RailButton>
+
+      {/* Hands the video to the browser rather than pretending to be one.
+          This is deliberately not a download button. Obtaining the file means defeating the
+          signature cipher, the `n`-parameter throttling and BotGuard attestation, which is
+          circumvention machinery whoever writes it — see ADR-0001, where its absence is an
+          architectural invariant. Opening YouTube proper is the honest version of the same
+          intent: their own download is there for anyone entitled to it. */}
+      <RailButton
+        label={t.t('video.openExternally')}
+        onClick={() => {
+          void invoke('open_external', { url: shareUrl(video) }).catch(() => {
+            // The link simply does not open; nothing here is recoverable in the UI.
+          });
+        }}
+        horizontal={horizontal}
+      >
+        <ExternalLink size={size} />
       </RailButton>
 
       <RailButton
