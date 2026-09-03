@@ -46,8 +46,10 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   const t = useTranslation();
   const settings = useSettingsStore((state) => state.settings);
 
-  const video = useAsyncResource(`video:${videoId}`, (signal) =>
-    invoke('get_video', { videoId }, { signal }),
+  const video = useAsyncResource(
+    `video:${videoId}`,
+    (signal) => invoke('get_video', { videoId }, { signal }),
+    { navigation: true },
   );
   const related = useAsyncResource(`related:${videoId}`, (signal) =>
     invoke('get_related', { videoId }, { signal }),

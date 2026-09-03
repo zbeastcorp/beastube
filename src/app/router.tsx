@@ -150,6 +150,12 @@ export function Link({
   to,
   children,
   className,
+  // Pulled out of `rest` rather than spread with it. The spread lands *after* this element's own
+  // handler, so a caller's `onClick` used to replace navigation outright instead of running
+  // alongside it — a link that silently stopped linking. The two are composed here: the caller's
+  // handler runs first and can cancel the navigation with `preventDefault`, exactly as it could on
+  // a plain anchor.
+  onClick,
   ...rest
 }: { to: Route; children: ReactNode; className?: string } & Omit<
   AnchorHTMLAttributes<HTMLAnchorElement>,
@@ -160,7 +166,9 @@ export function Link({
     <a
       href={routeToHash(to)}
       className={className}
+      {...rest}
       onClick={(event) => {
+        onClick?.(event);
         // Modified clicks mean "open elsewhere"; hijacking them is a long-standing annoyance in
         // web-technology desktop apps.
         if (event.defaultPrevented || event.button !== 0) return;
@@ -168,7 +176,6 @@ export function Link({
         event.preventDefault();
         navigate(to);
       }}
-      {...rest}
     >
       {children}
     </a>

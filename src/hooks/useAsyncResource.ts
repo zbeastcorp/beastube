@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 
 import { isCancellation, normalizeError } from '@/services/ipc';
+import { useProgressStore } from '@/stores/progress';
 import type { ErrorPayload } from '@/types/domain';
 
 /** The state of one async resource. */
@@ -54,10 +55,16 @@ interface Settled<T> {
  * `key` is the identity of the request: the hook re-runs on every change, and must therefore
  * include everything the request depends on. Passing `null` means "nothing to fetch", which is how
  * a view waits for a prerequisite without a conditional hook.
+ *
+ * Pass `{ navigation: true }` for a view's *primary* fetch — the one whose arrival means the screen
+ * the user asked for is there. Those, and only those, raise the progress bar at the top of the
+ * window. Secondary fetches (suggestions, per-card state, background writes) deliberately do not,
+ * because a bar that rose on every keystroke would stop meaning anything.
  */
 export function useAsyncResource<T>(
   key: string | null,
   fetcher: (signal: AbortSignal) => Promise<T>,
+  options?: { navigation?: boolean },
 ): AsyncResource<T> {
   const [nonce, setNonce] = useState(0);
   const [settled, setSettled] = useState<Settled<T>>({
@@ -75,11 +82,28 @@ export function useAsyncResource<T>(
   // Always the latest closure, never an effect dependency.
   const run = useEffectEvent((signal: AbortSignal) => fetcher(signal));
 
+  // Read off the option rather than the store, and captured so the effect below does not depend on
+  // an object identity that changes every render.
+  const tracksNavigation = options?.navigation ?? false;
+
   useEffect(() => {
     if (token === null) return undefined;
 
     latestToken.current = token;
     const controller = new AbortController();
+
+    // The store is read imperatively, never subscribed to. Subscribing here would re-render every
+    // view in the application each time any other view started or finished fetching.
+    let counted = false;
+    if (tracksNavigation) {
+      counted = true;
+      useProgressStore.getState().begin();
+    }
+    const release = () => {
+      if (!counted) return;
+      counted = false;
+      useProgressStore.getState().end();
+    };
 
     void (async () => {
       try {
@@ -97,13 +121,18 @@ export function useAsyncResource<T>(
           data: previous.data,
           error: isCancellation(payload) ? null : payload,
         }));
+      } finally {
+        release();
       }
     })();
 
     return () => {
       controller.abort();
+      // Also released here, so navigating away mid-flight lowers the bar instead of stranding the
+      // count above zero forever.
+      release();
     };
-  }, [token]);
+  }, [token, tracksNavigation]);
 
   const reload = useCallback(() => {
     setNonce((current) => current + 1);

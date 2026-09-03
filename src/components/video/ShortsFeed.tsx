@@ -55,7 +55,8 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { VideoActions } from '@/components/video/VideoActions';
 import { YouTubePlayer, type PlayerHandle } from '@/components/video/YouTubePlayer';
 import { useTranslation } from '@/i18n/context';
-import type { AsyncResource } from '@/hooks/useAsyncResource';
+import { useAsyncResource, type AsyncResource } from '@/hooks/useAsyncResource';
+import { cachedShortChannel, prefetchShortChannel, shortChannel } from '@/services/channelInfo';
 import { invoke } from '@/services/ipc';
 import { useSessionStore } from '@/stores/session';
 import { bestThumbnailFor, type VideoId, type VideoSummary } from '@/types/domain';
@@ -158,6 +159,36 @@ export function ShortsFeed({
   const incognito = useSessionStore((session) => session.incognito);
 
   const current = videos[Math.min(index, Math.max(0, videos.length - 1))];
+
+  /**
+   * Who made the short on screen.
+   *
+   * The feed's own entries carry no channel — see `channelInfo` — so this is one request against
+   * the video, cached, and warmed one short ahead so it is there before the viewer is.
+   *
+   * The result carries the video id it belongs to and is only rendered when that still matches.
+   * The resource hook deliberately retains the previous value across a key change so a refetch
+   * does not blank the screen, which here would mean showing the last short's channel under the
+   * current one's picture.
+   */
+  const channel = useAsyncResource(current ? `short-channel:${current.id}` : null, (signal) =>
+    shortChannel(current?.id ?? ('' as VideoId), signal),
+  );
+  const channelNow =
+    channel.data?.videoId === current?.id ? channel.data : cachedShortChannel(current?.id);
+
+  // The feed's own entry sometimes already carries a channel — a short that arrived through the
+  // search path rather than as a lockup — so that is preferred and the row renders on the first
+  // frame, with the fetched value filling in for the rest.
+  const channelName = current?.channel_name ?? channelNow?.name ?? null;
+
+  const nextId = videos[index + 1]?.id;
+  const warmNext = useEffectEvent(() => {
+    prefetchShortChannel(nextId);
+  });
+  useEffect(() => {
+    warmNext();
+  }, [nextId]);
 
   /**
    * Toggles playback and flips the icon immediately.
@@ -520,17 +551,28 @@ export function ShortsFeed({
                   transition: 'opacity var(--duration-chrome) var(--ease-player-out)',
                 }}
               >
-                {current.channel_name !== undefined && (
+                {channelName !== null && (
                   <div className="flex items-center gap-2">
-                    <span
-                      className="grid size-8 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-semibold text-white"
-                      aria-hidden="true"
-                    >
-                      {current.channel_name.slice(0, 1).toUpperCase()}
-                    </span>
-                    <span className="truncate text-sm font-medium text-white">
-                      {current.channel_name}
-                    </span>
+                    {channelNow?.avatarUrl != null ? (
+                      <img
+                        src={channelNow.avatarUrl}
+                        alt=""
+                        aria-hidden="true"
+                        width={32}
+                        height={32}
+                        className="size-8 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      // The initial stands in only until the avatar arrives, so the row does not
+                      // change height when it does.
+                      <span
+                        className="grid size-8 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-semibold text-white"
+                        aria-hidden="true"
+                      >
+                        {channelName.slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="truncate text-sm font-medium text-white">{channelName}</span>
                   </div>
                 )}
                 <p className="line-clamp-2 text-sm leading-snug font-medium text-white">

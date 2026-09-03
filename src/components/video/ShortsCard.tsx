@@ -29,6 +29,7 @@
 import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Link } from '@/app/router';
+import { LazyImage } from '@/components/common/LazyImage';
 import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
 import { cachedDominantColor, sampleDominantColor } from '@/services/dominantColor';
@@ -90,12 +91,10 @@ export const ShortsCard = memo(function ShortsCard({
         style={{ aspectRatio: '9 / 16' }}
       >
         {showImage ? (
-          <img
-            ref={imageRef}
+          <LazyImage
+            imageRef={imageRef}
             src={thumbnail.url}
             alt={t.t('a11y.videoThumbnail', { title: video.title })}
-            loading="lazy"
-            decoding="async"
             crossOrigin="anonymous"
             onLoad={(event) => {
               // A 404 still returns a valid grey placeholder image, so `onerror` never fires.
@@ -107,6 +106,7 @@ export const ShortsCard = memo(function ShortsCard({
               setThumbnailFailed(true);
             }}
             className="size-full object-cover"
+            placeholder={<div className="bg-surface size-full" aria-hidden="true" />}
           />
         ) : (
           <div className="bg-surface size-full" aria-hidden="true" />

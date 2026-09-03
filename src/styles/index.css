@@ -579,8 +579,14 @@
    * has been rendered, so the estimate stops mattering after first paint.
    */
   .feed-card {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 320px;
+    /* No `content-visibility: auto` here, deliberately. It was measured against youtube.com, which
+     uses neither it nor `loading="lazy"`: they simply withhold the image `src` until a tile nears
+     the viewport (50 tiles in their DOM, 5 images loaded). `content-visibility` skips *rendering*
+     but the browser still has to guess the tile's size from `contain-intrinsic-size`, and every
+     time that guess was wrong the row resized as it scrolled into view — which is exactly the
+     "loading and settling" this was supposed to prevent. The lazy image in `LazyImage` cuts the
+     real cost (requests and decodes) without ever guessing at a size. */
+    contain: layout paint;
   }
 
   .card-glow::before {

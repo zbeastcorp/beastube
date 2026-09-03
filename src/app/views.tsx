@@ -31,6 +31,7 @@ import type { TranslationKey } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { sharedShortsFeed } from '@/services/feedCache';
 import { invoke } from '@/services/ipc';
+import { useFeedStore } from '@/stores/feed';
 import {
   isPortraitVideo,
   type ChannelTab,
@@ -160,8 +161,10 @@ function SearchView({ query, kind }: { query: string; kind: SearchResultKind }):
   const t = useTranslation();
   const filters = { kind };
 
-  const results = useAsyncResource(`search:${kind}:${query}`, (signal) =>
-    invoke('search', { query, filters }, { signal }),
+  const results = useAsyncResource(
+    `search:${kind}:${query}`,
+    (signal) => invoke('search', { query, filters }, { signal }),
+    { navigation: true },
   );
 
   const items = results.data?.page.items ?? [];
@@ -253,13 +256,20 @@ function HomeView(): ReactNode {
   const recent = useAsyncResource('home:recent', () =>
     invoke('get_history', { limit: 12, offset: 0 }),
   );
-  const recommended = useAsyncResource('home:recommended', (signal) =>
-    invoke('get_recommended', { limit: RECOMMENDED_COUNT }, { signal }),
+  // Folded into the key so that clicking Home in the sidebar fetches a new feed rather than
+  // re-serving the one already on screen. See `useFeedStore`.
+  const revision = useFeedStore((state) => state.revision);
+  const recommended = useAsyncResource(
+    `home:recommended:${String(revision)}`,
+    (signal) => invoke('get_recommended', { limit: RECOMMENDED_COUNT }, { signal }),
+    { navigation: true },
   );
   // Its own resource key rather than the tab's: the shelf asks for far fewer, and sharing a key
   // would make the two fight over one cache entry every time the user moved between them.
-  const homeShorts = useAsyncResource('home:shorts', (signal) =>
-    sharedShortsFeed(HOME_SHORTS_COUNT, signal),
+  const homeShorts = useAsyncResource(
+    `home:shorts:${String(revision)}`,
+    (signal) => sharedShortsFeed(HOME_SHORTS_COUNT, signal),
+    { navigation: true },
   );
 
   const continueWatching = resumable.data ?? [];
@@ -457,8 +467,11 @@ function FeedSection({ heading, children }: { heading: string; children: ReactNo
 function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
   // Shared with the launch preload and with Home's shelf, so arriving here reads memory rather
   // than starting the most expensive request in the application and watching it.
-  const shorts = useAsyncResource('shorts:feed', (signal) =>
-    sharedShortsFeed(SHORTS_COUNT, signal),
+  const revision = useFeedStore((state) => state.revision);
+  const shorts = useAsyncResource(
+    `shorts:feed:${String(revision)}`,
+    (signal) => sharedShortsFeed(SHORTS_COUNT, signal),
+    { navigation: true },
   );
 
   // Everything fetched after the first batch. The view owns the accumulation because the resource
@@ -625,8 +638,10 @@ function ChannelView({
   tab: ChannelTab;
 }): ReactNode {
   const t = useTranslation();
-  const channel = useAsyncResource(`channel:${channelId}`, (signal) =>
-    invoke('get_channel', { channelId }, { signal }),
+  const channel = useAsyncResource(
+    `channel:${channelId}`,
+    (signal) => invoke('get_channel', { channelId }, { signal }),
+    { navigation: true },
   );
   const content = useAsyncResource(`channel-content:${channelId}:${tab}`, (signal) =>
     invoke('get_channel_content', { channelId, tab }, { signal }),

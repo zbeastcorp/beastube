@@ -14,6 +14,7 @@
 
 import { useEffect, type ReactNode } from 'react';
 
+import { NavigationProgress } from '@/components/shell/NavigationProgress';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
 import { detectLocale, resolveLocale } from '@/i18n';
@@ -94,6 +95,10 @@ function Shell(): ReactNode {
 
   return (
     <div className="bg-bg text-text flex h-full flex-col overflow-hidden">
+      {/* Above the top bar in the stacking order and outside the layout flow, so raising it never
+          moves anything — as on YouTube, where the bar overlays the masthead rather than shifting
+          it down two pixels. */}
+      <NavigationProgress />
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar collapsed={collapsed} />

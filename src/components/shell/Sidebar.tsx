@@ -23,6 +23,7 @@ import {
 import type { ComponentType, ReactNode } from 'react';
 
 import { Link, useRoute } from '@/app/router';
+import { useFeedStore } from '@/stores/feed';
 import { sidebarSectionFor, type Route, type RouteName } from '@/app/routes';
 import { useTranslation } from '@/i18n/context';
 import type { TranslationKey } from '@/i18n';
@@ -92,14 +93,33 @@ function isActive(item: NavItem, active: RouteName | null): boolean {
   return active !== null && sidebarSectionFor(item.route) === active;
 }
 
+/**
+ * Clicking Home or Shorts asks for a *new* feed, as YouTube's does.
+ *
+ * Only those two. Bumping the revision on History or Bookmarks would mean nothing — those show
+ * stored rows, not a generated feed — and the click would pay for a refetch of something that
+ * cannot have changed.
+ *
+ * Note this fires whether or not you are already on the destination. Clicking Home while on Home is
+ * how you ask for something new to watch, and returning to Home from a video should not hand back
+ * the identical grid you left.
+ */
+function useFeedRefresh(item: NavItem): (() => void) | undefined {
+  const refresh = useFeedStore((state) => state.refresh);
+  const name = item.route.name;
+  return name === 'home' || name === 'shorts' ? refresh : undefined;
+}
+
 function ExpandedRow({ item, active }: { item: NavItem; active: RouteName | null }): ReactNode {
   const t = useTranslation();
   const Icon = item.icon;
   const selected = isActive(item, active);
+  const onNavigate = useFeedRefresh(item);
 
   return (
     <Link
       to={item.route}
+      onClick={onNavigate}
       aria-current={selected ? 'page' : undefined}
       className={[
         'transition-surface flex h-10 items-center gap-6 rounded-[10px] px-3',
@@ -118,10 +138,12 @@ function MiniRow({ item, active }: { item: NavItem; active: RouteName | null }):
   const Icon = item.icon;
   const selected = isActive(item, active);
   const label = t.t(item.labelKey);
+  const onNavigate = useFeedRefresh(item);
 
   return (
     <Link
       to={item.route}
+      onClick={onNavigate}
       title={label}
       aria-current={selected ? 'page' : undefined}
       className={[

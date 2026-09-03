@@ -17,6 +17,7 @@
 import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Link } from '@/app/router';
+import { LazyImage } from '@/components/common/LazyImage';
 import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
 import { cachedDominantColor, sampleDominantColor } from '@/services/dominantColor';
@@ -139,8 +140,8 @@ export const VideoCard = memo(function VideoCard({
         style={{ aspectRatio: '16 / 9' }}
       >
         {showImage ? (
-          <img
-            ref={imageRef}
+          <LazyImage
+            imageRef={imageRef}
             src={thumbnail.url}
             // Measured, not assumed: i.ytimg.com answers with `Access-Control-Allow-Origin: *`, so
             // the card's own decoded pixels can be read back for the glow at no extra bytes. If
@@ -148,8 +149,6 @@ export const VideoCard = memo(function VideoCard({
             // silently tainting, and the existing onError below already renders the placeholder.
             crossOrigin="anonymous"
             alt={t.t('a11y.videoThumbnail', { title: video.title })}
-            loading="lazy"
-            decoding="async"
             onLoad={(event) => {
               // A 404 still returns a valid grey placeholder image, so `onerror` never fires.
               if (event.currentTarget.naturalWidth < PLACEHOLDER_WIDTH_THRESHOLD) {
@@ -160,6 +159,7 @@ export const VideoCard = memo(function VideoCard({
               setThumbnailFailed(true);
             }}
             className="size-full object-cover"
+            placeholder={<div className="bg-surface size-full" aria-hidden="true" />}
           />
         ) : (
           <div className="bg-surface size-full" aria-hidden="true" />
