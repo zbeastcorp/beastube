@@ -45,6 +45,33 @@ pub trait SearchProvider: Send + Sync {
     /// # Errors
     ///
     /// Returns [`crate::ProviderError`] if the request fails or is cancelled.
+    /// Short-form video matching `query`.
+    ///
+    /// Separate from [`SearchProvider::search`] because a provider may need a different request to
+    /// find shorts at all — YouTube returns them in a shelf whose contents ordinary search parsing
+    /// does not reach.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ProviderError::Unsupported`] when the provider has no shorts surface, or a
+    /// [`crate::ProviderError`] if the request fails.
+    async fn search_shorts(
+        &self,
+        query: &str,
+        cancel: &CancellationToken,
+    ) -> ProviderResult<Vec<VideoSummary>> {
+        let _ = (query, cancel);
+        Err(crate::ProviderError::Unsupported {
+            operation: "search_shorts",
+            provider: "unknown",
+        })
+    }
+
+    /// Autocompletions for a partial query.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ProviderError`] if the request fails or is cancelled.
     async fn suggestions(
         &self,
         prefix: &str,

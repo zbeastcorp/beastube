@@ -18,6 +18,7 @@ import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
 import { detectLocale, resolveLocale } from '@/i18n';
 import { TranslationProvider } from '@/i18n/context';
+import { preloadFeeds } from '@/services/feedCache';
 import { invoke, isTauriRuntime, listen } from '@/services/ipc';
 import { applyPresentation, useSettingsStore } from '@/stores/settings';
 import { useSessionStore } from '@/stores/session';
@@ -124,6 +125,10 @@ function Providers({ children }: { children: ReactNode }): ReactNode {
   );
 }
 
+/** Kept in step with the limits the two shorts surfaces ask for, so the preload warms their keys. */
+const SHORTS_FEED_LIMIT = 40;
+const HOME_SHORTS_LIMIT = 16;
+
 /** The application root. */
 export function App(): ReactNode {
   const load = useSettingsStore((state) => state.load);
@@ -137,6 +142,14 @@ export function App(): ReactNode {
       setSidebarCollapsed(settings.appearance.sidebar_collapsed);
     });
   }, [load, setSidebarCollapsed]);
+
+  // Warm the feeds before anything asks for them. The Shorts tab and Home's shelf both read the
+  // same cached batch, so by the time either is opened the request has usually already landed —
+  // which is the difference between arriving at a feed and arriving at a spinner.
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    preloadFeeds([SHORTS_FEED_LIMIT, HOME_SHORTS_LIMIT]);
+  }, []);
 
   // Tell the native side the first frame is on screen, so it can reveal the window. Two frames,
   // because one only guarantees the commit has been scheduled, not that it has been painted.

@@ -258,6 +258,39 @@ impl SearchProvider for YouTubeProvider {
         })
     }
 
+    /// Short-form results, read out of the raw response.
+    ///
+    /// Goes around the typed extractor deliberately. Shorts arrive as `shortsLockupViewModel`
+    /// objects inside a shelf renderer it does not recognise, so its parser drops them — measured
+    /// on a live search, 26 shorts in the response and none in the parsed result. This issues the
+    /// same request through the same client and reads the part that was being thrown away.
+    async fn search_shorts(
+        &self,
+        query: &str,
+        cancel: &CancellationToken,
+    ) -> ProviderResult<Vec<VideoSummary>> {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Err(ProviderError::InvalidInput {
+                field: "query",
+                reason: "the query is empty".to_owned(),
+            });
+        }
+
+        let client = self.query();
+        let body = serde_json::json!({ "query": trimmed });
+
+        let json = Self::with_cancellation(cancel, async move {
+            client
+                .raw(rustypipe::client::ClientType::Desktop, "search", &body)
+                .await
+                .map_err(|error| classify(&error, "search_shorts"))
+        })
+        .await?;
+
+        Ok(map::shorts_from_search(&json))
+    }
+
     async fn suggestions(
         &self,
         prefix: &str,
@@ -510,6 +543,8 @@ impl MetadataProvider for YouTubeProvider {
             search_videos: true,
             search_channels: true,
             search_playlists: true,
+            // Read straight out of the raw response, because the typed extractor drops the shelf
+            // they arrive in and returns nothing for a shorts query.
             search_shorts: true,
             suggestions: true,
             video_details: true,

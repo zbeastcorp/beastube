@@ -861,17 +861,7 @@ const SHORTS_TOPICS: &[&str] = &[
     "animals #shorts",
 ];
 
-/// How many pages of each shorts topic to walk on the first request.
-///
-/// One, because pages within a topic are *sequential* — each needs the previous page's cursor — so
-/// this number is a straight multiplier on how long the viewer stares at an empty tab. Six pages
-/// meant six round trips before a single short appeared. Topics still run concurrently, so one page
-/// each is one round trip in total.
-///
-/// Depth no longer has to come from here: the endless expansion seeded by what is being watched
-/// fills the feed while the first shorts are already playing. Fetching deeply up front was buying
-/// with latency something that arrives free a moment later.
-const SHORTS_PAGES_PER_TOPIC: usize = 1;
+
 
 /// Where a set of recommendations came from.
 ///
@@ -996,18 +986,25 @@ pub(crate) async fn get_shorts_feed(
     limit: u32,
 ) -> CommandResult<Vec<VideoSummary>> {
     let limit = limit.clamp(1, 120) as usize;
-    let topics = rotating(SHORTS_TOPICS, SHORTS_TOPICS.len());
-    // `All`, so the provider pre-filters nothing and `is_short_form` below is the only test.
-    //
-    // Neither narrower kind works here. `Shorts` admits only what the extractor marked, and the
-    // marker is far rarer than short-form content is — most shorts arrive inside a shelf renderer
-    // this extractor discards, so whole topic queries come back empty. `Videos` is worse than
-    // useless: its filter is `!is_short`, so it drops precisely the marked shorts this feed exists
-    // to collect.
-    let filters = SearchFilters {
-        kind: SearchResultKind::All,
-        ..SearchFilters::default()
+
+    // The viewer's own searches come first. They are the clearest statement of interest the
+    // application has, they cost nothing to read, and they are the reason a tab can be full even
+    // when the topic searches happen to come back thin. Consulted under the same permission as the
+    // rest of the local ranking, and skipped in incognito.
+    let mut queries: Vec<String> = if state.records_searches() {
+        state
+            .repositories
+            .searches
+            .recent(SEARCH_SEED_COUNT)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|entry| format!("{} #shorts", entry.query))
+            .collect()
+    } else {
+        Vec::new()
     };
+    queries.extend(rotating_often(SHORTS_TOPICS, SHORTS_TOPICS.len()));
 
     // The viewer's own watch history is the richest source of short-form video available here:
     // related lists are full of it, and unlike a topic search they cannot come back empty for
@@ -1032,31 +1029,16 @@ pub(crate) async fn get_shorts_feed(
         Vec::new()
     };
 
-    let searched = fan_out(topics, |topic| {
+    let searched = fan_out(queries, |topic| {
         let provider = Arc::clone(&state.provider);
-        let filters = filters.clone();
         async move {
             let cancel = CancellationToken::new();
-            let mut collected = Vec::new();
-            let mut cursor = None;
-
-            for _ in 0..SHORTS_PAGES_PER_TOPIC {
-                let Ok(results) = provider
-                    .search(&topic, &filters, cursor.as_ref(), &cancel)
-                    .await
-                else {
-                    break;
-                };
-                collected.extend(videos_of(results.page.items).into_iter().filter(is_short_form));
-                // A page without a cursor is the end of the collection; asking again would repeat
-                // the first page forever.
-                cursor = results.page.continuation;
-                if cursor.is_none() {
-                    break;
-                }
-            }
-
-            collected
+            // The dedicated shorts surface, which reads the shelf ordinary search parsing drops.
+            // One request returns more short-form video than six pages of the typed search did.
+            provider
+                .search_shorts(&topic, &cancel)
+                .await
+                .unwrap_or_default()
         }
     })
     .await;
@@ -1073,6 +1055,9 @@ pub(crate) async fn get_shorts_feed(
 
 /// How many of the shorts already found are used to look for more.
 const SHORTS_EXPANSION_SEEDS: usize = 6;
+
+/// How many of the viewer's own past searches seed a feed.
+const SEARCH_SEED_COUNT: u32 = 3;
 
 /// Longest a video can be and still be treated as short-form, in milliseconds.
 ///
@@ -1260,6 +1245,22 @@ fn interleave(
     }
 
     merged
+}
+
+/// Picks `count` entries from `pool`, starting at an offset that advances every few minutes.
+///
+/// A daily offset meant the Shorts tab was identical all day however often it was reopened, which
+/// is the "same shorts every reload" complaint. Minutes are short enough that a reload brings
+/// something new and long enough that a single session is stable.
+fn rotating_often(pool: &[&str], count: usize) -> Vec<String> {
+    if pool.is_empty() {
+        return Vec::new();
+    }
+    let ticks = Timestamp::now().as_millis().div_euclid(5 * 60_000).max(0);
+    let start = usize::try_from(ticks).unwrap_or(0) % pool.len();
+    (0..count.min(pool.len()))
+        .map(|offset| pool[(start + offset) % pool.len()].to_owned())
+        .collect()
 }
 
 /// Picks `count` entries from `pool`, starting at an offset that advances once a day.
@@ -1479,20 +1480,14 @@ pub(crate) async fn get_more_shorts(
     // video contributes nothing and the next batch has nothing new to seed from. Mixing a topic
     // search into every batch means the feed cannot converge on a dead end, and it keeps introducing
     // material the viewer has not already been shown.
-    let topics = rotating(SHORTS_TOPICS, SHORTS_TOPICS.len());
-    let filters = SearchFilters {
-        kind: SearchResultKind::All,
-        ..SearchFilters::default()
-    };
+    let topics = rotating_often(SHORTS_TOPICS, SHORTS_TOPICS.len());
     let fallback = fan_out(topics, |topic| {
         let provider = Arc::clone(&state.provider);
-        let filters = filters.clone();
         async move {
             let cancel = CancellationToken::new();
             provider
-                .search(&topic, &filters, None, &cancel)
+                .search_shorts(&topic, &cancel)
                 .await
-                .map(|results| videos_of(results.page.items).into_iter().filter(is_short_form).collect())
                 .unwrap_or_default()
         }
     })

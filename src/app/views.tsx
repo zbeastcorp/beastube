@@ -18,12 +18,18 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { DiagnosticsView } from '@/components/settings/DiagnosticsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { ShortsFeed } from '@/components/video/ShortsFeed';
-import { ShortsCard, ShortsGrid, ShortsShelf } from '@/components/video/ShortsCard';
+import {
+  ShortsCard,
+  ShortsCardSkeleton,
+  ShortsGrid,
+  ShortsShelf,
+} from '@/components/video/ShortsCard';
 import { VideoCard, VideoCardSkeleton, VideoGrid } from '@/components/video/VideoCard';
 import { WatchView } from '@/components/video/WatchView';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import type { TranslationKey } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
+import { sharedShortsFeed } from '@/services/feedCache';
 import { invoke } from '@/services/ipc';
 import {
   isPortraitVideo,
@@ -253,7 +259,7 @@ function HomeView(): ReactNode {
   // Its own resource key rather than the tab's: the shelf asks for far fewer, and sharing a key
   // would make the two fight over one cache entry every time the user moved between them.
   const homeShorts = useAsyncResource('home:shorts', (signal) =>
-    invoke('get_shorts_feed', { limit: HOME_SHORTS_COUNT }, { signal }),
+    sharedShortsFeed(HOME_SHORTS_COUNT, signal),
   );
 
   const continueWatching = resumable.data ?? [];
@@ -351,6 +357,25 @@ function HomeView(): ReactNode {
         </FeedSection>
       )}
 
+      {/* The shelf reserves its row while it loads, for the same reason the grid above does: a
+          section that appears from nothing shoves everything below it down, and the page the user
+          started reading moves under them. */}
+      {shortsShelf.length === 0 && homeShorts.loading && (
+        <section className="mb-10">
+          <h2 className="text-text mb-4 flex items-center gap-2 text-lg font-medium">
+            <Clapperboard size={22} strokeWidth={2} />
+            {t.t('shorts.title')}
+          </h2>
+          <ShortsShelf>
+            {Array.from({ length: SHORTS_PER_SHELF }, (_, index) => (
+              <div key={index} className="shrink-0">
+                <ShortsCardSkeleton />
+              </div>
+            ))}
+          </ShortsShelf>
+        </section>
+      )}
+
       {/* Shelves interleaved between rows of videos rather than one at the end, which is how
           YouTube's home is arranged: a row or two of videos, a shelf of shorts, more videos. The
           shelf is split across the breaks so each one holds different shorts. */}
@@ -430,8 +455,10 @@ function FeedSection({ heading, children }: { heading: string; children: ReactNo
  * and was not one (§131).
  */
 function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
+  // Shared with the launch preload and with Home's shelf, so arriving here reads memory rather
+  // than starting the most expensive request in the application and watching it.
   const shorts = useAsyncResource('shorts:feed', (signal) =>
-    invoke('get_shorts_feed', { limit: SHORTS_COUNT }, { signal }),
+    sharedShortsFeed(SHORTS_COUNT, signal),
   );
 
   // Everything fetched after the first batch. The view owns the accumulation because the resource

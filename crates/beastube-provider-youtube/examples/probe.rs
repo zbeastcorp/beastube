@@ -64,6 +64,33 @@ where
 async fn shorts_probes(client: &RustyPipe) -> Vec<Outcome> {
     let mut outcomes = Vec::new();
 
+    // The decisive question for the Shorts tab: are the shorts actually present in the response
+    // this extractor already receives, and simply discarded by its typed parser?
+    outcomes.push(
+        probe("raw shorts in search json", || async {
+            let json = client
+                .query()
+                .raw(
+                    rustypipe::client::ClientType::Desktop,
+                    "search",
+                    &serde_json::json!({ "query": "funny #shorts" }),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+
+            let lockups = json.matches("shortsLockupViewModel").count();
+            let reels = json.matches("reelItemRenderer").count();
+            let shelves = json.matches("reelShelfRenderer").count();
+            let videos = json.matches("videoRenderer").count();
+            Ok(format!(
+                "{} bytes | lockups={lockups} reels={reels} shelves={shelves} videoRenderer={videos}",
+                json.len()
+            ))
+        })
+        .await,
+    );
+
+
     // The Shorts tab depends on this far more than on search: a channel's Shorts tab is a real
     // listing, whereas shorts in search results arrive inside a shelf the extractor mostly drops.
     outcomes.push(
