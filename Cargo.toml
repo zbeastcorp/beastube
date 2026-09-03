@@ -66,6 +66,9 @@ parking_lot = "0.12"
 async-trait = "0.1"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_System_Power", "Win32_System_SystemInformation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
+# WebView2 request interception. Pinned to the version wry itself uses, so both resolve to the same
+# `windows` crate and the COM types are the same types rather than two incompatible copies.
+webview2-com = "0.38"
 
 # --- tauri ---
 tauri = { version = "2.11", features = ["tray-icon", "image-png"] }

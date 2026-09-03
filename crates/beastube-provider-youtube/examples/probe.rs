@@ -157,6 +157,45 @@ async fn main() {
         .await,
     );
 
+    // The home feed depends on this: without it there is no login-free discovery surface and the
+    // first screen can only be built from the local library.
+    outcomes.push(
+        probe("trending", || async {
+            client
+                .query()
+                .trending()
+                .await
+                .map(|videos| {
+                    let shorts = videos.iter().filter(|video| video.is_short).count();
+                    format!("{} videos ({shorts} shorts)", videos.len())
+                })
+                .map_err(|error| error.to_string())
+        })
+        .await,
+    );
+
+    // The Shorts tab depends on this: a search that returns items marked `is_short` is the only
+    // login-free way to fill it.
+    outcomes.push(
+        probe("shorts via search", || async {
+            client
+                .query()
+                .search::<rustypipe::model::VideoItem, _>("#shorts")
+                .await
+                .map(|results| {
+                    let shorts = results
+                        .items
+                        .items
+                        .iter()
+                        .filter(|video| video.is_short)
+                        .count();
+                    format!("{} videos, {shorts} marked short", results.items.items.len())
+                })
+                .map_err(|error| error.to_string())
+        })
+        .await,
+    );
+
     // The one the dossier expects to fail. Reported, not relied on.
     outcomes.push(
         probe("player (streams)", || async {

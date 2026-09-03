@@ -12,6 +12,11 @@
 //! to load can never leave the application running with no visible window.
 
 mod commands;
+// Request interception is a WebView2 facility; there is no cross-platform equivalent, and the
+// module is absent rather than stubbed on other targets so a missing capability is a compile error
+// rather than a silent no-op (§131).
+#[cfg(windows)]
+mod request_filter;
 mod state;
 
 use std::time::Duration;
@@ -113,6 +118,18 @@ pub fn run() {
                     }
                 }
             });
+
+            // The request filter is attached once the state exists, because it borrows the rule
+            // set manager from it. Without this the filtering subsystem is a library nothing calls
+            // — which the diagnostics screen would honestly report as zero evaluated requests.
+            #[cfg(windows)]
+            if let Some(window) = handle.get_webview_window(MAIN_WINDOW) {
+                if let Some(state) = handle.try_state::<AppState>() {
+                    request_filter::attach(&window, std::sync::Arc::clone(&state.filtering));
+                } else {
+                    tracing::error!("no application state; the webview runs unfiltered");
+                }
+            }
 
             // Watchdog: if the frontend never reports ready — a bundling failure, a JavaScript
             // error before the first paint — show the window anyway rather than leaving a process

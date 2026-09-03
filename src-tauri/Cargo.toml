@@ -48,6 +48,7 @@ url.workspace = true
 parking_lot.workspace = true
 sysinfo.workspace = true
 windows.workspace = true
+webview2-com.workspace = true
 
 [features]
 default = []
