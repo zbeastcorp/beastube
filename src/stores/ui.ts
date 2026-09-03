@@ -10,7 +10,7 @@
 import { create } from 'zustand';
 
 import type { TranslationKey } from '@/i18n';
-import type { ErrorPayload, VideoSummary } from '@/types/domain';
+import type { VideoSummary } from '@/types/domain';
 
 /** A transient message shown in the corner. */
 export interface Toast {
@@ -48,8 +48,6 @@ interface UiState {
   toasts: Toast[];
   /** True while the window is in OS fullscreen, so the shell can hide its chrome. */
   fullscreen: boolean;
-  /** Set when a fatal shell-level error occurs, rendered by the root error surface. */
-  fatalError: ErrorPayload | null;
 
   /**
    * Bumped whenever a playlist changes: created, renamed, deleted, or an item added or removed.
@@ -68,7 +66,6 @@ interface UiState {
   notePlaylistsChanged: () => void;
   closeOverlay: () => void;
   setFullscreen: (fullscreen: boolean) => void;
-  setFatalError: (error: ErrorPayload | null) => void;
   toast: (toast: Omit<Toast, 'id'>) => string;
   dismissToast: (id: string) => void;
 }
@@ -84,7 +81,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   playlistRevision: 0,
   toasts: [],
   fullscreen: false,
-  fatalError: null,
 
   toggleSidebar: () => {
     set({ sidebarCollapsed: !get().sidebarCollapsed });
@@ -103,9 +99,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   },
   setFullscreen: (fullscreen) => {
     set({ fullscreen });
-  },
-  setFatalError: (fatalError) => {
-    set({ fatalError });
   },
 
   toast: (toast) => {

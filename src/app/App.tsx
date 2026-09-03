@@ -14,12 +14,14 @@
 
 import { useEffect, type ReactNode } from 'react';
 
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { NavigationProgress } from '@/components/shell/NavigationProgress';
 import { OverlayHost } from '@/components/shell/OverlayHost';
 import { preloadPlayerApi } from '@/components/video/YouTubePlayer';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
 import { detectLocale, resolveLocale } from '@/i18n';
+import { useTranslation } from '@/i18n/context';
 import { TranslationProvider } from '@/i18n/context';
 import { preloadFeeds } from '@/services/feedCache';
 import { useFeedStore } from '@/stores/feed';
@@ -155,10 +157,41 @@ function Shell(): ReactNode {
           key={route.name}
         >
           <div className="animate-route-in mx-auto max-w-[var(--layout-content-max)] px-6 pt-2 pb-16">
-            {renderRoute(route)}
+            {/* Scoped to the view, so a screen that throws is something you can walk away from:
+                the sidebar and the top bar are outside this and keep working. Reset on the route
+                name, which makes navigating away the recovery. */}
+            <ErrorBoundary
+              resetKey={route.name}
+              fallback={(_error, reset) => <RouteFailure onRetry={reset} />}
+            >
+              {renderRoute(route)}
+            </ErrorBoundary>
           </div>
         </main>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Shown in place of one screen that failed to render.
+ *
+ * Deliberately not the whole-window surface: everything around it still works, and saying so is
+ * most of the value — the alternative is a blank frame that looks like the application died.
+ */
+function RouteFailure({ onRetry }: { onRetry: () => void }): ReactNode {
+  const t = useTranslation();
+  return (
+    <div className="flex flex-col items-start gap-3 py-16">
+      <h2 className="text-text text-base font-medium">{t.t('error.generic')}</h2>
+      <p className="text-text-muted max-w-prose text-sm">{t.t('error.genericHint')}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="transition-surface bg-surface hover:bg-surface-hover text-text rounded-full px-4 py-2 text-sm font-medium"
+      >
+        {t.t('app.retry')}
+      </button>
     </div>
   );
 }
