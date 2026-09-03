@@ -57,30 +57,59 @@ function usePresentation(): void {
 function useShellEvents(): void {
   const setNetworkStatus = useSessionStore((state) => state.setNetworkStatus);
   const toast = useUiStore((state) => state.toast);
+  const dismissToast = useUiStore((state) => state.dismissToast);
+
+  /**
+   * Connectivity, from the webview rather than from the native side.
+   *
+   * The native side declares a `network:changed` event and the frontend has always listened for
+   * it, but nothing anywhere emits it — so `networkStatus` was permanently "online" whatever was
+   * actually true, and the offline notice never appeared. The webview knows, and its `online` and
+   * `offline` events are the same signal without a round trip.
+   *
+   * `navigator.onLine` is optimistic: it reports a working interface, not a working route to the
+   * internet. That is fine for what this is used for. Going "online" only *triggers a refetch*,
+   * which either succeeds or fails exactly as it would have anyway — the cost of believing it too
+   * readily is one request, and the cost of not believing it is a screen stuck on an error for a
+   * condition that has passed.
+   */
+  useEffect(() => {
+    let offlineNotice: string | null = null;
+
+    const goOffline = () => {
+      setNetworkStatus('offline');
+      offlineNotice ??= toast({
+        messageKey: 'error.network.offline',
+        tone: 'warning',
+        durationMs: null,
+      });
+    };
+
+    const goOnline = () => {
+      setNetworkStatus('online');
+      if (offlineNotice !== null) {
+        dismissToast(offlineNotice);
+        offlineNotice = null;
+      }
+      // A feed that failed while the connection was down would otherwise sit on its error until
+      // someone thought to press Retry, for a condition the application already knows has passed.
+      // The cache keeps whatever was on screen until the new batch lands.
+      useFeedStore.getState().refresh();
+    };
+
+    // The window may already be offline when the shell mounts, in which case no event is coming.
+    if (!navigator.onLine) goOffline();
+
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+
+    return () => {
+      window.removeEventListener('offline', goOffline);
+      window.removeEventListener('online', goOnline);
+    };
+  }, [setNetworkStatus, toast, dismissToast]);
 
   useEffect(() => {
-    const unlistenNetwork = listen('network:changed', (payload) => {
-      // Read before writing: whether this is a *recovery* is the interesting part, and the store is
-      // about to lose the answer.
-      const was = useSessionStore.getState().networkStatus;
-      setNetworkStatus(payload.current);
-      if (payload.current === 'offline') {
-        toast({
-          messageKey: 'error.network.offline',
-          tone: 'warning',
-          durationMs: null,
-        });
-        return;
-      }
-      if (was === 'offline') {
-        // Back online. A feed that failed while the connection was down would otherwise sit on its
-        // error until the user thought to press Retry — for a condition the application already
-        // knows has passed. Bumping the revision refetches whichever feeds are on screen, and the
-        // cache keeps whatever they were showing until the new batch lands.
-        useFeedStore.getState().refresh();
-      }
-    });
-
     const unlistenFilter = listen('filter:updated', (payload) => {
       if (payload.outcome === 'rolled_back') {
         toast({
@@ -92,10 +121,9 @@ function useShellEvents(): void {
     });
 
     return () => {
-      unlistenNetwork();
       unlistenFilter();
     };
-  }, [setNetworkStatus, toast]);
+  }, [toast]);
 }
 
 /** The chrome plus the routed view. */
