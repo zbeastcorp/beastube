@@ -13,11 +13,17 @@
  * whichever short is current. That is also why moving between shorts is instant rather than a
  * mount/unmount cycle.
  *
- * ## Navigation
+ * ## Navigation is the browser's, not ours
  *
- * Wheel, arrow keys, the on-screen buttons and touch drag all move by exactly one short. Wheel
- * events are rate-limited: a trackpad emits a burst of small deltas for one physical flick, and
- * without a cooldown a single gesture would skip four or five videos.
+ * The feed is a real scrolling element with mandatory snap points. Wheel, trackpad, touch drag and
+ * the scrollbar therefore all work without a line of code, and they work *smoothly*, because native
+ * scrolling runs on the compositor at the display's refresh rate. An earlier version intercepted
+ * those gestures and stepped an index instead, complete with a wheel cooldown to stop one trackpad
+ * flick skipping five videos — every bit of which was reimplementing, worse, something the browser
+ * already does.
+ *
+ * The arrow keys and the on-screen buttons scroll the container rather than setting state, so every
+ * route to the next short goes through the same mechanism.
  */
 
 import {
@@ -60,15 +66,6 @@ import {
   type VideoSummary,
 } from '@/types/domain';
 
-/** Minimum gap between two accepted wheel gestures. */
-const WHEEL_COOLDOWN_MS = 450;
-
-/** Wheel delta below which an event is treated as inertial noise rather than a gesture. */
-const WHEEL_THRESHOLD = 12;
-
-/** Vertical drag distance that counts as a swipe. */
-const SWIPE_THRESHOLD_PX = 60;
-
 interface ShortsFeedProps {
   videos: readonly VideoSummary[];
   /** The resource backing `videos`, for the loading and error states. */
@@ -104,49 +101,80 @@ export function ShortsFeed({
   onNearEnd,
 }: ShortsFeedProps): ReactNode {
   const t = useTranslation();
-  /**
-   * Where the user has navigated to, tagged with the deep link it was relative to.
-   *
-   * Derived rather than seeded by an effect. The requested video arrives asynchronously — the feed
-   * renders before the batch containing it lands — and an effect that reached back to correct the
-   * index would run a render with the wrong short on screen first. Tagging the stored position with
-   * the id it belongs to lets a stale value simply not apply.
-   */
-  const [navigated, setNavigated] = useState<{ forId: VideoId | null; index: number } | null>(null);
-  const lastWheelAt = useRef(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<PlayerHandle>(null);
+
+  /**
+   * Which short is on screen.
+   *
+   * Read from the scroll position rather than driving it. The container is a real scrolling element
+   * with snap points, so the wheel, a trackpad, a touch drag and the scrollbar all move it natively
+   * — and native scrolling is the only kind that runs on the compositor at the display's refresh
+   * rate. Anything that intercepted those gestures to animate a transition itself would be slower
+   * and worse than what the browser already does.
+   */
+  const [index, setIndex] = useState(0);
+
+  /** Height of one snap section, measured rather than assumed so the geometry survives a resize. */
+  const [stageHeight, setStageHeight] = useState(0);
+
   const [playing, setPlaying] = useState(true);
   const [muted, setMuted] = useState(false);
   const [captions, setCaptions] = useState(false);
   const [captionsAvailable, setCaptionsAvailable] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const touchStartY = useRef<number | null>(null);
+  const seekedToDeepLink = useRef(false);
+  const scrollFrame = useRef(0);
   const incognito = useSessionStore((session) => session.incognito);
 
-  const requested = initialVideoId ?? null;
-  const requestedIndex =
-    initialVideoId === undefined ? -1 : videos.findIndex((video) => video.id === initialVideoId);
-
-  // A stored position applies only while it belongs to the current request; otherwise the deep
-  // link decides, and failing that the top of the feed does.
-  const index =
-    navigated !== null && navigated.forId === requested
-      ? navigated.index
-      : requestedIndex >= 0
-        ? requestedIndex
-        : 0;
-
   const current = videos[Math.min(index, Math.max(0, videos.length - 1))];
+
   // Portrait-first, and never wider than portrait. Sizing purely from the thumbnail was tried and
   // produced a landscape stage with the video pillar-boxed inside it, because some renditions of a
   // short are padded to 16:9 — the very thing this feed exists to not do. A measured ratio is only
   // trusted when it is itself portrait, which is where it can still help: a 3:4 short then gets a
   // 3:4 stage instead of black bars.
-  const measured = current ? videoAspectRatio(current) : 9 / 16;
-  const stageRatio = measured < 1 ? measured : 9 / 16;
-  // A small rendition on purpose: it is about to be blurred to mush, and it is swapped on every
-  // navigation.
-  const backdrop = current?.thumbnails ? bestThumbnailFor(current.thumbnails, 160)?.url : undefined;
+  const ratioOf = (video: VideoSummary): number => {
+    const measured = videoAspectRatio(video);
+    return measured < 1 ? measured : 9 / 16;
+  };
+  const stageWidth = current ? stageHeight * ratioOf(current) : 0;
+
+  /**
+   * Attaches the size observer as the scroll element mounts.
+   *
+   * A ref callback rather than an effect: the feed renders a loading state first, so an effect with
+   * empty dependencies runs while `scrollRef.current` is still null and never runs again — leaving
+   * the height at zero and every section falling back to full width, which is exactly the landscape
+   * stage this feed exists to avoid.
+   */
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const attachScroll = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height ?? 0;
+      if (height > 0) setStageHeight(height);
+    });
+    observer.observe(node);
+    observerRef.current = observer;
+    // Seeded immediately as well: the observer's first callback lands a frame later, and one frame
+    // of full-width sections is one frame of visibly wrong layout.
+    if (node.clientHeight > 0) setStageHeight(node.clientHeight);
+  }, []);
+
+  /** Scrolls to a short. Smooth for a deliberate move, instant for the initial deep link. */
+  const scrollToIndex = useCallback((target: number, smooth: boolean) => {
+    const element = scrollRef.current;
+    if (!element || element.clientHeight === 0) return;
+    element.scrollTo({
+      top: target * element.clientHeight,
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  }, []);
 
   // Asks for the next batch, seeded with what was just watched. Shared by the prefetch below and by
   // a press of "next" at the boundary.
@@ -167,13 +195,26 @@ export function ShortsFeed({
   const move = useCallback(
     (delta: number) => {
       const next = Math.min(Math.max(index + delta, 0), Math.max(0, videos.length - 1));
-      setNavigated({ forId: requested, index: next });
+      scrollToIndex(next, true);
       // Pressing next at the boundary asks for more rather than doing nothing at all, so a viewer
       // who outruns the prefetch gets the feed to catch up instead of a dead button.
       if (delta > 0 && next === index) requestMoreNow();
     },
-    [index, requested, videos.length, requestMoreNow],
+    [index, videos.length, requestMoreNow, scrollToIndex],
   );
+
+  // Open on the deep-linked short once it is in the batch. Instant rather than animated: this is
+  // where the feed starts, not somewhere it travelled to.
+  const seekToDeepLink = useEffectEvent(() => {
+    if (seekedToDeepLink.current || initialVideoId === undefined || stageHeight === 0) return;
+    const found = videos.findIndex((video) => video.id === initialVideoId);
+    if (found < 0) return;
+    seekedToDeepLink.current = true;
+    scrollToIndex(found, false);
+  });
+  useEffect(() => {
+    seekToDeepLink();
+  }, [initialVideoId, videos.length, stageHeight]);
 
   // Fetched ahead of the end rather than at it, so the next short is already there when the viewer
   // arrives. An effect event so it can read the current list without re-firing on every change to
@@ -195,7 +236,7 @@ export function ShortsFeed({
       ) {
         return;
       }
-      if (event.key === ' ' || event.key === 'k') {
+      if (event.key === ' ') {
         // The embed's own keyboard handling is off with its chrome, so these are ours to provide.
         event.preventDefault();
         playerRef.current?.toggle();
@@ -203,9 +244,9 @@ export function ShortsFeed({
       }
       if (event.key === 'm') {
         event.preventDefault();
-        setMuted((current) => {
-          playerRef.current?.setMuted(!current);
-          return !current;
+        setMuted((currentlyMuted) => {
+          playerRef.current?.setMuted(!currentlyMuted);
+          return !currentlyMuted;
         });
         return;
       }
@@ -253,253 +294,288 @@ export function ShortsFeed({
 
   return (
     <div
-      className="flex justify-center"
-      onWheel={(event) => {
-        if (Math.abs(event.deltaY) < WHEEL_THRESHOLD) return;
-        const now = Date.now();
-        if (now - lastWheelAt.current < WHEEL_COOLDOWN_MS) return;
-        lastWheelAt.current = now;
-        move(event.deltaY > 0 ? 1 : -1);
-      }}
-      onTouchStart={(event) => {
-        touchStartY.current = event.touches[0]?.clientY ?? null;
-      }}
-      onTouchEnd={(event) => {
-        const start = touchStartY.current;
-        const end = event.changedTouches[0]?.clientY;
-        touchStartY.current = null;
-        if (start === null || end === undefined) return;
-        const travelled = start - end;
-        if (Math.abs(travelled) < SWIPE_THRESHOLD_PX) return;
-        move(travelled > 0 ? 1 : -1);
-      }}
+      className="relative mx-auto"
+      style={
+        {
+          // The height budget subtracts the shell chrome rather than guessing at a viewport
+          // fraction: 82vh ignored 128px of top bar and padding, so on a short window the tab
+          // scrolled behind the layout instead of inside it.
+          height: 'min(calc(100dvh - var(--layout-topbar-height) - 5rem), 900px)',
+        } satisfies CSSProperties
+      }
     >
-      <div className="flex items-center gap-4">
-        <div
-          className="bg-bg relative overflow-hidden rounded-xl"
-          /*
-           * Sized to the video, not to a fixed 9:16 box. Shorts are not all 9:16 — real YouTube
-           * measures its stage against the video and this does the same, from the thumbnail, which
-           * is the only aspect signal a cross-origin embed leaves reachable.
-           *
-           * Height is the definite dimension and the ratio derives the width. The third `min()`
-           * term is what stops a wide-tagged item from blowing the row out sideways, and the height
-           * budget subtracts the shell chrome rather than guessing at a viewport fraction — 82vh
-           * ignored 128px of top bar and padding, so on a short window the tab scrolled.
-           */
-          style={
-            {
-              '--ar': stageRatio,
-              aspectRatio: 'var(--ar)',
-              height:
-                'min(calc(100dvh - var(--layout-topbar-height) - 5rem), 900px, calc(520px / var(--ar)))',
-            } as CSSProperties
-          }
-        >
-          {/*
-           * The blurred poster frame, shown while the embed loads.
-           *
-           * It cannot fill the letterbox bars of a video that is not the stage's shape, which was
-           * the original hope: the embed is one opaque iframe that fills the stage and paints its
-           * own bars, so nothing behind it is ever visible once it has painted. What it does do is
-           * replace a black rectangle with the video's own colours for the moment before that —
-           * which is most of what makes a swap between shorts feel continuous.
-           */}
-          {backdrop !== undefined && (
-            <img
-              src={backdrop}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 size-full scale-110 object-cover opacity-60 blur-2xl"
+      <div
+        ref={attachScroll}
+        // The scroll surface. `snap-mandatory` is what makes a flick land on exactly one short
+        // instead of between two, and `overscroll-contain` stops a scroll that reaches either end
+        // from chaining to the page behind it.
+        className="scrollbar-none relative h-full snap-y snap-mandatory overflow-y-auto overscroll-contain"
+        onScroll={() => {
+          // Coalesced to one read per frame. A scroll event can fire many times between paints, and
+          // `scrollTop` forces layout, so reading it per event is the classic way to make a
+          // smooth-scrolling list stutter.
+          if (scrollFrame.current !== 0) return;
+          scrollFrame.current = requestAnimationFrame(() => {
+            scrollFrame.current = 0;
+            const element = scrollRef.current;
+            if (!element || element.clientHeight === 0) return;
+            const next = Math.round(element.scrollTop / element.clientHeight);
+            setIndex((shown) => (shown === next ? shown : next));
+          });
+        }}
+      >
+        {videos.map((video, position) => {
+          const poster = video.thumbnails
+            ? bestThumbnailFor(video.thumbnails, 480)?.url
+            : undefined;
+          return (
+            <section
+              key={video.id}
+              className="flex snap-center snap-always items-center justify-center"
+              style={{ height: stageHeight > 0 ? stageHeight : '100%' }}
+            >
+              <div
+                className="bg-bg relative h-full overflow-hidden rounded-xl"
+                style={{ width: stageHeight > 0 ? stageHeight * ratioOf(video) : '100%' }}
+              >
+                {/* The poster stands in for the video on every short except the one playing. It is
+                    what makes scrolling look continuous: there is always a picture under the
+                    gesture, rather than an empty box waiting for a player that will never mount
+                    here. */}
+                {poster !== undefined && (
+                  <img
+                    src={poster}
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-0 size-full object-cover"
+                  />
+                )}
+                {/* Not for the short that is playing: the player draws its own copy on top, and
+                    the two showed through each other in the translucent part of the gradient. */}
+                {position !== index && <ShortsMeta video={video} />}
+              </div>
+            </section>
+          );
+        })}
+
+        {/*
+         * The player, pinned over whichever section is current.
+         *
+         * Absolutely positioned inside the scrolling content, so it travels with the scroll like
+         * any other child — but it never moves in the React tree, which is the whole point. Moving
+         * an iframe in the DOM destroys its browsing context and reloads it, so a player rendered
+         * inside each section would pay a full embed bootstrap on every single scroll.
+         */}
+        {stageHeight > 0 && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2"
+            style={{ top: index * stageHeight, height: stageHeight, width: stageWidth }}
+          >
+            <YouTubePlayer
+              ref={playerRef}
+              videoId={current.id}
+              fill
+              transparent
+              autoplay
+              // The embed's own chrome is hidden and replaced below, which is what YouTube does on
+              // its Shorts surface. Every control drawn in its place drives the player for real.
+              controls={false}
+              onStateChange={(playbackState) => {
+                setPlaying(playbackState === 'playing' || playbackState === 'buffering');
+                // Caption availability is a property of the video, and the embed only knows once it
+                // has loaded one. Asked here so the control is absent for a short that has none.
+                setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
+                if (playbackState === 'ended') move(1);
+              }}
             />
-          )}
 
-          {/* Deliberately unkeyed. A key here would unmount and rebuild the player — and with it the
-              whole embed iframe — on every navigation, which is exactly the stutter this feed is
-              supposed to not have. One player persists and swaps videos in place. */}
-          <YouTubePlayer
-            ref={playerRef}
-            videoId={current.id}
-            fill
-            transparent
-            autoplay
-            // The embed's own chrome is hidden and replaced below, which is what YouTube does on its
-            // Shorts surface. Every control drawn in its place drives the player for real.
-            controls={false}
-            onStateChange={(playbackState) => {
-              setPlaying(playbackState === 'playing' || playbackState === 'buffering');
-              // Caption availability is a property of the video, and the embed only knows once it
-              // has loaded one. Asked here so the control is absent for a short that has none.
-              setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
-              // Advancing on end is what makes the feed a feed. At the last short it stops, rather
-              // than looping back to the top.
-              if (playbackState === 'ended') {
-                move(1);
-              }
-            }}
-          />
+            {/* The whole frame is the play/pause target, as it is on YouTube. A button rather than
+                a div so it is keyboard reachable and announced; it carries no chrome of its own. */}
+            <button
+              type="button"
+              onClick={() => {
+                playerRef.current?.toggle();
+              }}
+              aria-label={t.t(playing ? 'player.pause' : 'player.play')}
+              className="absolute inset-0 z-10 cursor-default"
+            />
 
-          {/* The whole frame is the play/pause target, as it is on YouTube. A button rather than a
-              div so it is keyboard reachable and announced; it carries no visible chrome of its
-              own. */}
-          <button
-            type="button"
-            onClick={() => {
-              playerRef.current?.toggle();
-            }}
-            aria-label={t.t(playing ? 'player.pause' : 'player.play')}
-            className="absolute inset-0 z-10 cursor-default"
-          />
-
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-3">
-            <div className="pointer-events-auto flex items-center gap-1">
-              <StageButton
-                label={t.t(playing ? 'player.pause' : 'player.play')}
-                onClick={() => {
-                  playerRef.current?.toggle();
-                }}
-              >
-                {playing ? <Pause size={18} /> : <Play size={18} />}
-              </StageButton>
-              <StageButton
-                label={t.t(muted ? 'player.unmute' : 'player.mute')}
-                onClick={() => {
-                  const next = !muted;
-                  setMuted(next);
-                  playerRef.current?.setMuted(next);
-                }}
-              >
-                {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-              </StageButton>
-            </div>
-
-            <div className="pointer-events-auto relative flex items-center gap-1">
-              {/* Only for a short that actually has captions — the embed is asked, not assumed. */}
-              {captionsAvailable && (
-                <StageButton
-                  label={t.t('player.captions')}
-                  active={captions}
-                  onClick={() => {
-                    const next = !captions;
-                    setCaptions(next);
-                    playerRef.current?.setCaptions(next);
-                  }}
-                >
-                  {captions ? <Captions size={18} /> : <CaptionsOff size={18} />}
-                </StageButton>
-              )}
-
-              <StageButton
-                label={t.t('app.more')}
-                active={menuOpen}
-                onClick={() => {
-                  setMenuOpen((open) => !open);
-                }}
-              >
-                <MoreVertical size={18} />
-              </StageButton>
-
-              <StageButton
-                label={t.t('player.fullscreen')}
-                onClick={() => {
-                  playerRef.current?.requestFullscreen();
-                }}
-              >
-                <Maximize2 size={18} />
-              </StageButton>
-
-              {menuOpen && (
-                <div
-                  className="bg-surface border-border absolute top-11 right-0 z-30 min-w-48 overflow-hidden rounded-lg border py-1 shadow-lg"
-                  role="menu"
-                >
-                  <MenuItem
-                    label={t.t('video.copyLink')}
-                    icon={<Link2 size={16} />}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void navigator.clipboard.writeText(`https://youtu.be/${current.id}`);
-                    }}
-                  />
-                  <MenuItem
-                    label={t.t('video.openExternally')}
-                    icon={<ExternalLink size={16} />}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void invoke('open_external', {
-                        url: `https://www.youtube.com/shorts/${current.id}`,
-                      }).catch(() => {
-                        // The link simply does not open; nothing here is recoverable in the UI.
-                      });
-                    }}
-                  />
-                </div>
-              )}
+            {/* Repeated over the player because the player is opaque and covers the section's own
+                copy underneath. Same markup, so the two are indistinguishable mid-scroll. */}
+            <div className="pointer-events-none absolute inset-0 z-20">
+              <ShortsMeta video={current} />
             </div>
           </div>
+        )}
+      </div>
 
-          {/* Back at the bottom edge: with the embed's own chrome hidden there is nothing left
-              underneath for this band to cover. */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 to-transparent p-4 pt-16">
-            {/* Channel first, then the title — YouTube's order, and the more useful one: the
-                channel is what you act on, the title is what you read. */}
-            {current.channel_name !== undefined && (
-              <div className="mb-2 flex items-center gap-2">
-                <span
-                  aria-hidden="true"
-                  className="grid size-7 shrink-0 place-items-center rounded-full bg-white/20 text-2xs font-semibold text-white"
-                >
-                  {current.channel_name.trim().charAt(0).toUpperCase()}
-                </span>
-                {current.channel_id ? (
-                  <Link
-                    to={{ name: 'channel', channelId: current.channel_id, tab: 'videos' }}
-                    className="pointer-events-auto truncate text-sm font-medium text-white hover:underline"
-                  >
-                    {current.channel_name}
-                  </Link>
-                ) : (
-                  <span className="truncate text-sm font-medium text-white">
-                    {current.channel_name}
-                  </span>
-                )}
+      {/* Chrome that belongs to the feed rather than to any one short, so it stays put while the
+          shorts scroll underneath it. */}
+      <div
+        className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center"
+        style={{ paddingTop: 12 }}
+      >
+        <div
+          className="flex items-start justify-between"
+          style={{ width: stageWidth > 0 ? stageWidth : '100%', paddingInline: 12 }}
+        >
+          <div className="pointer-events-auto flex items-center gap-1">
+            <StageButton
+              label={t.t(playing ? 'player.pause' : 'player.play')}
+              onClick={() => {
+                playerRef.current?.toggle();
+              }}
+            >
+              {playing ? <Pause size={18} /> : <Play size={18} />}
+            </StageButton>
+            <StageButton
+              label={t.t(muted ? 'player.unmute' : 'player.mute')}
+              onClick={() => {
+                const next = !muted;
+                setMuted(next);
+                playerRef.current?.setMuted(next);
+              }}
+            >
+              {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </StageButton>
+          </div>
+
+          <div className="pointer-events-auto relative flex items-center gap-1">
+            {/* Only for a short that actually has captions — the embed is asked, not assumed. */}
+            {captionsAvailable && (
+              <StageButton
+                label={t.t('player.captions')}
+                active={captions}
+                onClick={() => {
+                  const next = !captions;
+                  setCaptions(next);
+                  playerRef.current?.setCaptions(next);
+                }}
+              >
+                {captions ? <Captions size={18} /> : <CaptionsOff size={18} />}
+              </StageButton>
+            )}
+
+            <StageButton
+              label={t.t('app.more')}
+              active={menuOpen}
+              onClick={() => {
+                setMenuOpen((open) => !open);
+              }}
+            >
+              <MoreVertical size={18} />
+            </StageButton>
+
+            <StageButton
+              label={t.t('player.fullscreen')}
+              onClick={() => {
+                playerRef.current?.requestFullscreen();
+              }}
+            >
+              <Maximize2 size={18} />
+            </StageButton>
+
+            {menuOpen && (
+              <div
+                className="bg-surface border-border absolute top-11 right-0 z-40 min-w-48 overflow-hidden rounded-lg border py-1 shadow-lg"
+                role="menu"
+              >
+                <MenuItem
+                  label={t.t('video.copyLink')}
+                  icon={<Link2 size={16} />}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void navigator.clipboard.writeText(`https://youtu.be/${current.id}`);
+                  }}
+                />
+                <MenuItem
+                  label={t.t('video.openExternally')}
+                  icon={<ExternalLink size={16} />}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void invoke('open_external', {
+                      url: `https://www.youtube.com/shorts/${current.id}`,
+                    }).catch(() => {
+                      // The link simply does not open; nothing here is recoverable in the UI.
+                    });
+                  }}
+                />
               </div>
             )}
-            <h2 className="line-clamp-2 text-sm leading-snug text-white/90">{current.title}</h2>
           </div>
         </div>
+      </div>
 
-        {/* Against the video's right edge, where YouTube puts it. */}
+      {/* Save and share, against the video's right edge. */}
+      <div
+        className="pointer-events-none absolute inset-y-0 z-30 flex items-center"
+        style={{ left: `calc(50% + ${stageWidth / 2}px + 16px)` }}
+      >
         {/* Keyed on the video so each short gets its own action state, rather than carrying the
             previous short's saved marker across. */}
-        <VideoActions key={current.id} video={current} />
-
-        {/* Navigation lives well clear of the action rail, matching YouTube: a large target out at
-            the far right, so a mis-aimed press on "next" cannot land on "save". */}
-        <div className="ml-8 flex flex-col items-center gap-3">
-          <NavButton
-            label={t.t('shorts.previous')}
-            disabled={index === 0}
-            onClick={() => {
-              move(-1);
-            }}
-          >
-            <ChevronUp size={24} />
-          </NavButton>
-          <NavButton
-            // Never disabled while the feed can still grow. Greying it out at the boundary tells
-            // the viewer they have reached the end when they have only reached the end of what has
-            // loaded so far, which is the moment a feed feels finite.
-            label={t.t('shorts.next')}
-            disabled={index >= videos.length - 1 && onNearEnd === undefined}
-            onClick={() => {
-              move(1);
-            }}
-          >
-            <ChevronDown size={24} />
-          </NavButton>
+        <div className="pointer-events-auto">
+          <VideoActions key={current.id} video={current} />
         </div>
       </div>
+
+      {/* Navigation in the corner, well clear of everything else: a mis-aimed press on "next"
+          should never be able to land on "save". */}
+      <div className="pointer-events-auto absolute right-4 bottom-4 z-30 flex flex-col gap-3">
+        <NavButton
+          label={t.t('shorts.previous')}
+          disabled={index === 0}
+          onClick={() => {
+            move(-1);
+          }}
+        >
+          <ChevronUp size={24} />
+        </NavButton>
+        <NavButton
+          // Never disabled while the feed can still grow. Greying it out at the boundary tells the
+          // viewer they have reached the end when they have only reached the end of what has
+          // loaded so far, which is the moment a feed feels finite.
+          label={t.t('shorts.next')}
+          disabled={index >= videos.length - 1 && onNearEnd === undefined}
+          onClick={() => {
+            move(1);
+          }}
+        >
+          <ChevronDown size={24} />
+        </NavButton>
+      </div>
+    </div>
+  );
+}
+
+/** The channel and title, drawn over the bottom of a short. */
+function ShortsMeta({ video }: { video: VideoSummary }): ReactNode {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-4 pt-16">
+      {/* Channel first, then the title — YouTube's order, and the more useful one: the channel is
+          what you act on, the title is what you read. */}
+      {video.channel_name !== undefined && (
+        <div className="mb-2 flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="grid size-7 shrink-0 place-items-center rounded-full bg-white/20 text-2xs font-semibold text-white"
+          >
+            {video.channel_name.trim().charAt(0).toUpperCase()}
+          </span>
+          {video.channel_id ? (
+            <Link
+              to={{ name: 'channel', channelId: video.channel_id, tab: 'videos' }}
+              className="pointer-events-auto truncate text-sm font-medium text-white hover:underline"
+            >
+              {video.channel_name}
+            </Link>
+          ) : (
+            <span className="truncate text-sm font-medium text-white">{video.channel_name}</span>
+          )}
+        </div>
+      )}
+      <h2 className="line-clamp-2 text-sm leading-snug text-white/90">{video.title}</h2>
     </div>
   );
 }
