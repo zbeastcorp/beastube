@@ -615,17 +615,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_non_videos_channel_tab_is_refused_rather_than_returning_nothing() {
+    async fn the_playlists_tab_is_refused_rather_than_returning_nothing() {
+        // Videos, Shorts and Live are one endpoint with a tab parameter and are all attempted.
+        // Playlists is a different response shape, and refusing beats returning an empty page that
+        // looks like a channel with no playlists.
         let provider = provider();
         let error = provider
             .channel_content(
                 &ChannelId::new("UCabc").unwrap(),
-                ChannelTab::Shorts,
+                ChannelTab::Playlists,
                 None,
                 &CancellationToken::new(),
             )
             .await
-            .expect_err("only the videos tab is implemented");
+            .expect_err("the playlists tab is a different endpoint");
         assert!(matches!(error, ProviderError::Unsupported { .. }));
     }
 
