@@ -38,6 +38,7 @@ use beastube_db::repo::history::WatchRecord;
 use beastube_db::repo::searches::SearchEntry;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tauri::State;
 use tokio_util::sync::CancellationToken;
@@ -910,6 +911,9 @@ pub(crate) async fn get_recommended(
     limit: u32,
 ) -> CommandResult<RecommendedFeed> {
     let limit = limit.clamp(1, 120) as usize;
+    // Asking for more than fits, because `interleave` drops duplicates and caps how many come from
+    // any one channel — gathering exactly `limit` would routinely fall short of it.
+    let enough = limit.saturating_mul(2);
     let personalize =
         state.settings().privacy.local_recommendations_enabled && !state.is_incognito();
 
@@ -929,7 +933,7 @@ pub(crate) async fn get_recommended(
         let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS);
 
         if !seeds.is_empty() {
-            let videos = interleave(related_lists(&state, seeds).await, &watched, limit);
+            let videos = interleave(related_lists(&state, seeds, enough).await, &watched, limit);
             if !videos.is_empty() {
                 return Ok(RecommendedFeed {
                     videos,
@@ -951,7 +955,7 @@ pub(crate) async fn get_recommended(
             .collect();
 
         if !queries.is_empty() {
-            let videos = interleave(search_lists(&state, queries).await, &watched, limit);
+            let videos = interleave(search_lists(&state, queries, enough).await, &watched, limit);
             if !videos.is_empty() {
                 return Ok(RecommendedFeed {
                     videos,
@@ -963,7 +967,7 @@ pub(crate) async fn get_recommended(
 
     let topics = rotating(DISCOVERY_TOPICS, RECOMMENDATION_SEEDS);
     Ok(RecommendedFeed {
-        videos: interleave(search_lists(&state, topics).await, &watched, limit),
+        videos: interleave(search_lists(&state, topics, enough).await, &watched, limit),
         source: RecommendationSource::Discover,
     })
 }
@@ -986,63 +990,86 @@ pub(crate) async fn get_shorts_feed(
     limit: u32,
 ) -> CommandResult<Vec<VideoSummary>> {
     let limit = limit.clamp(1, 120) as usize;
+    // Asking for more than fits, because `interleave` drops duplicates and caps how many come from
+    // any one channel — gathering exactly `limit` would routinely fall short of it.
+    let enough = limit.saturating_mul(2);
+    let personalize =
+        state.settings().privacy.local_recommendations_enabled && !state.is_incognito();
+    let records_searches = state.records_searches();
 
-    // The viewer's own searches come first. They are the clearest statement of interest the
-    // application has, they cost nothing to read, and they are the reason a tab can be full even
-    // when the topic searches happen to come back thin. Consulted under the same permission as the
-    // rest of the local ranking, and skipped in incognito.
-    let mut queries: Vec<String> = if state.records_searches() {
-        state
-            .repositories
-            .searches
-            .recent(SEARCH_SEED_COUNT)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .map(|entry| format!("{} #shorts", entry.query))
-            .collect()
-    } else {
-        Vec::new()
-    };
-    queries.extend(rotating_often(SHORTS_TOPICS, SHORTS_TOPICS.len()));
-
-    // The viewer's own watch history is the richest source of short-form video available here:
-    // related lists are full of it, and unlike a topic search they cannot come back empty for
-    // reasons that have nothing to do with the query. Consulted under the same permission as the
-    // home recommendations, and skipped entirely in incognito.
-    let mut lists = if state.settings().privacy.local_recommendations_enabled
-        && !state.is_incognito()
-    {
-        let history = state
-            .repositories
-            .history
-            .list(WATCHED_LOOKBACK, 0)
-            .await
-            .unwrap_or_default();
-        let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS);
-        related_lists(&state, seeds)
-            .await
-            .into_iter()
-            .map(|list| list.into_iter().filter(is_short_form).collect::<Vec<_>>())
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    let searched = fan_out(queries, |topic| {
-        let provider = Arc::clone(&state.provider);
-        async move {
-            let cancel = CancellationToken::new();
-            // The dedicated shorts surface, which reads the shelf ordinary search parsing drops.
-            // One request returns more short-form video than six pages of the typed search did.
-            provider
-                .search_shorts(&topic, &cancel)
-                .await
-                .unwrap_or_default()
+    // Both local reads at once. They are cheap, but they were sequential, and everything downstream
+    // waited on the pair of them before a single network request left the machine.
+    //
+    // The viewer's own searches are the clearest statement of interest the application has, and are
+    // why the tab can be full even when the topic searches come back thin. The watch history is the
+    // richest source of short-form video available here — related lists are full of it, and unlike a
+    // topic search they cannot come back empty for reasons unrelated to the query. Both sit under
+    // the same permission as the rest of the local ranking, and both are skipped in incognito.
+    let (recent, history) = tokio::join!(
+        async {
+            if records_searches {
+                state
+                    .repositories
+                    .searches
+                    .recent(SEARCH_SEED_COUNT)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        },
+        async {
+            if personalize {
+                state
+                    .repositories
+                    .history
+                    .list(WATCHED_LOOKBACK, 0)
+                    .await
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
         }
-    })
-    .await;
+    );
 
+    let mut queries: Vec<String> = recent
+        .into_iter()
+        .map(|entry| format!("{} #shorts", entry.query))
+        .collect();
+    queries.extend(rotating_often(SHORTS_TOPICS, SHORTS_TOPICS.len()));
+    let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS);
+
+    // And both network waves at once. These used to run one after the other, so the tab cost the
+    // *sum* of two concurrent waves rather than the longer of them — the single largest reason
+    // opening Shorts took as long as it did. Nothing in the second wave depends on the first.
+    let (related, searched) = tokio::join!(
+        async {
+            if seeds.is_empty() {
+                Vec::new()
+            } else {
+                related_lists(&state, seeds, enough)
+                    .await
+                    .into_iter()
+                    .map(|list| list.into_iter().filter(is_short_form).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            }
+        },
+        fan_out(queries, enough, |topic| {
+            let provider = Arc::clone(&state.provider);
+            async move {
+                let cancel = CancellationToken::new();
+                // The dedicated shorts surface, which reads the shelf ordinary search parsing
+                // drops. One request returns more short-form video than six pages of the typed
+                // search did.
+                provider
+                    .search_shorts(&topic, &cancel)
+                    .await
+                    .unwrap_or_default()
+            }
+        })
+    );
+
+    let mut lists = related;
     lists.extend(searched);
 
     // Returned as soon as the concurrent wave lands. There used to be a second, sequential
@@ -1093,8 +1120,12 @@ fn is_short_form(video: &VideoSummary) -> bool {
 ///
 /// One slow or failing seed costs its own list and nothing else: the point of fanning out is that
 /// the feed is assembled from whatever came back.
-async fn related_lists(state: &AppState, seeds: Vec<VideoId>) -> Vec<Vec<VideoSummary>> {
-    fan_out(seeds, |seed| {
+async fn related_lists(
+    state: &AppState,
+    seeds: Vec<VideoId>,
+    enough: usize,
+) -> Vec<Vec<VideoSummary>> {
+    fan_out(seeds, enough, |seed| {
         let provider = Arc::clone(&state.provider);
         async move {
             let cancel = CancellationToken::new();
@@ -1109,8 +1140,12 @@ async fn related_lists(state: &AppState, seeds: Vec<VideoId>) -> Vec<Vec<VideoSu
 }
 
 /// Runs each query as a search, concurrently, keeping only the videos.
-async fn search_lists(state: &AppState, queries: Vec<String>) -> Vec<Vec<VideoSummary>> {
-    fan_out(queries, |query| {
+async fn search_lists(
+    state: &AppState,
+    queries: Vec<String>,
+    enough: usize,
+) -> Vec<Vec<VideoSummary>> {
+    fan_out(queries, enough, |query| {
         let provider = Arc::clone(&state.provider);
         async move {
             let cancel = CancellationToken::new();
@@ -1128,11 +1163,22 @@ async fn search_lists(state: &AppState, queries: Vec<String>) -> Vec<Vec<VideoSu
     .await
 }
 
+/// How long a concurrent wave is given before whatever has landed is used.
+///
+/// Not a network timeout — the provider has its own. This bounds the *wave*: a dozen searches run
+/// at once and the feed cannot appear until the collection loop ends, so one request that hangs
+/// holds up eleven that have already answered. Chosen well above a normal response so it only ever
+/// bites when something has genuinely gone wrong.
+const FAN_OUT_DEADLINE: Duration = Duration::from_secs(5);
+
 /// Runs `operation` over every input concurrently, collecting whatever completed.
+///
+/// Stops early once `enough` videos have been gathered, and abandons the rest: the feed is capped
+/// anyway, so waiting on requests whose results would be discarded is pure latency.
 ///
 /// A panicking task contributes an empty list rather than poisoning the feed — a home screen is not
 /// worth failing over.
-async fn fan_out<I, F, Fut>(inputs: Vec<I>, operation: F) -> Vec<Vec<VideoSummary>>
+async fn fan_out<I, F, Fut>(inputs: Vec<I>, enough: usize, operation: F) -> Vec<Vec<VideoSummary>>
 where
     I: Send + 'static,
     F: Fn(I) -> Fut,
@@ -1143,10 +1189,37 @@ where
         set.spawn(operation(input));
     }
 
+    let deadline = tokio::time::Instant::now() + FAN_OUT_DEADLINE;
     let mut lists = Vec::new();
-    while let Some(joined) = set.join_next().await {
-        lists.push(joined.unwrap_or_default());
+    let mut gathered = 0usize;
+
+    loop {
+        match tokio::time::timeout_at(deadline, set.join_next()).await {
+            // Everything finished on its own. The ordinary case.
+            Ok(None) => break,
+            Ok(Some(joined)) => {
+                let list = joined.unwrap_or_default();
+                gathered += list.len();
+                lists.push(list);
+                // Enough to fill the screen. The requests still running would contribute videos
+                // nobody is going to reach, so they are dropped rather than waited on — this is
+                // the difference between a feed that appears when it is ready and one that appears
+                // when the *slowest* of a dozen searches happens to answer.
+                if gathered >= enough {
+                    set.abort_all();
+                    break;
+                }
+            }
+            // Out of time. Whatever landed is what the viewer gets: a smaller feed beats a feed
+            // held hostage by one request that is never coming back (§81). Without this a single
+            // hung search stalled the whole surface even when every other one had already answered.
+            Err(_) => {
+                set.abort_all();
+                break;
+            }
+        }
     }
+
     lists
 }
 
@@ -1469,7 +1542,8 @@ pub(crate) async fn get_more_shorts(
     }
 
     let seen: HashSet<String> = exclude.into_iter().collect();
-    let lists: Vec<Vec<VideoSummary>> = related_lists(&state, seeds)
+    let enough = limit.saturating_mul(2);
+    let lists: Vec<Vec<VideoSummary>> = related_lists(&state, seeds, enough)
         .await
         .into_iter()
         .map(|list| list.into_iter().filter(is_short_form).collect())
@@ -1481,7 +1555,7 @@ pub(crate) async fn get_more_shorts(
     // search into every batch means the feed cannot converge on a dead end, and it keeps introducing
     // material the viewer has not already been shown.
     let topics = rotating_often(SHORTS_TOPICS, SHORTS_TOPICS.len());
-    let fallback = fan_out(topics, |topic| {
+    let fallback = fan_out(topics, enough, |topic| {
         let provider = Arc::clone(&state.provider);
         async move {
             let cancel = CancellationToken::new();
