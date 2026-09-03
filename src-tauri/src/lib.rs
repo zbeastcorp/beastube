@@ -11,9 +11,14 @@
 //! user sees. A watchdog shows the window anyway after a short deadline, so a frontend that fails
 //! to load can never leave the application running with no visible window.
 
+mod commands;
+mod state;
+
 use std::time::Duration;
 
 use tauri::{Manager, WindowEvent};
+
+use crate::state::AppState;
 
 /// How long to wait for the frontend's ready signal before showing the window regardless.
 ///
@@ -55,9 +60,51 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![frontend_ready])
+        .invoke_handler(tauri::generate_handler![
+            frontend_ready,
+            commands::get_settings,
+            commands::save_settings,
+            commands::reset_settings,
+            commands::search,
+            commands::get_suggestions,
+            commands::get_video,
+            commands::get_related,
+            commands::get_channel,
+            commands::get_channel_content,
+            commands::get_provider_capabilities,
+            commands::record_watch,
+            commands::get_history,
+            commands::search_history,
+            commands::delete_history_entry,
+            commands::clear_history,
+            commands::get_position,
+            commands::checkpoint_playback,
+            commands::get_resumable,
+            commands::get_bookmarks,
+            commands::set_bookmark,
+            commands::remove_bookmark,
+            commands::set_incognito,
+            commands::is_incognito,
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Subsystems are constructed before the window is revealed, but the construction
+            // itself makes no network request — so being offline costs nothing at startup (§86).
+            let init_handle = handle.clone();
+            tauri::async_runtime::block_on(async move {
+                match AppState::initialize(&init_handle).await {
+                    Ok(state) => {
+                        init_handle.manage(state);
+                        tracing::info!("application state initialized");
+                    }
+                    Err(error) => {
+                        // Without state every command fails, so this is fatal. It is logged rather
+                        // than panicking so the reason survives in the log file.
+                        tracing::error!(%error, "could not initialize the application state");
+                    }
+                }
+            });
 
             // Watchdog: if the frontend never reports ready — a bundling failure, a JavaScript
             // error before the first paint — show the window anyway rather than leaving a process

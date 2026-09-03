@@ -58,9 +58,14 @@ function ProgressBar({ fraction }: { fraction: number }): ReactNode {
 interface VideoCardProps {
   video: VideoSummary;
   /** Rendered width in CSS pixels, used to pick the thumbnail rendition. */
-  width?: number;
-  /** Fraction watched in `0..1`, when the local library knows. */
-  progress?: number;
+  width?: number | undefined;
+  /**
+   * Fraction watched in `0..1`, when the local library knows.
+   *
+   * Explicitly accepts `undefined` so callers can spread a computed value under
+   * `exactOptionalPropertyTypes` without building a conditional object at every call site.
+   */
+  progress?: number | undefined;
 }
 
 /**

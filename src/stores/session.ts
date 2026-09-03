@@ -35,8 +35,8 @@ export const useSessionStore = create<SessionState>((set) => ({
     // authority on whether history writes are actually suppressed, and corrects us if it disagrees.
     set({ incognito: enabled });
     try {
-      const result = await invoke('set_incognito', { enabled });
-      set({ incognito: result.enabled, error: null });
+      const actual = await invoke('set_incognito', { enabled });
+      set({ incognito: actual, error: null });
     } catch (cause) {
       set({ incognito: !enabled, error: normalizeError(cause) });
     }

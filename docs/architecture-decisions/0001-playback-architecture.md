@@ -79,13 +79,22 @@ means SponsorBlock creator-marked segment skipping (user-controlled, via the k-a
 so the server never learns which video is being watched), channel/keyword feed filtering, and
 third-party tracker blocking. It does not include suppression of YouTube's advertising.
 
-**A known risk to verify early.** IFrame error 153 ("missing HTTP `Referer` header or API client
-identification", added July 2025) breaks Tauri apps on platforms using the `tauri://` scheme
-origin. Windows/WebView2 instead serves the shell from an `http(s)://tauri.localhost` origin, so a
-compliant `Referer` may be emitted and the failure may not reproduce on our only target platform.
-This is unverified either way and is the single highest-risk assumption in this ADR; it is
-scheduled for empirical verification on WebView2 before the player UI is built out. If it does
-reproduce, the fallback is a dedicated webview window whose origin is a real `https://` origin.
+**The 153 risk — verified, and resolved.** IFrame error 153 ("missing HTTP `Referer` header or API
+client identification", added July 2025) breaks Tauri apps on platforms whose webview uses the
+`tauri://` scheme origin. This ADR recorded it as the single highest-risk assumption and scheduled
+it for empirical verification.
+
+**It does not reproduce on Windows.** Verified in the packaged shell: WebView2 serves the frontend
+from an `http://tauri.localhost` origin, which is a real HTTP origin and therefore emits a
+compliant `Referer`. With `playerVars.origin` set to `window.location.origin`, the embed accepts
+the request and plays. Confirmed by driving the running desktop window: a search result opened and
+the playhead advanced past eleven seconds with no error event.
+
+The contingency — a dedicated webview window served from a genuine `https://` origin — is
+therefore not needed on Windows. It remains the fallback should a future WebView2 change alter the
+origin form, and is the first thing to reach for if error 153 ever appears in the field; the player
+maps that code to its own message key precisely so it names itself rather than showing a blank
+frame.
 
 **Metadata is a separate decision.** This ADR governs playback only. Search, channel and playlist
 metadata are addressed by ADR 0002; the `PlaybackProvider` split means a metadata backend can be

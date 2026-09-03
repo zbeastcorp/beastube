@@ -10,7 +10,7 @@
 import { Bookmark, History, ListVideo, Search, TriangleAlert, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import type { TranslationKey } from '@/i18n';
+import type { TranslationKey, TranslationParams } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 
 /** Which glyph to show. Named by meaning rather than by icon so the mapping can change freely. */
@@ -27,6 +27,8 @@ const ICONS: Record<EmptyStateIcon, LucideIcon> = {
 interface EmptyStateProps {
   titleKey: TranslationKey;
   bodyKey?: TranslationKey;
+  /** Interpolation values for the title and body, e.g. the search query. */
+  params?: TranslationParams;
   icon?: EmptyStateIcon;
   /**
    * Engineer-facing detail, shown in a muted monospace line.
@@ -43,6 +45,7 @@ interface EmptyStateProps {
 export function EmptyState({
   titleKey,
   bodyKey,
+  params,
   icon = 'search',
   detail,
   action,
@@ -57,8 +60,8 @@ export function EmptyState({
       </div>
 
       <div className="flex max-w-md flex-col gap-2">
-        <h2 className="text-text text-lg font-medium">{t.t(titleKey)}</h2>
-        {bodyKey && <p className="text-text-muted text-base">{t.t(bodyKey)}</p>}
+        <h2 className="text-text text-lg font-medium">{t.t(titleKey, params)}</h2>
+        {bodyKey && <p className="text-text-muted text-base">{t.t(bodyKey, params)}</p>}
         {detail !== undefined && (
           <code className="text-text-subtle selectable font-mono text-xs break-all">{detail}</code>
         )}

@@ -2,32 +2,38 @@
  * Route-to-view mapping.
  *
  * A plain switch rather than a route table with lazy imports: the whole UI is a few hundred
- * kilobytes served from the local filesystem, so code-splitting the views would trade a real
- * complexity cost for a saving that does not exist in a desktop shell. `shaka-player` is the one
- * genuinely large dependency, and it is split out in the Vite config where it belongs.
+ * kilobytes served from the local filesystem, so code-splitting the views would trade real
+ * complexity for a saving that does not exist in a desktop shell.
+ *
+ * Every view follows the same shape — cached or previous data stays on screen, a skeleton fills the
+ * first load, and a failure renders an explanation with a retry where one is meaningful. Navigation
+ * is never gated on a request (§87).
  */
 
 import type { ReactNode } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
-import { VideoCardSkeleton, VideoGrid } from '@/components/video/VideoCard';
+import { ErrorState } from '@/components/common/ErrorState';
+import { VideoCard, VideoCardSkeleton, VideoGrid } from '@/components/video/VideoCard';
+import { WatchView } from '@/components/video/WatchView';
+import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
+import { invoke } from '@/services/ipc';
+import type { ChannelTab, SearchItem, SearchResultKind, VideoSummary } from '@/types/domain';
 
+import { Link } from './router';
 import type { Route } from './routes';
 
-/** How many placeholder cards to draw while a feed loads. Roughly one screenful at 1080p. */
+/** Placeholder cards for a first load. Roughly one screenful at 1080p. */
 const SKELETON_COUNT = 12;
+
+/** How many history rows a library page fetches at once. */
+const HISTORY_PAGE_SIZE = 60;
 
 function PageHeading({ children }: { children: ReactNode }): ReactNode {
   return <h1 className="text-text mb-4 text-xl font-medium">{children}</h1>;
 }
 
-/**
- * A feed placeholder.
- *
- * Used until the provider layer lands. It renders the real grid geometry, so replacing it with
- * live data changes no layout.
- */
 function FeedSkeleton(): ReactNode {
   return (
     <VideoGrid>
@@ -38,46 +44,340 @@ function FeedSkeleton(): ReactNode {
   );
 }
 
-function HomeView(): ReactNode {
+/** Renders a heterogeneous search result. */
+function SearchResultCard({ item }: { item: SearchItem }): ReactNode {
   const t = useTranslation();
+
+  if (item.type === 'video') {
+    return <VideoCard video={item} />;
+  }
+
+  if (item.type === 'channel') {
+    const avatar = item.avatar?.at(-1);
+    return (
+      <Link
+        to={{ name: 'channel', channelId: item.id, tab: 'videos' }}
+        className="transition-surface hover:bg-surface-hover flex flex-col items-center gap-3 rounded-lg p-4 text-center"
+      >
+        {avatar ? (
+          <img
+            src={avatar.url}
+            alt=""
+            loading="lazy"
+            className="size-24 rounded-full object-cover"
+          />
+        ) : (
+          <div className="bg-surface size-24 rounded-full" />
+        )}
+        <div className="flex flex-col gap-1">
+          <span className="text-text line-clamp-1 text-base font-medium">{item.name}</span>
+          {item.subscriber_count !== undefined && (
+            <span className="text-text-muted text-xs">
+              {t.plural('video.subscribers', item.subscriber_count, {
+                count: t.compact(item.subscriber_count),
+              })}
+            </span>
+          )}
+        </div>
+      </Link>
+    );
+  }
+
+  const cover = item.thumbnails?.at(-1);
   return (
-    <>
-      <PageHeading>{t.t('home.title')}</PageHeading>
-      <FeedSkeleton />
-    </>
+    <Link to={{ name: 'playlist', playlistId: item.id }} className="flex flex-col gap-3">
+      <div className="bg-surface relative overflow-hidden rounded-md" style={{ aspectRatio: '16 / 9' }}>
+        {cover && <img src={cover.url} alt="" loading="lazy" className="size-full object-cover" />}
+        {item.video_count !== undefined && (
+          <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1.5 py-0.5 text-2xs font-medium text-white">
+            {t.plural('library.itemCount', item.video_count)}
+          </span>
+        )}
+      </div>
+      <span className="text-text line-clamp-2 text-base font-medium">{item.title}</span>
+    </Link>
   );
 }
 
-function ShortsView(): ReactNode {
+function SearchView({ query, kind }: { query: string; kind: SearchResultKind }): ReactNode {
   const t = useTranslation();
-  return (
-    <>
-      <PageHeading>{t.t('shorts.title')}</PageHeading>
-      <FeedSkeleton />
-    </>
-  );
-}
+  const filters = { kind };
 
-function SearchView({ query }: { query: string }): ReactNode {
-  const t = useTranslation();
+  const results = useAsyncResource(`search:${kind}:${query}`, (signal) =>
+    invoke('search', { query, filters }, { signal }),
+  );
+
+  const items = results.data?.page.items ?? [];
+
   return (
     <>
       <PageHeading>{t.t('search.resultsFor', { query })}</PageHeading>
-      <FeedSkeleton />
+
+      {results.error && !results.data ? (
+        <ErrorState error={results.error} onRetry={results.reload} />
+      ) : results.loading && items.length === 0 ? (
+        <FeedSkeleton />
+      ) : items.length === 0 ? (
+        <EmptyState
+          titleKey="search.noResults"
+          bodyKey="search.noResultsHint"
+          icon="search"
+          params={{ query }}
+        />
+      ) : (
+        <>
+          <p className="text-text-muted mb-4 text-xs">
+            {t.plural('search.resultCount', items.length)}
+          </p>
+          <VideoGrid>
+            {items.map((item) => (
+              <SearchResultCard key={`${item.type}-${itemKey(item)}`} item={item} />
+            ))}
+          </VideoGrid>
+        </>
+      )}
     </>
   );
+}
+
+/** A stable list key for a heterogeneous result. */
+function itemKey(item: SearchItem): string {
+  return item.type === 'channel' ? item.id : item.type === 'playlist' ? item.id : item.id;
+}
+
+function HomeView(): ReactNode {
+  const t = useTranslation();
+
+  // The provider has no login-free discovery feed, so home is built from the local library. That is
+  // deliberate: a first screen must be useful without an account (§43).
+  const resumable = useAsyncResource('home:resumable', () =>
+    invoke('get_resumable', { limit: 12 }),
+  );
+  const recent = useAsyncResource('home:recent', () =>
+    invoke('get_history', { limit: 24, offset: 0 }),
+  );
+
+  const continueWatching = resumable.data ?? [];
+  const recentlyWatched = recent.data ?? [];
+  const loading = resumable.loading || recent.loading;
+
+  if (loading && continueWatching.length === 0 && recentlyWatched.length === 0) {
+    return (
+      <>
+        <PageHeading>{t.t('home.title')}</PageHeading>
+        <FeedSkeleton />
+      </>
+    );
+  }
+
+  if (continueWatching.length === 0 && recentlyWatched.length === 0) {
+    return (
+      <>
+        <PageHeading>{t.t('home.title')}</PageHeading>
+        <EmptyState titleKey="home.empty" bodyKey="home.emptyHint" icon="search" />
+      </>
+    );
+  }
+
+  return (
+    <>
+      {continueWatching.length > 0 && (
+        <section className="mb-10">
+          <h2 className="text-text mb-4 text-lg font-medium">{t.t('home.continueWatching')}</h2>
+          <VideoGrid>
+            {continueWatching.map((entry) => (
+              <VideoCard
+                key={entry.video_id}
+                video={historyToSummary(entry)}
+                progress={progressOf(entry)}
+              />
+            ))}
+          </VideoGrid>
+        </section>
+      )}
+
+      {recentlyWatched.length > 0 && (
+        <section>
+          <h2 className="text-text mb-4 text-lg font-medium">{t.t('home.recentlyWatched')}</h2>
+          <VideoGrid>
+            {recentlyWatched.map((entry) => (
+              <VideoCard key={entry.video_id} video={historyToSummary(entry)} />
+            ))}
+          </VideoGrid>
+        </section>
+      )}
+    </>
+  );
+}
+
+/** Projects a history row onto the card shape. */
+function historyToSummary(entry: {
+  video_id: VideoSummary['id'];
+  title: string;
+  channel_id?: VideoSummary['channel_id'];
+  channel_name?: string;
+  thumbnails?: VideoSummary['thumbnails'];
+  position: { duration_ms?: number };
+}): VideoSummary {
+  return {
+    id: entry.video_id,
+    title: entry.title,
+    ...(entry.channel_id !== undefined ? { channel_id: entry.channel_id } : {}),
+    ...(entry.channel_name !== undefined ? { channel_name: entry.channel_name } : {}),
+    ...(entry.thumbnails !== undefined ? { thumbnails: entry.thumbnails } : {}),
+    ...(entry.position.duration_ms !== undefined
+      ? { duration_ms: entry.position.duration_ms }
+      : {}),
+  };
+}
+
+/** Watched fraction, or undefined when the duration is unknown. */
+function progressOf(entry: { position: { position_ms: number; duration_ms?: number } }):
+  | number
+  | undefined {
+  const { position_ms, duration_ms } = entry.position;
+  if (duration_ms === undefined || duration_ms <= 0) return undefined;
+  return Math.min(1, position_ms / duration_ms);
 }
 
 function HistoryView(): ReactNode {
   const t = useTranslation();
+  const history = useAsyncResource('history', () =>
+    invoke('get_history', { limit: HISTORY_PAGE_SIZE, offset: 0 }),
+  );
+
+  const entries = history.data ?? [];
+
   return (
     <>
       <PageHeading>{t.t('library.history')}</PageHeading>
-      <EmptyState
-        titleKey="library.empty.history"
-        bodyKey="library.empty.historyHint"
-        icon="history"
-      />
+      {history.error && entries.length === 0 ? (
+        <ErrorState error={history.error} onRetry={history.reload} />
+      ) : history.loading && entries.length === 0 ? (
+        <FeedSkeleton />
+      ) : entries.length === 0 ? (
+        <EmptyState
+          titleKey="library.empty.history"
+          bodyKey="library.empty.historyHint"
+          icon="history"
+        />
+      ) : (
+        <VideoGrid>
+          {entries.map((entry) => (
+            <VideoCard
+              key={entry.video_id}
+              video={historyToSummary(entry)}
+              progress={progressOf(entry)}
+            />
+          ))}
+        </VideoGrid>
+      )}
+    </>
+  );
+}
+
+function BookmarksView(): ReactNode {
+  const t = useTranslation();
+  const bookmarks = useAsyncResource('bookmarks', () =>
+    invoke('get_bookmarks', { limit: HISTORY_PAGE_SIZE, offset: 0 }),
+  );
+
+  const entries = bookmarks.data ?? [];
+
+  return (
+    <>
+      <PageHeading>{t.t('nav.bookmarks')}</PageHeading>
+      {bookmarks.error && entries.length === 0 ? (
+        <ErrorState error={bookmarks.error} onRetry={bookmarks.reload} />
+      ) : bookmarks.loading && entries.length === 0 ? (
+        <FeedSkeleton />
+      ) : entries.length === 0 ? (
+        <EmptyState
+          titleKey="library.empty.bookmarks"
+          bodyKey="library.empty.bookmarksHint"
+          icon="bookmark"
+        />
+      ) : (
+        <VideoGrid>
+          {entries.map((bookmark) => (
+            <VideoCard
+              key={bookmark.video_id}
+              video={{
+                id: bookmark.video_id,
+                title: bookmark.title,
+                ...(bookmark.channel_id !== undefined ? { channel_id: bookmark.channel_id } : {}),
+                ...(bookmark.channel_name !== undefined
+                  ? { channel_name: bookmark.channel_name }
+                  : {}),
+                ...(bookmark.thumbnails !== undefined ? { thumbnails: bookmark.thumbnails } : {}),
+              }}
+            />
+          ))}
+        </VideoGrid>
+      )}
+    </>
+  );
+}
+
+function ChannelView({
+  channelId,
+  tab,
+}: {
+  channelId: VideoSummary['channel_id'] & string;
+  tab: ChannelTab;
+}): ReactNode {
+  const t = useTranslation();
+  const channel = useAsyncResource(`channel:${channelId}`, (signal) =>
+    invoke('get_channel', { channelId }, { signal }),
+  );
+  const content = useAsyncResource(`channel-content:${channelId}:${tab}`, (signal) =>
+    invoke('get_channel_content', { channelId, tab }, { signal }),
+  );
+
+  const videos = content.data?.items ?? [];
+
+  return (
+    <>
+      {channel.data ? (
+        <div className="mb-6 flex items-center gap-4">
+          {channel.data.avatar?.at(-1) && (
+            <img
+              src={channel.data.avatar.at(-1)?.url}
+              alt=""
+              className="size-20 rounded-full object-cover"
+            />
+          )}
+          <div className="flex flex-col gap-1">
+            <h1 className="text-text text-xl font-medium">{channel.data.name}</h1>
+            {channel.data.subscriber_count !== undefined && (
+              <span className="text-text-muted text-sm">
+                {t.plural('video.subscribers', channel.data.subscriber_count, {
+                  count: t.compact(channel.data.subscriber_count),
+                })}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 flex items-center gap-4">
+          <div className="skeleton size-20 rounded-full" />
+          <div className="skeleton h-6 w-48 rounded" />
+        </div>
+      )}
+
+      {content.error && videos.length === 0 ? (
+        <ErrorState error={content.error} onRetry={content.reload} />
+      ) : content.loading && videos.length === 0 ? (
+        <FeedSkeleton />
+      ) : videos.length === 0 ? (
+        <EmptyState titleKey="channel.empty" icon="search" />
+      ) : (
+        <VideoGrid>
+          {videos.map((video) => (
+            <VideoCard key={video.id} video={video} />
+          ))}
+        </VideoGrid>
+      )}
     </>
   );
 }
@@ -91,20 +391,6 @@ function LibraryView(): ReactNode {
         titleKey="library.empty.playlists"
         bodyKey="library.empty.playlistsHint"
         icon="library"
-      />
-    </>
-  );
-}
-
-function BookmarksView(): ReactNode {
-  const t = useTranslation();
-  return (
-    <>
-      <PageHeading>{t.t('nav.bookmarks')}</PageHeading>
-      <EmptyState
-        titleKey="library.empty.bookmarks"
-        bodyKey="library.empty.bookmarksHint"
-        icon="bookmark"
       />
     </>
   );
@@ -136,41 +422,26 @@ function NotFoundView({ path }: { path: string }): ReactNode {
   );
 }
 
-function WatchView({ videoId }: { videoId: string }): ReactNode {
-  const t = useTranslation();
-  return (
-    <>
-      <div
-        className="bg-surface mb-4 w-full overflow-hidden rounded-lg"
-        style={{ aspectRatio: '16 / 9' }}
-        aria-label={t.t('a11y.playerRegion')}
-      />
-      <h1 className="text-text text-md font-medium">{videoId}</h1>
-    </>
-  );
-}
-
 /** Renders the view for `route`. */
 export function renderRoute(route: Route): ReactNode {
   switch (route.name) {
     case 'home':
       return <HomeView />;
     case 'shorts':
-      return <ShortsView />;
+      return <SearchView query="shorts" kind="shorts" />;
     case 'search':
-      return <SearchView query={route.query} />;
+      return <SearchView query={route.query} kind={route.kind ?? 'all'} />;
     case 'watch':
       return <WatchView videoId={route.videoId} />;
     case 'channel':
-      return <NotFoundView path={route.channelId} />;
+      return <ChannelView channelId={route.channelId} tab={route.tab ?? 'videos'} />;
     case 'playlist':
       return <NotFoundView path={route.playlistId} />;
     case 'localPlaylist':
+    case 'library':
       return <LibraryView />;
     case 'history':
       return <HistoryView />;
-    case 'library':
-      return <LibraryView />;
     case 'bookmarks':
       return <BookmarksView />;
     case 'settings':

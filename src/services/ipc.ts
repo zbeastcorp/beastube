@@ -25,13 +25,8 @@ import type {
   ContinuationToken,
   ErrorPayload,
   HistoryEntry,
-  LocalPlaylist,
-  LocalPlaylistId,
   Page,
   PlaybackPosition,
-  PlaylistDetails,
-  PlaylistId,
-  PlaylistItem,
   SearchFilters,
   SearchResults,
   Settings,
@@ -125,77 +120,51 @@ export interface CommandMap {
     args: { channelId: ChannelId; tab: ChannelTab; continuation?: ContinuationToken };
     result: Page<VideoSummary>;
   };
-  get_playlist: {
-    args: { playlistId: PlaylistId; continuation?: ContinuationToken };
-    result: PlaylistDetails;
-  };
-  get_home_feed: { args: { continuation?: ContinuationToken }; result: Page<VideoSummary> };
-  get_shorts_feed: { args: { continuation?: ContinuationToken }; result: Page<VideoSummary> };
+  get_provider_capabilities: { args: undefined; result: ProviderCapabilities };
 
-  // --- playback session ---
-  begin_playback: {
-    args: { videoId: VideoId };
-    result: { session_id: string; resume_at_ms: number | null; segments: SkippableSegment[] };
-  };
-  checkpoint_playback: {
-    args: { sessionId: string; videoId: VideoId; positionMs: number; durationMs: number | null };
-    result: null;
-  };
-  end_playback: { args: { sessionId: string }; result: null };
-
-  // --- history ---
+  // --- library ---
+  record_watch: { args: { video: VideoSummary }; result: null };
   get_history: { args: { limit: number; offset: number }; result: HistoryEntry[] };
   search_history: { args: { query: string; limit: number }; result: HistoryEntry[] };
-  get_resumable: { args: { limit: number }; result: HistoryEntry[] };
+  delete_history_entry: { args: { videoId: VideoId }; result: boolean };
+  clear_history: { args: undefined; result: number };
   get_position: { args: { videoId: VideoId }; result: PlaybackPosition | null };
-  delete_history_entry: { args: { videoId: VideoId }; result: null };
-  clear_history: { args: undefined; result: null };
-
-  // --- bookmarks ---
-  get_bookmarks: { args: { limit: number; offset: number }; result: Bookmark[] };
-  set_bookmark: {
-    args: { video: VideoSummary; note?: string; tags?: string[]; timestampMs?: number };
-    result: Bookmark;
-  };
-  remove_bookmark: { args: { videoId: VideoId }; result: null };
-
-  // --- local playlists ---
-  get_playlists: { args: undefined; result: LocalPlaylist[] };
-  create_playlist: { args: { name: string; description?: string }; result: LocalPlaylist };
-  rename_playlist: { args: { id: LocalPlaylistId; name: string }; result: LocalPlaylist };
-  delete_playlist: { args: { id: LocalPlaylistId }; result: null };
-  get_playlist_items: {
-    args: { id: LocalPlaylistId; limit: number; offset: number };
-    result: PlaylistItem[];
-  };
-  add_playlist_item: { args: { id: LocalPlaylistId; video: VideoSummary }; result: null };
-  remove_playlist_item: { args: { id: LocalPlaylistId; videoId: VideoId }; result: null };
-  reorder_playlist_item: {
-    args: { id: LocalPlaylistId; videoId: VideoId; toIndex: number };
+  checkpoint_playback: {
+    args: { videoId: VideoId; positionMs: number; durationMs: number | null };
     result: null;
   };
+  get_resumable: { args: { limit: number }; result: HistoryEntry[] };
+  get_bookmarks: { args: { limit: number; offset: number }; result: Bookmark[] };
+  set_bookmark: { args: { video: VideoSummary }; result: null };
+  remove_bookmark: { args: { videoId: VideoId }; result: boolean };
 
   // --- session ---
-  set_incognito: { args: { enabled: boolean }; result: { enabled: boolean } };
+  set_incognito: { args: { enabled: boolean }; result: boolean };
+  is_incognito: { args: undefined; result: boolean };
 
-  // --- filtering ---
-  get_filtering_diagnostics: { args: undefined; result: FilteringDiagnostics };
-  update_filter_rules: { args: undefined; result: FilteringDiagnostics };
-  reset_filter_rules: { args: undefined; result: FilteringDiagnostics };
-  get_segments: { args: { videoId: VideoId }; result: SkippableSegment[] };
-
-  // --- maintenance and diagnostics ---
-  get_storage_stats: { args: undefined; result: StorageStats };
-  clear_cache: { args: { namespace?: string }; result: StorageStats };
-  reset_application_data: { args: undefined; result: null };
-  get_diagnostics: { args: undefined; result: Diagnostics };
-
-  // --- window and OS ---
+  // --- window ---
   /** Reports that the first frame has painted, so the shell can reveal the window. */
   frontend_ready: { args: undefined; result: null };
-  open_external: { args: { url: string }; result: null };
-  set_always_on_top: { args: { enabled: boolean }; result: null };
-  toggle_mini_player: { args: { enabled: boolean }; result: null };
+}
+
+/** What the active metadata provider actually supports, so the UI renders only real controls. */
+export interface ProviderCapabilities {
+  search_videos: boolean;
+  search_channels: boolean;
+  search_playlists: boolean;
+  search_shorts: boolean;
+  suggestions: boolean;
+  video_details: boolean;
+  related_videos: boolean;
+  channel_details: boolean;
+  channel_videos: boolean;
+  channel_shorts: boolean;
+  playlists: boolean;
+  discovery_feed: boolean;
+  captions: boolean;
+  chapters: boolean;
+  search_filters: boolean;
+  pagination: boolean;
 }
 
 /** A valid command name. */
