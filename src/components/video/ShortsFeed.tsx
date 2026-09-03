@@ -50,7 +50,6 @@ import {
   type ReactNode,
 } from 'react';
 
-import { Link } from '@/app/router';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { VideoActions } from '@/components/video/VideoActions';
@@ -378,45 +377,61 @@ export function ShortsFeed({
           });
         }}
       >
-        {videos.map((video, position) => {
+        {videos.map((video) => {
           const poster = video.thumbnails
             ? bestThumbnailFor(video.thumbnails, 480)?.url
             : undefined;
           return (
             <section
               key={video.id}
-              className="flex snap-center snap-always items-center justify-center"
+              className="relative flex snap-center snap-always items-center justify-center"
               style={{ height: stageHeight > 0 ? stageHeight : '100%' }}
             >
               <div
-                className="relative h-full overflow-hidden rounded-2xl bg-black"
-                style={{
-                  width: stageHeight > 0 ? stageHeight * ratioOf(video) : '100%',
-                  // Forces the box onto its own compositing layer. An `<iframe>` inside an
-                  // `overflow: hidden` parent is not reliably clipped by the parent's radius — the
-                  // embed's square corners poke through — and promoting the clipper is what makes
-                  // the rounding actually apply to it.
-                  transform: 'translateZ(0)',
-                  isolation: 'isolate',
-                }}
+                className="relative h-full"
+                style={{ width: stageHeight > 0 ? stageHeight * ratioOf(video) : '100%' }}
               >
-                {/* The poster stands in for the video on every short except the one playing. It is
-                    what makes scrolling look continuous: there is always a picture under the
-                    gesture, rather than an empty box waiting for a player that will never mount
-                    here. */}
+                {/* The glow, sized to the frame rather than to the column.
+                  A halo hugging the video is what YouTube draws; spread across the whole width it
+                  stops reading as light coming off the picture and becomes a wash over the page.
+                  Purely decorative, never a hit target, and entirely outside the frame, so it
+                  cannot dim the video. */}
                 {poster !== undefined && (
                   <img
                     src={poster}
                     alt=""
                     aria-hidden="true"
-                    loading="lazy"
-                    decoding="async"
-                    className="absolute inset-0 size-full object-cover"
+                    className="pointer-events-none absolute -inset-[3%] -z-10 size-auto h-[106%] w-[106%] object-cover opacity-35 blur-[28px] saturate-[1.5]"
                   />
                 )}
-                {/* Not for the short that is playing: the player draws its own copy on top, and
-                    the two showed through each other in the translucent part of the gradient. */}
-                {position !== index && <ShortsMeta video={video} />}
+
+                <div
+                  className="relative h-full overflow-hidden rounded-2xl bg-black"
+                  style={{
+                    width: '100%',
+                    // Forces the box onto its own compositing layer. An `<iframe>` inside an
+                    // `overflow: hidden` parent is not reliably clipped by the parent's radius — the
+                    // embed's square corners poke through — and promoting the clipper is what makes
+                    // the rounding actually apply to it.
+                    transform: 'translateZ(0)',
+                    isolation: 'isolate',
+                  }}
+                >
+                  {/* The poster stands in for the video on every short except the one playing. It is
+                    what makes scrolling look continuous: there is always a picture under the
+                    gesture, rather than an empty box waiting for a player that will never mount
+                    here. */}
+                  {poster !== undefined && (
+                    <img
+                      src={poster}
+                      alt=""
+                      aria-hidden="true"
+                      loading="lazy"
+                      decoding="async"
+                      className="absolute inset-0 size-full object-cover"
+                    />
+                  )}
+                </div>
               </div>
             </section>
           );
@@ -621,18 +636,12 @@ export function ShortsFeed({
                   )}
                 </div>
               </div>
-
-              {/* Repeated over the player because the player is opaque and covers the section's own
-                copy underneath. Same markup, so the two are indistinguishable mid-scroll. */}
-              <div className="pointer-events-none absolute inset-0 z-20">
-                <ShortsMeta video={current} />
-              </div>
             </div>
 
             {/* Save and share, against the video's right edge — inside the overlay, so they move
                 with the short rather than hanging over the one scrolling past.
                 Keyed on the video so each short gets its own action state. */}
-            <div className="pointer-events-auto absolute top-1/2 left-full z-30 ml-4 -translate-y-1/2">
+            <div className="pointer-events-auto absolute bottom-2 left-full z-30 ml-4">
               <VideoActions key={current.id} video={current} />
             </div>
           </div>
@@ -664,37 +673,6 @@ export function ShortsFeed({
           <ChevronDown size={24} />
         </NavButton>
       </div>
-    </div>
-  );
-}
-
-/** The channel and title, drawn over the bottom of a short. */
-function ShortsMeta({ video }: { video: VideoSummary }): ReactNode {
-  return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent p-4 pt-14">
-      {/* Channel first, then the title — YouTube's order, and the more useful one: the channel is
-          what you act on, the title is what you read. */}
-      {video.channel_name !== undefined && (
-        <div className="mb-2 flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="grid size-7 shrink-0 place-items-center rounded-full bg-white/20 text-2xs font-semibold text-white"
-          >
-            {video.channel_name.trim().charAt(0).toUpperCase()}
-          </span>
-          {video.channel_id ? (
-            <Link
-              to={{ name: 'channel', channelId: video.channel_id, tab: 'videos' }}
-              className="pointer-events-auto truncate text-sm font-medium text-white hover:underline"
-            >
-              {video.channel_name}
-            </Link>
-          ) : (
-            <span className="truncate text-sm font-medium text-white">{video.channel_name}</span>
-          )}
-        </div>
-      )}
-      <h2 className="line-clamp-2 text-sm leading-snug text-white/90">{video.title}</h2>
     </div>
   );
 }

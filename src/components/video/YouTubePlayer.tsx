@@ -66,6 +66,7 @@ interface YouTubeApi {
   Player: new (
     element: HTMLElement,
     options: {
+      host?: string;
       videoId: string;
       playerVars: Record<string, string | number>;
       events: {
@@ -369,6 +370,11 @@ export function YouTubePlayer({
       loadedIdRef.current = id;
 
       return new api.Player(mount, {
+        // The privacy-preserving host, which the API accepts as a first-class option. Nothing is
+        // stored against the viewer until they actually play something — and the hover preview,
+        // which has always used this host through a plain iframe, never shows the title bar the
+        // default host paints over the top of the picture.
+        host: 'https://www.youtube-nocookie.com',
         videoId: id,
         playerVars: {
           autoplay: autoplay ? 1 : 0,
@@ -381,6 +387,12 @@ export function YouTubePlayer({
           // Related videos are restricted to the same channel; the API no longer allows
           // suppressing them entirely, so this is the least intrusive setting available.
           rel: 0,
+          // Reduces the chrome the embed paints over the video. It does not remove the title bar
+          // the embed fades in at the start of playback — no parameter does, `showinfo` was
+          // withdrawn — but it is the most the supported surface offers.
+          modestbranding: 1,
+          // No annotation or card overlays on top of the picture.
+          iv_load_policy: 3,
           mute: muted ? 1 : 0,
           controls: controls ? 1 : 0,
           // Keyboard handling belongs to the application, not to a preview embedded in a card.
