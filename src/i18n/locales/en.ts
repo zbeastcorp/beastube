@@ -601,7 +601,18 @@ export const en = {
       decode: 'The video could not be decoded',
       decodeHint: 'Try turning off hardware acceleration in Playback settings.',
       unsupported_codec: 'This video uses a format your system cannot play',
-      not_embeddable: 'The uploader does not allow playback outside YouTube',
+      /**
+       * Codes 101 and 150. Deliberately does not name a cause.
+       *
+       * The obvious reading — "the uploader disabled embedding" — is frequently wrong: the same
+       * code is returned for age-restricted videos, region-blocked ones, and videos temporarily
+       * unavailable. Measured on a video this reported: YouTube's own oEmbed called it embeddable,
+       * and it had played in this application an hour earlier. Naming the uploader as the reason
+       * was a guess presented as a fact.
+       */
+      not_embeddable: 'This video cannot be played here',
+      notEmbeddableHint:
+        'YouTube is refusing to play it outside its own site. It may be age-restricted, blocked in your region, or unavailable right now.',
       stalled: 'Playback stalled',
       referer_rejected: 'The player rejected the request',
       no_streams: 'No playable video was found',

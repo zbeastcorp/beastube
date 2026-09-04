@@ -40,6 +40,7 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type Ref } from 'react';
 
 import { useTranslation } from '@/i18n/context';
+import { invoke } from '@/services/ipc';
 import type { PlaybackState, Quality, VideoId } from '@/types/domain';
 
 /** How often the playhead is sampled while playing. */
@@ -1034,6 +1035,29 @@ export function YouTubePlayer({
     }
   });
 
+  /**
+   * Clears the failure and asks for the video again.
+   *
+   * Several of the things YouTube reports as code 150 are temporary — a region check, a signed-out
+   * gate, a video briefly unavailable — so the overlay offering no way to try again turned a
+   * momentary refusal into a permanent one.
+   */
+  const retryFailed = (): void => {
+    failedIdRef.current = null;
+    setFailure(null);
+    const player = playerRef.current;
+    if (!player) {
+      // Nothing to reload; rebuild instead.
+      setAttempt((count) => count + 1);
+      return;
+    }
+    try {
+      player.loadVideoById({ videoId });
+    } catch {
+      setAttempt((count) => count + 1);
+    }
+  };
+
   /** Records a failure against whichever video the player is currently holding. */
   const reportLoadFailure = useEffectEvent(() => {
     setFailure({ id: loadedIdRef.current ?? videoId, key: 'error.playback.load_failed' });
@@ -1422,12 +1446,45 @@ export function YouTubePlayer({
           for every video after it. */}
       {failed !== null && (
         <div
-          className="bg-surface absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg text-center"
+          className="bg-surface absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-lg px-6 text-center"
           role="alert"
         >
           <p className="text-text text-base font-medium">
             {t.t(failed as Parameters<typeof t.t>[0])}
           </p>
+
+          {/* Why it might be refusing, without claiming to know which. The code YouTube returns
+              covers several causes and does not say which one applies. */}
+          {failed === 'error.playback.not_embeddable' && (
+            <p className="text-text-muted max-w-prose text-sm">
+              {t.t('error.playback.notEmbeddableHint')}
+            </p>
+          )}
+
+          {/* A dead end is the real complaint here. Both ways out are offered: try again, because
+              some of the causes are temporary, and open it where it is certain to play. */}
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={retryFailed}
+              className="transition-surface bg-surface-raised hover:bg-surface-hover text-text rounded-full px-4 py-2 text-sm"
+            >
+              {t.t('app.retry')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void invoke('open_external', {
+                  url: `https://www.youtube.com/watch?v=${videoId}`,
+                }).catch(() => {
+                  // The link simply does not open; nothing here is recoverable in the UI.
+                });
+              }}
+              className="transition-surface bg-brand rounded-full px-4 py-2 text-sm text-white"
+            >
+              {t.t('video.openExternally')}
+            </button>
+          </div>
         </div>
       )}
     </div>
