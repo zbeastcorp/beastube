@@ -7,7 +7,8 @@
 //!
 //! **Metadata only.** This adapter reads what the provider serves publicly: search results, video
 //! details, channel content. It does not mint proof-of-origin tokens, solve JavaScript challenges,
-//! or touch DRM — which is why no JavaScript engine appears in its dependency graph, and why the
+//! or touch DRM. (It does not follow that no JavaScript engine is present: `rustypipe` brings
+//! `rquickjs` with it. The invariant is about what this code does, not about the graph.) The
 //! deobfuscator feature is off. Playback is the embedded player's job (ADR-0001).
 //!
 //! ## Capabilities are measured, not assumed

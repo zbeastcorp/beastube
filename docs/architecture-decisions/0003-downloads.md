@@ -13,9 +13,10 @@ That rationale conflated two different things, and the conflation is what this A
 
 Obtaining a stream URL from YouTube requires solving the signature cipher, the `n`-parameter
 transform and, increasingly, a BotGuard attestation. ADR 0001 rules that BEASTUBE will not
-implement any of it, and enforces the rule structurally: no JavaScript engine (`rquickjs`, `boa`,
-`deno_core`) may appear in the dependency graph, because such an engine is what implementing it
-would require.
+implement any of it. That rule used to be stated as a structural one — no JavaScript engine may
+appear in the dependency graph — but the graph has carried `rquickjs` by way of `rustypipe` for
+some time, so the structure was never actually enforcing it. The rule that holds is the plain one:
+none of it is implemented in code we write.
 
 What ADR 0001 does _not_ say is that the user may not run software which does solve it. `yt-dlp` is
 that software: widely distributed, actively maintained against exactly these changes, and already
@@ -54,9 +55,9 @@ Four constraints bind it:
 
 1. **No extraction, ever, in our code.** This crate contains no cipher, no `n`-parameter solver, no
    token minting and no HTTP call to YouTube. It builds an argument list and reads stdout. ADR
-   0001's enforcement mechanism is untouched: `cargo tree` still shows no JavaScript engine, and
-   the download crate's entire dependency set is `tokio`, `serde`, `thiserror`, `tracing`, `uuid`
-   and `parking_lot`.
+   The download crate's entire dependency set is `tokio`, `serde`, `thiserror`, `tracing`, `uuid`
+   and `parking_lot` — no HTTP client, no parser, no engine. (The workspace as a whole _does_
+   contain `rquickjs`, via `rustypipe`; see ADR 0001, where that claim has been corrected.)
 
 2. **The application itself fetches nothing at runtime.** Tools are fetched at _build_ time by
    `scripts/fetch-tools.ps1`, from pinned upstream releases, each verified against a checksum the

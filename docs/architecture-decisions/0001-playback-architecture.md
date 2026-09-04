@@ -56,9 +56,19 @@ than preferences:
 
 1. **No circumvention machinery.** It implements no PoToken/BotGuard minting, no `nsig`/signature
    deobfuscation, no JS-challenge solving, and nothing touching DRM or access controls. It consumes
-   stream URLs only where they are served plainly, and reports a capability failure otherwise. This
-   is why no JS engine (`rquickjs`, `boa`, `deno_core`) appears anywhere in the dependency graph —
-   its absence is the enforcement mechanism.
+   stream URLs only where they are served plainly, and reports a capability failure otherwise.
+
+   This rule was originally stated as "no JS engine appears anywhere in the dependency graph — its
+   absence is the enforcement mechanism". That is not true and has not been for some time:
+   `cargo tree -p beastube-provider-youtube` shows `rquickjs v0.9.0`, pulled in by `rustypipe`, and
+   `librquickjs-*.rlib` is built into both profiles. A rule whose stated enforcement can be
+   disproved by one command is worse than no rule, because the next person either believes it or
+   quietly works around it.
+
+   The invariant that actually holds is the one ADR 0003 states: **no extraction in code we write.**
+   Circumvention is not implemented here, and where a provider library carries an engine of its own
+   that is a fact to know about rather than a rule being kept.
+
 2. **No provider leakage.** Neither adapter's types cross into `beastube-core` or the UI. The UI
    knows `PlaybackCapabilities`, `PlaybackState` and player commands; it cannot discover which
    adapter is active except through capability flags.
