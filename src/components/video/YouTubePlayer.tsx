@@ -543,6 +543,13 @@ export interface PlayerHandle {
   /** Puts the player's frame into fullscreen, when the browser allows it. */
   requestFullscreen: () => void;
   /**
+   * Leaves fullscreen.
+   *
+   * Its own command rather than a toggle, because the caller already tracks the state to draw the
+   * right icon — and a toggle that disagreed with that icon would be worse than two commands.
+   */
+  exitFullscreen: () => void;
+  /**
    * Whether this video actually has captions.
    *
    * Asked of the player rather than assumed, so a caption control can be absent for a video that
@@ -625,6 +632,9 @@ export function YouTubePlayer({
 
   /** The pending drop from the load-time frame back to the viewer's own size. */
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** The last tier acted on, so the reload fires on a change rather than on mount. */
+  const pickedRef = useRef<Quality>(quality);
 
   /**
    * The failure, tagged with the video it belongs to.
@@ -883,6 +893,34 @@ export function YouTubePlayer({
     }
   });
 
+  /**
+   * Reloads the current video where it stands.
+   *
+   * This is what makes a quality change actually change the picture. Resizing the frame moves the
+   * embed's *selection* immediately, and going up is served immediately too — but going down it
+   * keeps playing the high-quality segments it has already buffered, so the tier reads `hd720`
+   * while 2160p is still on screen. Measured: seventeen seconds after picking 720p, the video
+   * element was still decoding 3840x2160.
+   *
+   * Reloading at the same position discards that buffer and refills it at the new size. It costs a
+   * short rebuffer, which is exactly what picking a quality on YouTube itself costs, and it fixes
+   * the frame-rate family at the same time — that is chosen per load, so a tier picked without a
+   * reload can arrive at the right resolution and the wrong frame rate.
+   */
+  const reloadAtPosition = useEffectEvent(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    try {
+      const resumeAt = player.getCurrentTime();
+      const wasPlaying = player.getPlayerState() === EMBED_STATE.playing;
+      player.loadVideoById({ videoId, startSeconds: resumeAt });
+      // `loadVideoById` always starts playing; someone who had paused did not ask to resume.
+      if (!wasPlaying) player.pauseVideo();
+    } catch {
+      // Mid-teardown, or nothing cued yet. The frame is the right size either way.
+    }
+  });
+
   /** Records a failure against whichever video the player is currently holding. */
   const reportLoadFailure = useEffectEvent(() => {
     setFailure({ id: loadedIdRef.current ?? videoId, key: 'error.playback.load_failed' });
@@ -1039,6 +1077,20 @@ export function YouTubePlayer({
   }, [quality, maxAutoQuality]);
 
   /**
+   * Effect 7 — an explicitly chosen tier is re-picked at load.
+   *
+   * Only for a deliberate choice, and only when it changes: never on mount, and never for `auto`,
+   * whose whole value is that it follows the window without ever interrupting playback. See
+   * `reloadAtPosition` for why the resize in Effect 6 is not enough on its own.
+   */
+  useEffect(() => {
+    const previous = pickedRef.current;
+    pickedRef.current = quality;
+    if (quality === 'auto' || previous === quality) return;
+    reloadAtPosition();
+  }, [quality]);
+
+  /**
    * The name the embed uses for its caption module, or `null` when this video has none.
    *
    * The name differs between the two player builds, so both are checked rather than one guessed.
@@ -1178,6 +1230,13 @@ export function YouTubePlayer({
       requestFullscreen: () => {
         void frameRef.current?.requestFullscreen().catch(() => {
           // Refused when the gesture is not trusted, or unavailable in this context.
+        });
+      },
+      exitFullscreen: () => {
+        // Guarded: calling this with nothing fullscreen rejects, and there is nothing to report.
+        if (document.fullscreenElement === null) return;
+        void document.exitFullscreen().catch(() => {
+          // Already left, or the document refused. Either way there is nothing left to do.
         });
       },
     }),

@@ -50,6 +50,7 @@ import {
   CaptionsOff,
   ChevronRight,
   Maximize2,
+  Minimize2,
   Pause,
   Play,
   Settings,
@@ -165,6 +166,15 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    * tier, which genuinely is 30fps, is on screen.
    */
   const [highFrameRateFor, setHighFrameRateFor] = useState<string | null>(null);
+  /**
+   * Whether the player is currently filling the screen.
+   *
+   * Read from the document rather than remembered from our own button, because fullscreen can be
+   * left by pressing Escape or by the browser deciding to — and a button that had only counted its
+   * own presses would then offer to leave a fullscreen that had already ended. Escape was, until
+   * now, the *only* way out: the control offered no way back, which is the bug this fixes.
+   */
+  const [fullscreen, setFullscreen] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const measure = useCallback(() => {
@@ -211,6 +221,17 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
     },
     [],
   );
+
+  // The document is the authority on fullscreen, so it is the thing we listen to.
+  useEffect(() => {
+    const sync = () => {
+      setFullscreen(document.fullscreenElement !== null);
+    };
+    document.addEventListener('fullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+    };
+  }, []);
 
   const wake = useCallback(() => {
     setChromeVisible(true);
@@ -478,12 +499,13 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
                 />
 
                 <ControlButton
-                  label={t.t('player.fullscreen')}
+                  label={t.t(fullscreen ? 'player.exitFullscreen' : 'player.fullscreen')}
                   onClick={() => {
-                    playerRef.current?.requestFullscreen();
+                    if (fullscreen) playerRef.current?.exitFullscreen();
+                    else playerRef.current?.requestFullscreen();
                   }}
                 >
-                  <Maximize2 size={20} />
+                  {fullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                 </ControlButton>
               </div>
             </div>
