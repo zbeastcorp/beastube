@@ -22,7 +22,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { ShortsCard } from '@/components/video/ShortsCard';
 import { VideoActions } from '@/components/video/VideoActions';
 import { VideoCard, VideoGrid } from '@/components/video/VideoCard';
-import { useNavigate } from '@/app/router';
+import { Link, useNavigate } from '@/app/router';
 import { setPlayerHandlers, usePlayerStore } from '@/stores/player';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
@@ -290,19 +290,45 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
               nothing and *still* pushed the last button off the right edge. Wrapping puts the
               actions on their own line instead, which is what YouTube does at the same width. */}
           <div className="border-border flex flex-wrap items-center gap-x-3 gap-y-3 border-b pb-4">
-            {details?.channel_avatar?.at(-1) && (
-              <img
-                src={details.channel_avatar.at(-1)?.url}
-                alt=""
-                className="size-10 shrink-0 rounded-full object-cover"
-              />
-            )}
+            {/* The avatar and the name both open the channel, which is what a viewer expects of
+                a name under a video and what every card in this application already does. The
+                channel page exists and was simply not reachable from here. Only a link when the
+                id is known: a name that looks clickable and is not is worse than plain text. */}
+            {details?.channel_avatar?.at(-1) &&
+              (details.channel_id !== undefined ? (
+                <Link
+                  to={{ name: 'channel', channelId: details.channel_id, tab: 'videos' }}
+                  aria-label={details.channel_name ?? t.t('video.openChannel')}
+                  className="shrink-0"
+                >
+                  <img
+                    src={details.channel_avatar.at(-1)?.url}
+                    alt=""
+                    className="size-10 rounded-full object-cover"
+                  />
+                </Link>
+              ) : (
+                <img
+                  src={details.channel_avatar.at(-1)?.url}
+                  alt=""
+                  className="size-10 shrink-0 rounded-full object-cover"
+                />
+              ))}
             {/* `basis-48` is the width below which the channel block stops sharing the line and
                 the actions wrap under it, rather than both getting too little to read. */}
             <div className="flex min-w-0 flex-[1_1_12rem] flex-col">
-              <span className="text-text truncate text-sm font-medium">
-                {details?.channel_name ?? ''}
-              </span>
+              {details?.channel_id !== undefined ? (
+                <Link
+                  to={{ name: 'channel', channelId: details.channel_id, tab: 'videos' }}
+                  className="text-text hover:text-accent truncate text-sm font-medium"
+                >
+                  {details.channel_name ?? ''}
+                </Link>
+              ) : (
+                <span className="text-text truncate text-sm font-medium">
+                  {details?.channel_name ?? ''}
+                </span>
+              )}
               {details?.channel_subscriber_count !== undefined && (
                 <span className="text-text-muted text-xs">
                   {t.plural('video.subscribers', details.channel_subscriber_count, {
