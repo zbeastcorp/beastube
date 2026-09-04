@@ -99,6 +99,9 @@ const EMBED_CHROME_CROP_PX = 64;
 /** How long the pointer must rest before the controls fade, as YouTube's do. */
 const CHROME_IDLE_MS = 2600;
 
+/** How long the poster frame may cover the player before it lifts regardless. */
+const POSTER_MAX_MS = 6000;
+
 interface Box {
   top: number;
   left: number;
@@ -166,7 +169,8 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(100);
   // Seeded from the setting so the caption button reflects what the embed is actually doing
-  // rather than always starting "off" over a player that has captions showing.
+  // rather than always starting "off" over a player that has captions showing. Applied again once
+  // the settings document has actually loaded — see below.
   const [captionsOn, setCaptionsOn] = useState(captionsByDefault);
   const [captionsAvailable, setCaptionsAvailable] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
@@ -196,6 +200,23 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   // Seeded from the viewer's default rather than hardcoded to `auto`, which is what left
   // `playback.default_quality` a setting with no consumer.
   const [quality, setQuality] = useState<Quality>(defaultQuality);
+
+  /**
+   * Re-seeds from the settings document once it has actually arrived.
+   *
+   * The shell paints before settings load, so the initialisers above read the *defaults* rather
+   * than the viewer's own values: someone with captions on saw a CC button reporting off, over a
+   * player showing subtitles. Applied once, and only while the state still holds the default, so
+   * it can never overwrite a choice made in the moments before the document landed.
+   */
+  const settingsLoaded = useSettingsStore((state) => state.loaded);
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (!settingsLoaded || seeded.current) return;
+    seeded.current = true;
+    setCaptionsOn((was) => (was === captionsByDefault ? was : captionsByDefault));
+    setQuality((was) => (was === 'auto' ? defaultQuality : was));
+  }, [settingsLoaded, captionsByDefault, defaultQuality]);
   const [qualities, setQualities] = useState<Quality[]>([]);
   /**
    * The tier actually being served, which is not the same thing as the one requested.
@@ -279,6 +300,23 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
     },
     [],
   );
+
+  /**
+   * A hard cap on how long the poster may cover the player.
+   *
+   * Belt and braces for the case the state machine misses entirely — an embed that reports nothing
+   * at all. A thumbnail that never lifts is indistinguishable from a frozen application, and after
+   * a few seconds it is better to show whatever the embed is showing, even a black frame, than to
+   * keep insisting on a picture that is not the video.
+   */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStartedId((was) => (was === videoId ? was : videoId));
+    }, POSTER_MAX_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [videoId]);
 
   // The document is the authority on fullscreen, so it is the thing we listen to.
   useEffect(() => {
@@ -387,7 +425,13 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             {...(session?.startAtMs !== undefined ? { startAtMs: session.startAtMs } : {})}
             onStateChange={(state, forId) => {
               setPlaying(state === 'playing' || state === 'buffering');
-              if (state === 'playing') {
+              // Any state that means the embed has something on screen clears the poster, not
+              // `playing` alone. A video that is cued and waiting — autoplay refused, or simply
+              // paused — never reaches `playing`, so the thumbnail stayed opaque over a player
+              // that was ready and willing, and the whole page read as hung. The poster is there
+              // to hide the black frame *while the embed has nothing*, and that is over the
+              // moment it reports anything else.
+              if (state === 'playing' || state === 'paused' || state === 'ready') {
                 setStartedId((was) => (was === videoId ? was : videoId));
               }
               // Tracked so the poster can get out of the way of the message.

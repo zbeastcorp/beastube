@@ -34,7 +34,24 @@ import type { Update } from '@tauri-apps/plugin-updater';
  */
 export async function checkForUpdate(): Promise<Update | null> {
   const { check } = await import('@tauri-apps/plugin-updater');
-  return await check();
+  try {
+    return await check();
+  } catch (cause) {
+    // A release feed that is not there yet is not a failure to report. Before the first release is
+    // published the endpoint answers 404, and the plugin raises that like any other transport
+    // error — so the very first "Check for updates" anyone pressed blamed their connection for a
+    // file the project had simply not uploaded. "Nothing to update to" is the truthful answer.
+    if (isMissingRelease(cause)) return null;
+    throw cause;
+  }
+}
+
+/** Whether a failed check means "no release published" rather than "could not reach it". */
+function isMissingRelease(cause: unknown): boolean {
+  const message =
+    cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : String(cause);
+  const text = message.toLowerCase();
+  return text.includes('404') || text.includes('not found');
 }
 
 /**

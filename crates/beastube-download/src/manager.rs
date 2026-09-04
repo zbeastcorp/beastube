@@ -557,16 +557,21 @@ fn is_cancel_leftover(name: &str) -> bool {
         return true;
     }
     let lower = name.to_ascii_lowercase();
-    if lower.contains(".temp.") {
-        return true;
+    // Anchored to the segment immediately before the extension, which is where yt-dlp puts both
+    // markers — `Title.f137.mp4`, `Title.temp.mp4`. Scanning *every* segment was too eager: a
+    // finished download whose title happens to contain a dotted `f` and digits, say
+    // `Some.Film.f22.1080p.mkv`, matched and would have been deleted when a *different* download
+    // for the same video was cancelled. Deleting a file the viewer already has is far worse than
+    // leaving a stray partial.
+    match lower.rsplit('.').nth(1) {
+        Some("temp") => true,
+        Some(segment) => {
+            segment.len() > 1
+                && segment.starts_with('f')
+                && segment[1..].bytes().all(|byte| byte.is_ascii_digit())
+        }
+        None => false,
     }
-    // A `.f<digits>.` segment, matched structurally rather than by extension: the format id sits
-    // in the middle of the name, not at the end.
-    lower.split('.').any(|segment| {
-        segment.len() > 1
-            && segment.starts_with('f')
-            && segment[1..].bytes().all(|byte| byte.is_ascii_digit())
-    })
 }
 
 /// Removes the partial files a killed run left behind for `video_id`. Best effort.
@@ -628,6 +633,10 @@ mod tests {
         assert!(!is_cancel_leftover("Some Film [xyz].mkv"));
         // Nor should an ordinary name that merely starts a segment with "f".
         assert!(!is_cancel_leftover("Title [abc].final.mp4"));
+        // And not a finished file whose own title carries a dotted format-looking segment. The
+        // marker only counts in the position yt-dlp actually writes it: just before the extension.
+        assert!(!is_cancel_leftover("Some.Film.f22.1080p [abc].mkv"));
+        assert!(!is_cancel_leftover("Temp.Diaries [abc].mp4"));
     }
 
     use super::*;

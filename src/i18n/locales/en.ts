@@ -124,6 +124,7 @@ export const en = {
     showLess: 'Show less',
     chapters: 'Chapters',
     related: 'Related',
+    noRelated: 'No recommendations for this video',
     live: 'Live',
     upcoming: 'Upcoming',
     wasLive: 'Streamed live',

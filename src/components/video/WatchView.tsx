@@ -212,8 +212,13 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
     //
     // The ref is written from inside the effect rather than during render, which is what keeps
     // this safe under concurrent rendering.
+    // Armed as soon as *this* video's stored position has settled, whether or not there was one
+    // to apply. Arming only when a position existed left a first-time watch — which has none —
+    // permanently unlatched, so the checkpoint written moments later by the video now playing
+    // counted as new and threw playback back to it. Refresh rewound a video being watched for the
+    // first time, which is precisely the case the latch was added for.
     const applying = resumedFor.current !== videoId && resumeAt !== undefined;
-    if (applying) resumedFor.current = videoId;
+    if (!stored.loading) resumedFor.current = videoId;
 
     setSession({
       videoId,
@@ -221,7 +226,9 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
       autoplay,
       ...(poster !== undefined ? { posterUrl: poster } : {}),
     });
-  }, [videoId, resumeAt, autoplay, poster, setSession]);
+    // `stored.loading` is listed because the latch above reads it: the session must be rebuilt
+    // when this video's position finishes loading, which is the moment the latch can arm.
+  }, [videoId, resumeAt, autoplay, poster, setSession, stored.loading]);
 
   if (video.error && !details) {
     return <ErrorState error={video.error} onRetry={video.reload} />;
@@ -369,12 +376,19 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
               ),
             )}
           </VideoGrid>
-        ) : (
+        ) : related.error ? (
+          // A failure, said so, with a way out of it. The rail used to show skeletons for every
+          // outcome that was not a list — so a failed fetch and a video with no recommendations
+          // both looked like loading, and both looked like it forever.
+          <ErrorState error={related.error} onRetry={related.reload} />
+        ) : related.loading ? (
           <div className="flex flex-col gap-3">
             {Array.from({ length: 4 }, (_, index) => (
               <div key={index} className="skeleton h-20 rounded-md" />
             ))}
           </div>
+        ) : (
+          <p className="text-text-muted text-sm">{t.t('video.noRelated')}</p>
         )}
       </aside>
     </div>

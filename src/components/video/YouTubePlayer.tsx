@@ -48,6 +48,9 @@ const POSITION_POLL_MS = 250;
 /** Where the player API is loaded from. The only remote script the application loads. */
 const IFRAME_API_SRC = 'https://www.youtube.com/iframe_api';
 
+/** How long after a failed construction before trying again. */
+const API_RETRY_DELAY_MS = 2_000;
+
 /** How long to wait for the API script before reporting failure. */
 const API_LOAD_TIMEOUT_MS = 15_000;
 
@@ -662,6 +665,15 @@ export function YouTubePlayer({
   /** A resume position that arrived before the player was ready, drained by `onReady`. */
   const pendingResumeRef = useRef<number | null>(null);
 
+  /**
+   * The video whose failure is on screen, readable from an effect event.
+   *
+   * A ref beside the state because `swapVideo` needs to know synchronously whether the video being
+   * asked for is the failed one, and reading render state there would see whatever the last render
+   * captured.
+   */
+  const failedIdRef = useRef<VideoId | null>(null);
+
   /** The pending drop from the load-time frame back to the viewer's own size. */
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -686,6 +698,13 @@ export function YouTubePlayer({
    * would otherwise leave its error on screen for every video swapped in after it.
    */
   const [failure, setFailure] = useState<{ id: VideoId; key: string } | null>(null);
+
+  /**
+   * Bumped to rebuild the player after a failed construction.
+   *
+   * Part of the construction effect's dependencies, which is what makes a retry possible at all.
+   */
+  const [attempt, setAttempt] = useState(0);
 
   // Callbacks are wrapped as effect events so changing one does not tear down and rebuild the
   // player — which would restart playback from the beginning every time a parent re-rendered.
@@ -915,6 +934,7 @@ export function YouTubePlayer({
             if (isCancelled()) return;
             const key = errorKeyFor(event.data);
             const failed = loadedIdRef.current ?? id;
+            failedIdRef.current = failed;
             setFailure({ id: failed, key });
             reportState('error');
             reportError(key, event.data, failed);
@@ -934,12 +954,32 @@ export function YouTubePlayer({
    */
   const swapVideo = useEffectEvent((id: VideoId) => {
     const player = playerRef.current;
-    if (!player || loadedIdRef.current === id) return;
+    if (!player) return;
+
+    // Coming back to the video that failed is a request to try it again, not a no-op. The guard
+    // below exists to skip the redundant load right after construction, but it also swallowed this
+    // case — so a video that hit a transient error kept its overlay for the rest of the session
+    // however many times the viewer returned to it.
+    if (loadedIdRef.current === id) {
+      if (failedIdRef.current === id) {
+        failedIdRef.current = null;
+        setFailure(null);
+        failedIdRef.current = null;
+        try {
+          player.loadVideoById({ videoId: id });
+        } catch {
+          // Mid-teardown; the next construction loads it anyway.
+        }
+      }
+      return;
+    }
+
     loadedIdRef.current = id;
     pendingResumeRef.current = null;
     // Pointing the player somewhere else is exactly when the old failure stops applying. Without
     // this the overlay was never cleared by anything, so one transient error — a decode hiccup, a
     // network stall during load — left an opaque panel over that video for the rest of the session.
+    failedIdRef.current = null;
     setFailure(null);
     // A swap is a load, and the frame-rate family is chosen per load — so the frame is widened for
     // it exactly as it is at construction, and settles again once the new video is playing.
@@ -1084,7 +1124,30 @@ export function YouTubePlayer({
       // Emptying the container is what actually guarantees a clean slate.
       host?.replaceChildren();
     };
-  }, [controls, loop]);
+    // `attempt` is a dependency so a retry rebuilds. The API script is fetched once per process
+    // and cached in `apiPromise`; a failure clears that cache, but nothing ever asked again — so a
+    // single blocked or slow fetch at launch left the player permanently empty, with no error the
+    // viewer could act on and no path back short of restarting the application.
+  }, [controls, loop, attempt]);
+
+  /**
+   * Retries a failed construction when a different video is asked for.
+   *
+   * The natural moment to try again: the viewer has just clicked something, so the wait is one
+   * they already expect. Guarded on there being no player at all, so this never disturbs a working
+   * one.
+   */
+  useEffect(() => {
+    if (playerRef.current === null && failure !== null) {
+      const timer = setTimeout(() => {
+        setAttempt((count) => count + 1);
+      }, API_RETRY_DELAY_MS);
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+    return undefined;
+  }, [videoId, failure]);
 
   // Effect 2 — swap. This is the whole point: a new video costs one API call, not a new iframe.
   useEffect(() => {

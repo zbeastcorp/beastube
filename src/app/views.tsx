@@ -949,22 +949,26 @@ function LocalPlaylistView({ id }: { id: LocalPlaylistId }): ReactNode {
                   bodyKey: 'library.deletePlaylistHint',
                   confirmKey: 'app.delete',
                   onConfirm: () => {
-                    void invoke('delete_playlist', { playlistId: list.id })
-                      // A failure here used to vanish: the dialog closed and the playlist stayed.
-                      .catch((cause: unknown) => {
-                        useUiStore.getState().toast({
-                          messageKey: normalizeError(cause).message_key,
-                          tone: 'danger',
-                          durationMs: 6000,
-                        });
-                      })
-                      .then(() => {
+                    void invoke('delete_playlist', { playlistId: list.id }).then(
+                      () => {
                         bump();
                         closeOverlay();
                         // Back to the list: staying on a playlist that no longer exists would show
                         // the "no such playlist" state as though something had gone wrong.
                         navigate({ name: 'library' });
-                      });
+                      },
+                      (cause: unknown) => {
+                        // The failure branch, not a `.catch` in the middle of the chain: catching
+                        // there reported the error and then ran the success path anyway, so a
+                        // playlist that had not been deleted still closed the dialog and sent the
+                        // viewer back to a library that still contained it.
+                        useUiStore.getState().toast({
+                          messageKey: normalizeError(cause).message_key,
+                          tone: 'danger',
+                          durationMs: 6000,
+                        });
+                      },
+                    );
                   },
                 });
               }}
@@ -995,17 +999,18 @@ function LocalPlaylistView({ id }: { id: LocalPlaylistId }): ReactNode {
                   void invoke('remove_from_playlist', {
                     playlistId: id,
                     videoId: item.video.id,
-                  })
-                    .catch((cause: unknown) => {
+                  }).then(
+                    () => {
+                      bump();
+                    },
+                    (cause: unknown) => {
                       useUiStore.getState().toast({
                         messageKey: normalizeError(cause).message_key,
                         tone: 'danger',
                         durationMs: 6000,
                       });
-                    })
-                    .then(() => {
-                      bump();
-                    });
+                    },
+                  );
                 }}
                 className="transition-surface text-text-muted hover:text-text self-start text-xs"
               >

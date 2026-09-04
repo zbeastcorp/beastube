@@ -110,6 +110,7 @@ export const es: PartialCatalogue = {
     showLess: 'Ver menos',
     chapters: 'Capítulos',
     related: 'Relacionados',
+    noRelated: 'No hay recomendaciones para este vídeo',
     live: 'En directo',
     upcoming: 'Próximamente',
     watched: 'Visto',

@@ -115,6 +115,7 @@ export const hi: PartialCatalogue = {
     showLess: 'कम दिखाएँ',
     chapters: 'अध्याय',
     related: 'संबंधित',
+    noRelated: 'इस वीडियो के लिए कोई सुझाव नहीं',
     live: 'लाइव',
     upcoming: 'आने वाला',
     watched: 'देखा गया',

@@ -525,11 +525,13 @@ function PrivacyPanel(): ReactNode {
 
   const clearHistory = () => {
     setBusy(true);
+    // Reported through the failure *branch* rather than a `.catch` earlier in the chain. A catch
+    // resolves what follows it, so the success step ran anyway — a clear that had failed still
+    // refreshed the panel as though it had worked, under a toast saying it had not.
     void invoke('clear_history', undefined)
-      .catch(reportFailure)
       .then(() => {
         storage.reload();
-      })
+      }, reportFailure)
       .finally(() => {
         setBusy(false);
       });
@@ -538,10 +540,9 @@ function PrivacyPanel(): ReactNode {
   const clearSearches = () => {
     setBusy(true);
     void invoke('clear_search_history', undefined)
-      .catch(reportFailure)
       .then(() => {
         storage.reload();
-      })
+      }, reportFailure)
       .finally(() => {
         setBusy(false);
       });
@@ -550,7 +551,6 @@ function PrivacyPanel(): ReactNode {
   const clearCache = () => {
     setBusy(true);
     void invoke('clear_cache', undefined)
-      .catch(reportFailure)
       .then(() => {
         // The in-memory caches too. Clearing only the native side left this session still holding
         // feeds and video metadata fetched before the click, so the button did not mean what it
@@ -558,7 +558,7 @@ function PrivacyPanel(): ReactNode {
         clearFeedCache();
         clearVideoCache();
         storage.reload();
-      })
+      }, reportFailure)
       .finally(() => {
         setBusy(false);
       });
@@ -869,11 +869,9 @@ function FilteringPanel(): ReactNode {
       <SettingRow label={t.t('settings.filtering.resetRules')}>
         <SecondaryButton
           onClick={() => {
-            void invoke('reset_filter_rules', undefined)
-              .catch(reportFailure)
-              .then(() => {
-                diagnostics.reload();
-              });
+            void invoke('reset_filter_rules', undefined).then(() => {
+              diagnostics.reload();
+            }, reportFailure);
           }}
         >
           {t.t('settings.filtering.resetRules')}
