@@ -59,6 +59,19 @@ pub struct VideoSummary {
     /// Channel display name. Untrusted text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_name: Option<String>,
+    /// The channel's avatar renditions, when the provider attaches them to the item.
+    ///
+    /// Carried on the *video* rather than fetched per card: the provider already sends it with
+    /// every search and related result, and a card that had to look it up would be one request per
+    /// tile for a picture that arrived with the tile.
+    #[serde(default, skip_serializing_if = "ThumbnailSet::is_empty")]
+    pub channel_avatar: ThumbnailSet,
+    /// Whether the provider marks the channel as verified.
+    ///
+    /// Only ever `true` when the provider said so. A badge the application invented would be a
+    /// claim about someone's identity, which is the last thing to guess at (§131).
+    #[serde(default)]
+    pub channel_verified: bool,
     /// Available thumbnail renditions.
     #[serde(default, skip_serializing_if = "ThumbnailSet::is_empty")]
     pub thumbnails: ThumbnailSet,
@@ -97,6 +110,8 @@ impl VideoSummary {
             title: title.into(),
             channel_id: None,
             channel_name: None,
+            channel_avatar: ThumbnailSet::empty(),
+            channel_verified: false,
             thumbnails: ThumbnailSet::empty(),
             duration_ms: None,
             published_at: None,

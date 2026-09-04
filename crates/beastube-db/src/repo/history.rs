@@ -62,6 +62,15 @@ pub struct WatchRecord {
     pub thumbnails: ThumbnailSet,
     /// Total duration, when known.
     pub duration_ms: Option<u64>,
+    /// View count at the moment it was watched, when the provider reported one.
+    ///
+    /// A snapshot, not a live figure — the same bargain the stored title and thumbnail already
+    /// make. It is what lets a history card show what every other card shows.
+    pub view_count: Option<u64>,
+    /// Publication time, when the provider reported an absolute one.
+    pub published_at: Option<Timestamp>,
+    /// The channel's avatar at the time of watching.
+    pub channel_avatar: ThumbnailSet,
 }
 
 impl WatchRecord {
@@ -75,6 +84,9 @@ impl WatchRecord {
             channel_name: summary.channel_name.clone(),
             thumbnails: summary.thumbnails.clone(),
             duration_ms: summary.duration_ms,
+            view_count: summary.view_count,
+            published_at: summary.published_at,
+            channel_avatar: summary.channel_avatar.clone(),
         }
     }
 }
@@ -99,6 +111,9 @@ macro_rules! select_entry {
                    h.channel_name    AS channel_name,
                    h.thumbnails_json AS thumbnails_json,
                    h.duration_ms     AS duration_ms,
+                   h.view_count      AS view_count,
+                   h.published_at    AS published_at,
+                   h.channel_avatar_json AS channel_avatar_json,
                    h.first_watched_at,
                    h.last_watched_at,
                    h.play_count,
@@ -143,8 +158,9 @@ impl HistoryRepo {
         sqlx::query(
             "INSERT INTO history
                  (video_id, title, channel_id, channel_name, thumbnails_json, duration_ms,
-                  first_watched_at, last_watched_at, play_count, search_text)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                  first_watched_at, last_watched_at, play_count, search_text,
+                  view_count, published_at, channel_avatar_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
              ON CONFLICT(video_id) DO UPDATE SET
                  title           = excluded.title,
                  channel_id      = excluded.channel_id,
@@ -153,7 +169,14 @@ impl HistoryRepo {
                  duration_ms     = COALESCE(excluded.duration_ms, history.duration_ms),
                  last_watched_at = excluded.last_watched_at,
                  play_count      = history.play_count + 1,
-                 search_text     = excluded.search_text",
+                 search_text     = excluded.search_text,
+                 -- Kept when the new record does not carry one: reopening a video from the library
+                 -- supplies no view count, and dropping the stored one would blank a card that had
+                 -- been showing it.
+                 view_count      = COALESCE(excluded.view_count, history.view_count),
+                 published_at    = COALESCE(excluded.published_at, history.published_at),
+                 channel_avatar_json =
+                     COALESCE(excluded.channel_avatar_json, history.channel_avatar_json)",
         )
         .bind(record.video_id.as_str())
         .bind(&title)
@@ -164,6 +187,18 @@ impl HistoryRepo {
         .bind(at.as_millis())
         .bind(at.as_millis())
         .bind(search)
+        .bind(record.view_count.and_then(|count| i64::try_from(count).ok()))
+        .bind(record.published_at.map(Timestamp::as_millis))
+        // `None` rather than an empty array, so the COALESCE above keeps a stored avatar when a
+        // later watch arrives without one (reopening from the library carries no channel picture).
+        .bind(
+            if record.channel_avatar.is_empty() {
+                None
+            } else {
+                Some(encode_thumbnails(&record.channel_avatar)?)
+            }
+            .flatten(),
+        )
         .execute(self.db.writer())
         .await
         .map_err(DbError::from_sqlx)?;
@@ -389,6 +424,13 @@ fn entry_from_row(row: &SqliteRow) -> DbResult<HistoryEntry> {
             column::<Option<String>>(row, "thumbnails_json")?.as_deref(),
         ),
         position: position_from_row(row, history_duration, last_watched_at)?,
+        view_count: column::<Option<i64>>(row, "view_count")?
+            .and_then(|count| u64::try_from(count).ok()),
+        published_at: column::<Option<i64>>(row, "published_at")?.map(from_db_timestamp),
+        channel_avatar: decode_thumbnails(
+            "history",
+            column::<Option<String>>(row, "channel_avatar_json")?.as_deref(),
+        ),
         first_watched_at: from_db_timestamp(column::<i64>(row, "first_watched_at")?),
         last_watched_at,
         play_count: u32::try_from(play_count).unwrap_or(u32::MAX),
@@ -439,6 +481,9 @@ mod tests {
             channel_name: Some("Test Channel".to_owned()),
             thumbnails: ThumbnailSet::empty(),
             duration_ms: Some(600_000),
+            view_count: Some(1_234),
+            published_at: Some(Timestamp::from_millis(1_000)),
+            channel_avatar: ThumbnailSet::empty(),
         }
     }
 

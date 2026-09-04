@@ -47,7 +47,7 @@ use tokio_util::sync::CancellationToken;
 use crate::state::AppState;
 
 /// Result of a command: the value, or a payload the UI can render and classify.
-type CommandResult<T> = Result<T, ErrorPayload>;
+pub(crate) type CommandResult<T> = Result<T, ErrorPayload>;
 
 /// How many of the user's own past queries a suggestion list may lead with.
 ///
@@ -60,7 +60,7 @@ const LOCAL_SUGGESTION_LIMIT: u32 = 4;
 const MAX_SUGGESTIONS: usize = 10;
 
 /// Converts any subsystem error into the wire payload.
-fn fail<E: DomainError + Sized>(error: E) -> ErrorPayload {
+pub(crate) fn fail<E: DomainError + Sized>(error: E) -> ErrorPayload {
     error.to_payload()
 }
 
@@ -1579,6 +1579,8 @@ mod feed_tests {
             title: id.to_owned(),
             channel_id: None,
             channel_name: None,
+            channel_avatar: ThumbnailSet::empty(),
+            channel_verified: false,
             thumbnails: ThumbnailSet::empty(),
             duration_ms: None,
             published_at: None,
@@ -1786,6 +1788,54 @@ pub(crate) async fn get_more_shorts(
     let mut combined = lists;
     combined.extend(fallback);
     Ok(interleave(combined, &seen, limit))
+}
+
+/// Tells the webview which colour scheme the application is painted in.
+///
+/// This exists for one visible problem: the embedded player's own settings panel — quality, speed,
+/// captions — is rendered by YouTube inside the `<iframe>`, styled by *its* document, which follows
+/// `prefers-color-scheme`. That media query answers from the webview's preferred colour scheme,
+/// which defaults to the operating system's. On a machine set to light Windows, a user running
+/// BEASTUBE in dark mode got a white panel over a dark player.
+///
+/// Nothing in CSS can reach across an origin to fix it. Setting the webview's own preference can,
+/// and it is the only thing that can: `WebviewWindow::set_theme` reaches WebView2's
+/// `SetPreferredColorScheme`, and the embed then renders its panel dark.
+///
+/// Driven from the frontend rather than read from settings here, because "system" has to be
+/// resolved against the OS preference and the webview is where that question is already answered.
+///
+/// # Errors
+///
+/// Returns a payload if the window is gone or the platform refuses the change. Neither is
+/// recoverable in the UI, and neither breaks anything: the panel is merely the wrong colour.
+#[tauri::command]
+pub(crate) fn set_window_theme(app: tauri::AppHandle, dark: bool) -> CommandResult<()> {
+    use tauri::{Manager as _, Theme};
+
+    let Some(window) = app.get_webview_window("main") else {
+        return Err(ErrorPayload {
+            kind: beastube_core::error::ErrorKind::Configuration,
+            code: "configuration.invalid".to_owned(),
+            message_key: "error.configuration.invalid".to_owned(),
+            params: std::collections::BTreeMap::new(),
+            recovery: beastube_core::error::Recovery::Unrecoverable,
+            diagnostic: Some("no main window".to_owned()),
+            correlation_id: None,
+        });
+    };
+
+    window
+        .set_theme(Some(if dark { Theme::Dark } else { Theme::Light }))
+        .map_err(|error| ErrorPayload {
+            kind: beastube_core::error::ErrorKind::Configuration,
+            code: "configuration.invalid".to_owned(),
+            message_key: "error.configuration.invalid".to_owned(),
+            params: std::collections::BTreeMap::new(),
+            recovery: beastube_core::error::Recovery::Unrecoverable,
+            diagnostic: Some(error.to_string()),
+            correlation_id: None,
+        })
 }
 
 /// Opens a link in the user's own browser.

@@ -23,9 +23,11 @@ beastube-provider-youtube = { path = "crates/beastube-provider-youtube" }
 beastube-filtering = { path = "crates/beastube-filtering" }
 beastube-gateway = { path = "crates/beastube-gateway" }
 beastube-playback = { path = "crates/beastube-playback" }
+beastube-download = { path = "crates/beastube-download" }
 
 # --- async runtime ---
-tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "signal", "io-util", "net"] }
+# `process` is for the download subsystem, which drives yt-dlp as a child process.
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "signal", "io-util", "net", "process"] }
 tokio-util = { version = "0.7", features = ["rt", "time", "io"] }
 futures = "0.3"
 bytes = "1"
@@ -106,7 +108,13 @@ missing_errors_doc = "warn"
 codegen-units = 1
 lto = "fat"
 opt-level = 3
-panic = "abort"
+# Unwind, deliberately. The YouTube adapter wraps a third-party extractor whose failure mode is a
+# panic (`visitor_data.rs` unwraps a request that now answers 302), and it contains that with
+# `catch_unwind` so a blip costs a retry rather than a screen. Tokio likewise contains a panic in a
+# spawned task. Both depend on unwinding: with `panic = "abort"` every one of those panics —
+# including the extractor's *detached* refresh task, which no handler can reach — ended the process,
+# and the installed build died after roughly fifty requests. The binary-size saving is not worth
+# an application that exits mid-session.
 strip = true
 debug = false
 

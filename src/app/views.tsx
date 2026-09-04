@@ -578,6 +578,9 @@ function historyToSummary(entry: {
   channel_name?: string;
   thumbnails?: VideoSummary['thumbnails'];
   position: { duration_ms?: number };
+  view_count?: number;
+  published_at?: number;
+  channel_avatar?: VideoSummary['channel_avatar'];
 }): VideoSummary {
   return {
     id: entry.video_id,
@@ -588,6 +591,11 @@ function historyToSummary(entry: {
     ...(entry.position.duration_ms !== undefined
       ? { duration_ms: entry.position.duration_ms }
       : {}),
+    // Stored when the video was watched. Without these a "Continue watching" card was visibly
+    // poorer than every card beneath it — no view count, no date.
+    ...(entry.view_count !== undefined ? { view_count: entry.view_count } : {}),
+    ...(entry.published_at !== undefined ? { published_at: entry.published_at } : {}),
+    ...(entry.channel_avatar !== undefined ? { channel_avatar: entry.channel_avatar } : {}),
   };
 }
 

@@ -59,11 +59,22 @@ interface UiState {
    */
   playlistRevision: number;
 
+  /**
+   * Bumped by the Refresh control, and folded into every mounted request's identity.
+   *
+   * `useAsyncResource` watches it, so raising it re-runs exactly the fetches the current screen
+   * depends on — the same page, the same scroll position, the same player, fresh data. A route
+   * change or a remount would refresh far more than the user asked for and lose their place.
+   */
+  contentRevision: number;
+
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   openOverlay: (overlay: Overlay) => void;
   /** Tells every playlist view that what it is showing may be out of date. */
   notePlaylistsChanged: () => void;
+  /** Re-fetches whatever the current screen is showing, in place. */
+  refreshContent: () => void;
   closeOverlay: () => void;
   setFullscreen: (fullscreen: boolean) => void;
   toast: (toast: Omit<Toast, 'id'>) => string;
@@ -79,6 +90,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   sidebarCollapsed: false,
   overlay: { kind: 'none' },
   playlistRevision: 0,
+  contentRevision: 0,
   toasts: [],
   fullscreen: false,
 
@@ -93,6 +105,9 @@ export const useUiStore = create<UiState>((set, get) => ({
   },
   notePlaylistsChanged: () => {
     set((state) => ({ playlistRevision: state.playlistRevision + 1 }));
+  },
+  refreshContent: () => {
+    set((state) => ({ contentRevision: state.contentRevision + 1 }));
   },
   closeOverlay: () => {
     set({ overlay: { kind: 'none' } });

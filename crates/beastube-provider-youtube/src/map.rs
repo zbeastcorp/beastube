@@ -152,6 +152,8 @@ fn short_from_lockup(lockup: &serde_json::Value) -> Option<VideoSummary> {
         // The lockup carries no channel. Absent rather than invented: the card simply shows the
         // title and the view count, which is what YouTube's own shorts shelf shows.
         channel_name: None,
+        channel_avatar: ThumbnailSet::empty(),
+        channel_verified: false,
         thumbnails,
         duration_ms: None,
         published_at: None,
@@ -199,7 +201,7 @@ fn published_at(date: Option<time::OffsetDateTime>) -> Option<Timestamp> {
 ///
 /// The artist badge is treated as verification too: both mean "the provider vouches for this
 /// identity", which is the only claim the UI makes.
-const fn is_verified(verification: Verification) -> bool {
+pub(crate) const fn is_verified(verification: Verification) -> bool {
     matches!(verification, Verification::Verified | Verification::Artist)
 }
 
@@ -215,6 +217,13 @@ pub(crate) fn video_summary(item: VideoItem) -> Option<VideoSummary> {
             .as_ref()
             .and_then(|tag| ChannelId::new(tag.id.clone()).ok()),
         channel_name: channel.as_ref().map(|tag| tag.name.clone()),
+        channel_avatar: channel
+            .as_ref()
+            .map(|tag| thumbnails(&tag.avatar))
+            .unwrap_or_default(),
+        channel_verified: channel
+            .as_ref()
+            .is_some_and(|tag| is_verified(tag.verification)),
         thumbnails: thumbnails(&item.thumbnail),
         // The extractor reports whole seconds; the domain model is milliseconds throughout.
         duration_ms: item.duration.map(|seconds| u64::from(seconds) * 1000),
@@ -588,5 +597,366 @@ mod tests {
             }
         })));
         assert!(matches!(item, Some(SearchItem::Video(_))));
+    }
+}
+
+// -------------------------------------------------------------------------------------------
+// The watch page's recommendation shelf
+//
+// The typed extractor parses this shelf into `VideoItem`s that are almost entirely empty: no
+// channel, no view count, no date. Measured against the live service on 2026-09-04, every one of
+// the twenty related items came back with `channel: None` and `view_count: None`, which is why a
+// Home feed built from them showed nothing but titles while search results showed everything.
+//
+// The response itself carries all of it. YouTube moved this shelf to `lockupViewModel`, the same
+// modern renderer the shorts shelf uses and the same one the typed parser does not understand —
+// so this reads it directly, exactly as `shorts_from_search` above already does.
+// -------------------------------------------------------------------------------------------
+
+/// Reads the recommendation shelf out of a raw `next` response.
+pub(crate) fn related_from_next(json: &str) -> Vec<VideoSummary> {
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+
+    let mut lockups = Vec::new();
+    collect_by_key(&root, "lockupViewModel", &mut lockups);
+
+    let mut seen = std::collections::HashSet::new();
+    lockups
+        .into_iter()
+        .filter_map(video_from_lockup)
+        .filter(|video| seen.insert(video.id.as_str().to_owned()))
+        .collect()
+}
+
+/// Every `content` string inside `value`, in document order.
+fn text_contents(value: &serde_json::Value, out: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (name, child) in map {
+                if name == "content"
+                    && let Some(text) = child.as_str()
+                    && !text.trim().is_empty()
+                {
+                    out.push(text.to_owned());
+                } else {
+                    text_contents(child, out);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for child in items {
+                text_contents(child, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Reads an image source list into a thumbnail set, keeping dimensions where they are given.
+fn sources_to_thumbnails(sources: Option<&serde_json::Value>) -> ThumbnailSet {
+    let Some(list) = sources.and_then(serde_json::Value::as_array) else {
+        return ThumbnailSet::empty();
+    };
+    ThumbnailSet::new(
+        list.iter()
+            .filter_map(|entry| {
+                let url = entry.get("url")?.as_str()?;
+                match (
+                    entry.get("width").and_then(serde_json::Value::as_u64),
+                    entry.get("height").and_then(serde_json::Value::as_u64),
+                ) {
+                    (Some(width), Some(height)) => Some(Thumbnail::sized(
+                        url,
+                        u32::try_from(width).ok()?,
+                        u32::try_from(height).ok()?,
+                    )),
+                    // A source without dimensions is still a usable picture; the renditions are
+                    // listed smallest-first, so position carries the size well enough.
+                    _ => Some(Thumbnail::unsized_at(url)),
+                }
+            })
+            .collect(),
+    )
+}
+
+/// Parses `3:45` or `1:02:03` into milliseconds.
+fn parse_duration_text(text: &str) -> Option<u64> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || !trimmed.contains(':') {
+        return None;
+    }
+    let mut total: u64 = 0;
+    for (index, part) in trimmed.split(':').enumerate() {
+        let value: u64 = part.trim().parse().ok()?;
+        // Every field after the first is two digits; a larger one means this is not a duration.
+        if index > 0 && value > 59 {
+            return None;
+        }
+        total = total.checked_mul(60)?.checked_add(value)?;
+    }
+    total.checked_mul(1000)
+}
+
+/// Whether a metadata part describes *when* rather than *how many*.
+///
+/// Covers the four shapes the shelf uses: `1d ago`, `Streamed 2mo ago`, `12K watching` for a live
+/// item and `Premieres in 2 hours` for a scheduled one. Anything else in that position is the
+/// view count.
+fn is_time_text(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("ago")
+        || lower.contains("streamed")
+        || lower.contains("premiere")
+        || lower.contains("watching")
+        || lower.contains("waiting")
+}
+
+/// Builds a summary from one video lockup, or `None` if it is not a video.
+fn video_from_lockup(lockup: &serde_json::Value) -> Option<VideoSummary> {
+    // Playlists and channels use the same renderer; only a video lockup names a video.
+    if let Some(kind) = lockup.get("contentType").and_then(serde_json::Value::as_str)
+        && !kind.contains("VIDEO")
+    {
+        return None;
+    }
+    let id = VideoId::new(lockup.get("contentId")?.as_str()?).ok()?;
+
+    let metadata = lockup.pointer("/metadata/lockupMetadataViewModel");
+    let title = metadata
+        .and_then(|block| block.pointer("/title/content"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    // A lockup with no title is a shape this parser does not understand, and a card that renders
+    // as an empty box is worse than one fewer recommendation.
+    if title.is_empty() {
+        return None;
+    }
+
+    let thumbnails =
+        sources_to_thumbnails(lockup.pointer("/contentImage/thumbnailViewModel/image/sources"));
+
+    // The duration sits in the thumbnail's bottom overlay, as the badge text the card draws.
+    let mut overlay_text = Vec::new();
+    if let Some(overlays) = lockup.pointer("/contentImage/thumbnailViewModel/overlays") {
+        text_contents(overlays, &mut overlay_text);
+    }
+    let duration_ms = overlay_text
+        .iter()
+        .find_map(|text| parse_duration_text(text));
+
+    // The avatar block also carries the channel identifier, which is what makes the name a link.
+    let avatar_block = metadata.and_then(|block| {
+        let mut found = Vec::new();
+        collect_by_key(block, "decoratedAvatarViewModel", &mut found);
+        found.into_iter().next()
+    });
+    let channel_avatar = sources_to_thumbnails(
+        avatar_block.and_then(|block| block.pointer("/avatar/avatarViewModel/image/sources")),
+    );
+    let channel_id = avatar_block
+        .and_then(|block| {
+            block.pointer(
+                "/rendererContext/commandContext/onTap/innertubeCommand/browseEndpoint/browseId",
+            )
+        })
+        .and_then(serde_json::Value::as_str)
+        .and_then(|raw| ChannelId::new(raw).ok());
+
+    // The rows are the channel, then views and date. Read as a flat list and classified by what
+    // each string says, because a live item has no date and an upcoming one has no view count —
+    // indexing by position would put a date where a count belongs.
+    let rows = metadata.and_then(|block| {
+        block.pointer("/metadata/contentMetadataViewModel/metadataRows")
+    });
+    let mut parts = Vec::new();
+    if let Some(rows) = rows {
+        text_contents(rows, &mut parts);
+    }
+
+    // The first row is the channel; everything after it is the count and the date, in that order
+    // but not reliably present. Read live, the shelf gives `["MrBeast 2", "24M", "1d ago"]` — note
+    // the bare count, with no "views" word at all, which is why this cannot key on that word the
+    // way the search mapping can.
+    let channel_name = parts.first().cloned();
+    let published_text = parts.iter().skip(1).find(|text| is_time_text(text)).cloned();
+    let view_count = parts
+        .iter()
+        .skip(1)
+        .filter(|text| !is_time_text(text))
+        .find_map(|text| parse_compact_count(text));
+
+    // The verified tick is an attachment run on the channel row, named by its client resource.
+    let channel_verified = rows.is_some_and(|rows| {
+        let mut names = Vec::new();
+        collect_by_key(rows, "imageName", &mut names);
+        names
+            .into_iter()
+            .filter_map(serde_json::Value::as_str)
+            .any(|name| name.contains("CHECK_CIRCLE"))
+    });
+
+    Some(VideoSummary {
+        id,
+        title,
+        channel_id,
+        channel_name,
+        channel_avatar,
+        channel_verified,
+        thumbnails,
+        duration_ms,
+        // The shelf gives a relative string only. Inventing an absolute date from it would claim a
+        // precision the response does not have.
+        published_at: None,
+        published_text,
+        view_count,
+        live_status: LiveStatus::NotLive,
+        is_short: false,
+    })
+}
+
+#[cfg(test)]
+mod related_tests {
+    use super::*;
+
+    /// One lockup in the shape the live `next` response uses, reduced to the fields read.
+    fn lockup() -> serde_json::Value {
+        serde_json::json!({
+            "contentId": "dQw4w9WgXcQ",
+            "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+            "contentImage": {
+                "thumbnailViewModel": {
+                    "image": { "sources": [
+                        { "url": "https://i.ytimg.com/vi/x/hq.jpg", "width": 336, "height": 188 }
+                    ]},
+                    "overlays": [
+                        { "thumbnailBottomOverlayViewModel": { "badges": [
+                            { "thumbnailBadgeViewModel": { "text": { "content": "12:34" } } }
+                        ]}}
+                    ]
+                }
+            },
+            "metadata": { "lockupMetadataViewModel": {
+                "title": { "content": "A recommended video" },
+                "image": { "decoratedAvatarViewModel": {
+                    "avatar": { "avatarViewModel": { "image": { "sources": [
+                        { "url": "https://yt3.ggpht.com/avatar=s68", "width": 68, "height": 68 }
+                    ]}}},
+                    "rendererContext": { "commandContext": { "onTap": { "innertubeCommand": {
+                        "browseEndpoint": { "browseId": "UCSfxFZFzcpYMbOB3A1rWHAg" }
+                    }}}}
+                }},
+                "metadata": { "contentMetadataViewModel": { "metadataRows": [
+                    { "metadataParts": [ { "text": {
+                        "content": "SlayyPop",
+                        "attachmentRuns": [ { "element": { "type": { "imageType": { "image": {
+                            "sources": [ { "clientResource": { "imageName": "CHECK_CIRCLE_FILLED" } } ]
+                        }}}}}]
+                    }}]},
+                    { "metadataParts": [
+                        { "text": { "content": "1.2M views" } },
+                        { "text": { "content": "3 days ago" } }
+                    ]}
+                ]}}
+            }}
+        })
+    }
+
+    #[test]
+    fn a_related_lockup_yields_everything_a_card_draws() {
+        let summary = video_from_lockup(&lockup()).expect("a video summary");
+
+        assert_eq!(summary.id.as_str(), "dQw4w9WgXcQ");
+        assert_eq!(summary.title, "A recommended video");
+        assert_eq!(summary.channel_name.as_deref(), Some("SlayyPop"));
+        assert_eq!(
+            summary.channel_id.as_ref().map(ChannelId::as_str),
+            Some("UCSfxFZFzcpYMbOB3A1rWHAg")
+        );
+        assert_eq!(summary.channel_avatar.len(), 1);
+        assert!(summary.channel_verified, "the tick is an attachment run");
+        assert_eq!(summary.view_count, Some(1_200_000));
+        assert_eq!(summary.published_text.as_deref(), Some("3 days ago"));
+        assert_eq!(summary.duration_ms, Some(754_000));
+        assert_eq!(summary.thumbnails.len(), 1);
+    }
+
+    #[test]
+    fn an_unverified_channel_gets_no_tick() {
+        let mut json = lockup();
+        json["metadata"]["lockupMetadataViewModel"]["metadata"]["contentMetadataViewModel"]
+            ["metadataRows"][0]["metadataParts"][0]["text"]
+            .as_object_mut()
+            .unwrap()
+            .remove("attachmentRuns");
+
+        let summary = video_from_lockup(&json).expect("a video summary");
+        assert!(!summary.channel_verified);
+        assert_eq!(summary.channel_name.as_deref(), Some("SlayyPop"));
+    }
+
+    #[test]
+    fn a_live_item_has_no_date_and_still_parses() {
+        let mut json = lockup();
+        json["metadata"]["lockupMetadataViewModel"]["metadata"]["contentMetadataViewModel"]
+            ["metadataRows"][1] = serde_json::json!({
+            "metadataParts": [ { "text": { "content": "12,345 watching" } } ]
+        });
+
+        let summary = video_from_lockup(&json).expect("a video summary");
+        // The watcher line takes the slot the date would occupy, which is where YouTube puts it.
+        assert_eq!(summary.published_text.as_deref(), Some("12,345 watching"));
+        assert_eq!(
+            summary.view_count, None,
+            "watchers are people now, not total views; reading it as a view count would be a              number the card states and the provider never said"
+        );
+        assert_eq!(
+            summary.channel_name.as_deref(),
+            Some("SlayyPop"),
+            "the channel must not be mistaken for the watcher line"
+        );
+    }
+
+    #[test]
+    fn playlists_and_titleless_shapes_are_skipped() {
+        let mut playlist = lockup();
+        playlist["contentType"] = serde_json::json!("LOCKUP_CONTENT_TYPE_PLAYLIST");
+        assert!(video_from_lockup(&playlist).is_none());
+
+        let mut untitled = lockup();
+        untitled["metadata"]["lockupMetadataViewModel"]["title"]["content"] =
+            serde_json::json!("");
+        assert!(video_from_lockup(&untitled).is_none());
+    }
+
+    #[test]
+    fn durations_parse_in_both_shapes_and_reject_anything_else() {
+        assert_eq!(parse_duration_text("3:45"), Some(225_000));
+        assert_eq!(parse_duration_text("1:02:03"), Some(3_723_000));
+        assert_eq!(parse_duration_text("LIVE"), None);
+        assert_eq!(parse_duration_text("1.2M views"), None);
+        // Minutes cannot exceed 59; a value that does is some other number with a colon in it.
+        assert_eq!(parse_duration_text("1:99"), None);
+    }
+
+    #[test]
+    fn the_whole_shelf_is_read_and_deduplicated() {
+        let response = serde_json::json!({
+            "contents": { "twoColumnWatchNextResults": { "secondaryResults": { "results": [
+                { "lockupViewModel": lockup() },
+                { "lockupViewModel": lockup() }
+            ]}}}
+        });
+
+        let videos = related_from_next(&response.to_string());
+        assert_eq!(videos.len(), 1, "the same video must not appear twice");
+        assert_eq!(videos[0].channel_name.as_deref(), Some("SlayyPop"));
+    }
+
+    #[test]
+    fn a_response_that_is_not_json_yields_nothing_rather_than_panicking() {
+        assert!(related_from_next("<html>error</html>").is_empty());
     }
 }

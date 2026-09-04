@@ -6,10 +6,13 @@
  * module is the single place the UI learns those flags, which is what keeps adapter identity out of
  * the components — nothing outside here knows or asks which adapter is running.
  *
- * The flags below are facts about the IFrame Player API, not aspirations:
+ * The flags below are facts about the IFrame Player API, measured rather than assumed:
  *
- * * `setPlaybackQuality`, `getPlaybackQuality` and `getAvailableQualityLevels` have been documented
- *   no-ops since 2025, so there is no quality selector and no quality readout.
+ * * `setPlaybackQuality` is inert — calling it with `hd1080` on a player showing `hd720` leaves it
+ *   on `hd720`. `getPlaybackQuality` and `getAvailableQualityLevels` are not: both answer, and the
+ *   list is per-video rather than a fixed ladder. A tier is therefore requested by resizing the
+ *   player's frame, which the embed does act on, so quality selection and the quality readout are
+ *   both real. See `YouTubePlayer` and ADR-0004.
  * * The API exposes no buffer level and no decoded/dropped frame counts, so there are no playback
  *   metrics.
  * * Rate, volume, mute, fullscreen and captions are real, and position polling is accurate enough
@@ -20,8 +23,8 @@ import type { PlaybackCapabilities } from '@/types/domain';
 
 /** Capabilities of the sanctioned embedded player, the production default adapter. */
 export const IFRAME_CAPABILITIES: PlaybackCapabilities = {
-  quality_selection: false,
-  reports_available_qualities: false,
+  quality_selection: true,
+  reports_available_qualities: true,
   playback_rate: true,
   caption_control: true,
   audio_track_selection: false,

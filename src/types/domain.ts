@@ -189,6 +189,16 @@ export interface VideoSummary {
   title: string;
   channel_id?: ChannelId;
   channel_name?: string;
+  /**
+   * The channel's avatar, when the provider attaches one to the item.
+   *
+   * Carried on the video rather than looked up per card: the provider already sends it with every
+   * search and related result, so a card that fetched it would be one request per tile for a
+   * picture that arrived with the tile.
+   */
+  channel_avatar?: ThumbnailSet;
+  /** Whether the provider marks the channel as verified. Never inferred (§131). */
+  channel_verified?: boolean;
   thumbnails?: ThumbnailSet;
   duration_ms?: number;
   published_at?: number;
@@ -342,6 +352,12 @@ export interface HistoryEntry {
   channel_name?: string;
   thumbnails?: ThumbnailSet;
   position: PlaybackPosition;
+  /** Views when it was watched, so a history card shows the same line every other card shows. */
+  view_count?: number;
+  /** Publication time, when an absolute one was reported. */
+  published_at?: number;
+  /** The channel's avatar as it was when watched, so the card draws without a lookup. */
+  channel_avatar?: ThumbnailSet;
   first_watched_at: number;
   last_watched_at: number;
   play_count: number;
@@ -413,8 +429,8 @@ export function hasMedia(state: PlaybackState): boolean {
  * What the active playback adapter can actually do.
  *
  * The UI renders a control only where the corresponding flag is true. This is the mechanism behind
- * §131 (no fake features): under the IFrame adapter `quality_selection` is false, so the quality
- * menu is absent rather than present and inert.
+ * §131 (no fake features): under the IFrame adapter `buffer_metrics` is false, so the buffer
+ * readout is absent rather than present and showing nothing.
  */
 export interface PlaybackCapabilities {
   /** A specific quality tier can be selected. */
@@ -538,8 +554,22 @@ export interface AppearanceSettings {
   ambient_mode: boolean;
 }
 
+/**
+ * Which control bar the player wears.
+ *
+ * A genuine trade rather than a cosmetic choice (ADR-0004). `beastube` crops YouTube's chrome away
+ * and draws the application's own dark controls; quality is then requested by resizing the frame,
+ * which reaches 360p–2160p at 60fps but no lower and takes a few seconds to settle. `youtube`
+ * leaves the embed's own bar in place, whose gear drives the player's internal quality API — exact,
+ * immediate, and the full 144p–2160p range — at the cost of a white settings panel that cannot be
+ * themed, and the title band returning with it.
+ */
+export type PlayerControls = 'beastube' | 'youtube';
+
 export interface PlaybackSettings {
   default_quality: Quality;
+  /** Which control bar the player wears. */
+  player_controls: PlayerControls;
   max_quality: Quality;
   volume: number;
   muted: boolean;
@@ -590,6 +620,24 @@ export interface CacheSettings {
   thumbnail_ttl_days: number;
 }
 
+/**
+ * Video downloads.
+ *
+ * Paths are absolute or `null`; the native side drops anything relative on load, because a
+ * relative path would resolve against the process's working directory. `null` on a tool path means
+ * "find it yourself" — beside the application, then on `PATH`.
+ */
+export interface DownloadSettings {
+  /** Where files are saved. `null` means a BEASTUBE folder in the user's Downloads. */
+  directory: string | null;
+  /** Ceiling on the height requested. `auto` means the best available. */
+  max_quality: Quality;
+  /** Path to `yt-dlp`, or `null` to discover it. */
+  tool_path: string | null;
+  /** Path to `ffmpeg`, or `null` to discover it. */
+  ffmpeg_path: string | null;
+}
+
 /** The complete settings document. */
 export interface Settings {
   version: number;
@@ -599,6 +647,7 @@ export interface Settings {
   filtering: FilteringSettings;
   network: NetworkSettings;
   cache: CacheSettings;
+  downloads: DownloadSettings;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -661,6 +710,44 @@ export interface MaintenanceProgress {
   finished: boolean;
 }
 
+/** Where a download is in its life. */
+export type DownloadStatus =
+  'queued' | 'starting' | 'downloading' | 'merging' | 'finished' | 'failed' | 'cancelled';
+
+/**
+ * The state of one download.
+ *
+ * The whole record arrives on every change rather than a delta, so a screen that mounted midway
+ * through is correct as soon as the next event lands. An absent size or speed means *unknown* —
+ * the tool did not report one — and must render as an indeterminate state, never as zero (§131).
+ */
+export interface DownloadProgress {
+  id: string;
+  video_id: VideoId;
+  title: string;
+  status: DownloadStatus;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  /** Completion in `0..=1`, absent when the total size is unknown. */
+  fraction?: number;
+  speed_bps?: number;
+  eta_seconds?: number;
+  /** The finished file, once there is one. */
+  path?: string;
+  error?: ErrorPayload;
+  updated_at: number;
+}
+
+/** Whether a download is over, one way or another. Mirrors `DownloadStatus::is_terminal`. */
+export function isTerminalDownload(status: DownloadStatus): boolean {
+  return status === 'finished' || status === 'failed' || status === 'cancelled';
+}
+
+/** Whether a download is running, so the control offers to stop it rather than to start one. */
+export function isActiveDownload(status: DownloadStatus): boolean {
+  return !isTerminalDownload(status);
+}
+
 /**
  * Event channel names and their payloads.
  *
@@ -676,6 +763,7 @@ export interface AppEventMap {
   'filter:updated': FilterUpdated;
   'update:available': UpdateAvailable;
   'maintenance:progress': MaintenanceProgress;
+  'download:progress': DownloadProgress;
 }
 
 /** Every event channel name. */

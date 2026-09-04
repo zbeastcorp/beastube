@@ -13,6 +13,9 @@ target/
 
 # Tauri
 src-tauri/gen/
+# Third-party tools fetched by scripts/fetch-tools.ps1 and bundled by the installer.
+# Verified at fetch time; not vendored, so the repo carries no redistributed binaries.
+src-tauri/binaries/
 src-tauri/target/
 
 # Editor / OS
@@ -31,3 +34,15 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Downloaded videos. The application saves into the user's Downloads folder by default, but a
+# developer testing from the repository root ends up with them here, and they are large.
+*.mp4
+*.webm
+*.mkv
+*.m4a
+
+# Updater signing keys. The private half must never reach the repository — losing control of it
+# means someone else can sign an update this application will install without asking.
+*.key
+!**/*.key.pub

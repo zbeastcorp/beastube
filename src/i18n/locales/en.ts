@@ -160,10 +160,21 @@ export const en = {
     exitPictureInPicture: 'Exit picture-in-picture',
     miniPlayer: 'Mini player',
     theatre: 'Theatre mode',
+    settings: 'Settings',
+    controls: 'Player controls',
+    controlsBeastube: 'BEASTUBE (dark)',
+    controlsYoutube: 'YouTube (exact quality)',
+    /** States the trade plainly, because neither option is simply better than the other. */
+    controlsHint:
+      "BEASTUBE's controls match the dark theme and offer 360p–2160p. YouTube's own controls switch instantly and reach 144p, but their settings panel is white and cannot be themed.",
     speed: 'Playback speed',
     speedNormal: 'Normal',
     quality: 'Quality',
+    qualityAuto: 'Auto',
+    /** The tier `auto` actually resolved to, so the row states a resolution rather than a mode. */
+    qualityAutoAt: 'Auto ({quality})',
     captions: 'Subtitles',
+    captionsOn: 'On',
     captionsOff: 'Off',
     audioTrack: 'Audio track',
     seek: 'Seek',
@@ -175,7 +186,18 @@ export const en = {
     buffering: 'Buffering',
     skipSegment: 'Skip {category}',
     segmentSkipped: 'Skipped {category}',
-    qualityUnavailable: 'Quality selection is not available with the current player',
+  },
+
+  download: {
+    start: 'Download',
+    queued: 'Waiting to download',
+    inProgress: 'Downloading',
+    percent: 'Downloading {percent}%',
+    merging: 'Finishing up',
+    cancel: 'Cancel download',
+    finished: 'Downloaded “{title}”',
+    showInFolder: 'Show in folder',
+    openFolder: 'Open downloads folder',
   },
 
   shorts: {
@@ -209,6 +231,7 @@ export const en = {
     unfollow: 'Unfollow',
     followed: 'Followed',
     followingLocalOnly: 'Saved on this device only — not synced to a YouTube account',
+    verified: 'Verified',
     empty: 'This channel has nothing here',
   },
 
@@ -357,6 +380,48 @@ export const en = {
         'Delete all BEASTUBE data — history, playlists, bookmarks and settings? This cannot be undone. Files elsewhere on your computer are not touched.',
       cacheCleared: 'Cache cleared',
     },
+    downloads: {
+      title: 'Downloads',
+      subtitle:
+        'BEASTUBE saves videos with yt-dlp and ffmpeg, both installed alongside it. Point it at your own copies only if you would rather manage them yourself.',
+      folder: 'Save videos to',
+      changeFolder: 'Change',
+      openFolder: 'Open folder',
+      quality: 'Maximum quality',
+      downloader: 'Downloader',
+      // Short enough for the value column; anything that needs explaining goes in a hint beside
+      // the label, where it can wrap instead of being cut off mid-sentence.
+      downloaderMissing: 'Not found',
+      downloaderMissingHint:
+        'Ships with BEASTUBE, so this usually means the installation is incomplete. Reinstall, or choose a copy of your own.',
+      downloaderFound: 'yt-dlp {version}',
+      downloaderNoVersion: 'Found, no version reported',
+      choose: 'Choose…',
+      clear: 'Use the one found automatically',
+      ffmpeg: 'Merging',
+      ffmpegFound: 'ffmpeg found',
+      ffmpegMissing: 'ffmpeg not found',
+      ffmpegMissingHint:
+        'Required, and ships with BEASTUBE. YouTube sends video and audio as separate tracks, so without ffmpeg to join them there is nothing to save. Reinstall, or choose a copy of your own.',
+      jsRuntime: 'JavaScript runtime',
+      jsRuntimeFound: '{name}',
+      jsRuntimeFoundHint: 'Used to solve the checks YouTube puts in front of some videos.',
+      jsRuntimeMissing: 'None found',
+      jsRuntimeMissingHint:
+        'Install Deno or Node.js if some videos refuse to download. Most work without one.',
+      recheck: 'Check again',
+      active: 'Downloads this session',
+      noneYet: 'Nothing downloaded yet',
+      status: {
+        queued: 'Waiting',
+        starting: 'Starting',
+        downloading: 'Downloading',
+        merging: 'Finishing up',
+        finished: 'Saved',
+        failed: 'Failed',
+        cancelled: 'Cancelled',
+      },
+    },
     filtering: {
       title: 'Filtering',
       enabled: 'Enable filtering',
@@ -418,7 +483,15 @@ export const en = {
       upToDate: 'BEASTUBE is up to date',
       updateAvailable: 'Version {version} is available',
       downloadUpdate: 'Download and install',
+      /** Percentage, when the server reports a size. */
+      installing: 'Downloading… {percent}%',
+      /** No size reported, so there is no honest percentage to show. */
+      installingUnknown: 'Downloading…',
+      restarting: 'Restarting to finish',
+      updateFailed: 'Could not check for updates. Check your connection and try again.',
+      updateSize: 'An update replaces the whole application, about 50 MB.',
       licenses: 'Open-source licences',
+      licensesHint: 'ffmpeg and yt-dlp ship with BEASTUBE. Their licences are installed beside it.',
     },
   },
 
@@ -512,6 +585,13 @@ export const en = {
       schema_drift: 'BEASTUBE could not read the response',
       schema_driftHint: 'YouTube has changed something. An update may be required.',
       rate_limited: 'Too many requests to YouTube — try again shortly',
+      invalid_input: 'That request was not valid',
+      paid: 'This content must be purchased',
+      not_yet_broadcast: 'This stream has not started yet',
+      unsupported: 'BEASTUBE cannot do that with the current provider',
+      download_refused:
+        'YouTube refused the download of “{title}” — try again shortly, or update yt-dlp',
+      download_failed: 'The download of “{title}” did not finish',
     },
     playback: {
       load_failed: 'The video could not be loaded',
@@ -543,8 +623,16 @@ export const en = {
     filesystem: {
       permission_denied: 'BEASTUBE does not have permission to use that location',
       not_found: 'That file could not be found',
-      invalid_path: 'That location is not valid',
+      invalid_path: 'The download folder cannot be written to',
       disk_full: 'There is not enough free disk space',
+    },
+    configuration: {
+      invalid: 'A setting is not valid and was reset',
+      downloader_missing:
+        'The downloader is missing — reinstall BEASTUBE, or set a copy in Settings',
+      muxer_missing:
+        'ffmpeg is missing — it is required to save a video. Reinstall, or set a copy in Settings',
+      downloader_failed_to_start: 'The downloader could not be started',
     },
     filtering: {
       invalid_rules: 'The filter rules could not be read and were not applied',
@@ -559,9 +647,6 @@ export const en = {
     },
     permission: {
       denied: 'That action is not permitted',
-    },
-    configuration: {
-      invalid: 'A setting is not valid and was reset',
     },
   },
 

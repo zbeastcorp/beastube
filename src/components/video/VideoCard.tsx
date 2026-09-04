@@ -14,9 +14,11 @@
  *    never fires; the load handler checks `naturalWidth` instead.
  */
 
+import { BadgeCheck } from 'lucide-react';
 import { memo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
 import { Link } from '@/app/router';
+import { CardMenu } from '@/components/video/CardMenu';
 import { LazyImage } from '@/components/common/LazyImage';
 import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
@@ -96,6 +98,10 @@ export const VideoCard = memo(function VideoCard({
   // Seeded from the cache so a card scrolled back into view paints its glow on the first render,
   // with no effect and no second pass. A miss stays null until the pointer arrives.
   const [glow, setGlow] = useState<string | null>(() => cachedDominantColor(thumbnail?.url));
+
+  // The smallest rendition offered: it is drawn at 36 CSS pixels, and the provider's largest is
+  // 800 wide.
+  const avatar = (video.channel_avatar ?? [])[0];
 
   const metadata: string[] = [];
   if (video.view_count !== undefined) {
@@ -177,27 +183,71 @@ export const VideoCard = memo(function VideoCard({
         {progress !== undefined && progress > 0 && <ProgressBar fraction={progress} />}
       </Link>
 
-      <div className="flex min-w-0 flex-col gap-1">
-        <h3 className="text-text line-clamp-2 text-base leading-snug font-medium">{video.title}</h3>
-
-        {video.channel_name !== undefined && (
-          <span className="text-text-muted truncate text-xs">
-            {video.channel_id ? (
-              <Link
-                to={{ name: 'channel', channelId: video.channel_id, tab: 'videos' }}
-                className="transition-surface hover:text-text"
-              >
-                {video.channel_name}
-              </Link>
-            ) : (
-              video.channel_name
-            )}
-          </span>
+      {/* The avatar sits beside the text block rather than above it, which is the arrangement
+          YouTube uses and the reason its cards read as one unit: the picture anchors the left edge
+          and the three lines of text hang off it. */}
+      <div className="flex min-w-0 gap-3">
+        {avatar && (
+          <Link
+            to={
+              video.channel_id
+                ? { name: 'channel', channelId: video.channel_id, tab: 'videos' }
+                : { name: 'watch', videoId: video.id }
+            }
+            className="mt-0.5 shrink-0"
+            // The channel name beside it is the accessible label for this destination; a second
+            // one here would have a screen reader announce the channel twice per card.
+            aria-hidden="true"
+            tabIndex={-1}
+          >
+            <img
+              src={avatar.url}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="bg-surface size-9 rounded-full object-cover"
+            />
+          </Link>
         )}
 
-        {metadata.length > 0 && (
-          <span className="text-text-muted text-xs">{metadata.join(' • ')}</span>
-        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-start gap-1">
+            <h3 className="text-text line-clamp-2 min-w-0 flex-1 text-base leading-snug font-medium">
+              {video.title}
+            </h3>
+            {/* Beside the title, as YouTube places it. Hidden until the card is hovered, so a grid
+                is not forty dots. */}
+            <CardMenu video={video} />
+          </div>
+
+          {video.channel_name !== undefined && (
+            <span className="text-text-muted flex min-w-0 items-center gap-1 text-xs">
+              {video.channel_id ? (
+                <Link
+                  to={{ name: 'channel', channelId: video.channel_id, tab: 'videos' }}
+                  className="transition-surface hover:text-text truncate"
+                >
+                  {video.channel_name}
+                </Link>
+              ) : (
+                <span className="truncate">{video.channel_name}</span>
+              )}
+              {video.channel_verified === true && (
+                <BadgeCheck
+                  size={13}
+                  className="shrink-0"
+                  // Labelled rather than decorative: "verified" is a claim about the channel, and
+                  // a sighted viewer gets it from the badge. Hiding it would drop that fact.
+                  aria-label={t.t('channel.verified')}
+                />
+              )}
+            </span>
+          )}
+
+          {metadata.length > 0 && (
+            <span className="text-text-muted text-xs">{metadata.join(' • ')}</span>
+          )}
+        </div>
       </div>
     </article>
   );

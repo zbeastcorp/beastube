@@ -55,6 +55,8 @@ export const DEFAULT_SETTINGS: Settings = {
     hardware_acceleration: true,
     seek_step_seconds: 5,
     seek_step_large_seconds: 10,
+    // Matches the Rust default; the dark controls are the application's own.
+    player_controls: 'beastube',
   },
   privacy: {
     history_enabled: true,
@@ -86,6 +88,14 @@ export const DEFAULT_SETTINGS: Settings = {
     disk_budget_mb: 1024,
     metadata_ttl_hours: 12,
     thumbnail_ttl_days: 30,
+  },
+  downloads: {
+    // `null` rather than a path: where the Downloads folder is, is the native side's question to
+    // answer, and guessing one here would show the user a location that is not the real one.
+    directory: null,
+    max_quality: '1080p',
+    tool_path: null,
+    ffmpeg_path: null,
   },
 };
 
@@ -210,6 +220,36 @@ export function resolveTheme(theme: Theme): ResolvedTheme {
   const prefersDark =
     typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
   return prefersDark ? 'dark' : 'light';
+}
+
+/**
+ * The last scheme pushed to the webview, so an unchanged one is not pushed again.
+ *
+ * Module scope rather than component state: there is one webview, the value is not rendered from,
+ * and the check has to survive the shell remounting.
+ */
+let pushedScheme: 'light' | 'dark' | null = null;
+
+/**
+ * Tells the webview which colour scheme the application is painted in.
+ *
+ * This is not decoration. The embedded player's settings panel — quality, speed, captions — is
+ * YouTube's own document inside the `<iframe>`, and it styles itself from `prefers-color-scheme`.
+ * That query answers from the *webview's* preference, which defaults to the operating system's, so
+ * a user running BEASTUBE in dark mode on a light Windows got a white panel over a dark player.
+ * No CSS of ours can reach into another origin to correct it; the webview preference can.
+ *
+ * Everything that is not `light` is dark, including AMOLED and the custom palette, which both
+ * paint on the dark token set.
+ */
+export function applyWebviewScheme(settings: Settings): void {
+  const scheme = resolveTheme(settings.appearance.theme) === 'light' ? 'light' : 'dark';
+  if (scheme === pushedScheme) return;
+  pushedScheme = scheme;
+  void invoke('set_window_theme', { dark: scheme === 'dark' }).catch(() => {
+    // Outside the desktop shell there is no window to theme, and inside it a refusal costs only
+    // the colour of a panel we do not own.
+  });
 }
 
 /**

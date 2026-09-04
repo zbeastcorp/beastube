@@ -22,12 +22,16 @@
 // avoids reconstructing it when they arrive.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use beastube_core::Settings;
+use beastube_core::events::AppEvent;
 use beastube_db::{Database, DbError, Repositories};
+use beastube_download::{
+    DownloadError, DownloadManager, DownloadPlan, LocateOptions, Tools, locate, simplified,
+};
 use beastube_filtering::builtin::builtin_rule_set;
 use beastube_filtering::diagnostics::{FilteringDiagnostics, FilteringSnapshot};
 use beastube_filtering::engine::{EngineConfig, NeverBlockList};
@@ -35,7 +39,11 @@ use beastube_filtering::ruleset::{RuleSetManager, ValidatedRuleSet};
 use beastube_provider::MetadataProvider;
 use beastube_provider_youtube::YouTubeProvider;
 use parking_lot::RwLock;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+/// How many downloads run at once. Each is a separate process pulling at full bandwidth; two
+/// already share a home connection with the player, and anything beyond waits in the queue.
+const MAX_CONCURRENT_DOWNLOADS: usize = 2;
 
 /// Everything a command needs.
 pub(crate) struct AppState {
@@ -55,6 +63,14 @@ pub(crate) struct AppState {
     pub(crate) filtering: Arc<RuleSetManager>,
     /// Live filtering counters, shared with the engine.
     pub(crate) filtering_diagnostics: Arc<FilteringDiagnostics>,
+    /// Owns every download of the session.
+    pub(crate) downloads: DownloadManager,
+    /// Where downloads go when the setting is unset: a folder of ours inside the user's Downloads.
+    pub(crate) default_download_dir: PathBuf,
+    /// Where the downloader keeps its own cache, under the application's cache directory.
+    download_cache_dir: PathBuf,
+    /// Directories a downloader shipped with the application would be in.
+    tool_search_dirs: Vec<PathBuf>,
     /// When the state was constructed, for the uptime reading on the diagnostics screen.
     started_at: std::time::Instant,
 }
@@ -113,6 +129,12 @@ impl AppState {
 
         let provider = YouTubeProvider::new(&provider_cache_dir).map_err(StartupError::Provider)?;
 
+        // The first request the user makes should not also pay for the visitor ID the extractor
+        // wants on every request. Fetched now, off the startup path: this is the one network
+        // request made at launch, it is speculative, and a failure costs nothing but the saving.
+        let warm = provider.clone();
+        tauri::async_runtime::spawn(async move { warm.warm().await });
+
         // Filtering starts from the compiled-in rule set, so it works on first launch and offline.
         // A validation failure here would mean the shipped set is broken — a build defect — so it
         // degrades to the inert set rather than preventing startup.
@@ -133,6 +155,43 @@ impl AppState {
 
         let incognito = settings.privacy.incognito_by_default;
 
+        // Downloads default to a folder of ours inside the user's Downloads, so the files land
+        // where every other download on the machine does rather than in application data.
+        let default_download_dir = app
+            .path()
+            .download_dir()
+            .unwrap_or_else(|_| data_dir.join("downloads"))
+            .join("BEASTUBE");
+        let download_cache_dir = provider_cache_dir
+            .parent()
+            .map_or_else(|| data_dir.join("cache"), Path::to_path_buf)
+            .join("yt-dlp");
+        // Where the installer puts the tools it ships, searched before `PATH` so a bundled copy
+        // wins over whatever else happens to be on the machine. `resources/binaries` is where
+        // `tauri.conf.json` lands them; the executable's own directory covers a portable layout
+        // and a copy dropped in by hand.
+        let mut tool_search_dirs: Vec<PathBuf> = Vec::new();
+        if let Ok(resources) = app.path().resource_dir() {
+            tool_search_dirs.push(resources.join("binaries"));
+            tool_search_dirs.push(resources);
+        }
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(parent) = exe.parent()
+        {
+            tool_search_dirs.push(parent.join("binaries"));
+            tool_search_dirs.push(parent.to_path_buf());
+        }
+        let emitter = app.clone();
+        let downloads = DownloadManager::new(
+            Arc::new(move |progress| {
+                let event = AppEvent::DownloadProgress(progress.clone());
+                if let Err(error) = emitter.emit(event.name(), progress) {
+                    tracing::warn!(%error, "could not emit download progress");
+                }
+            }),
+            MAX_CONCURRENT_DOWNLOADS,
+        );
+
         Ok(Self {
             database,
             repositories,
@@ -142,7 +201,60 @@ impl AppState {
             provider_cache_dir,
             filtering,
             filtering_diagnostics,
+            downloads,
+            default_download_dir,
+            download_cache_dir,
+            tool_search_dirs,
             started_at: std::time::Instant::now(),
+        })
+    }
+
+    /// The directory downloads go into: the setting when set, the default otherwise.
+    ///
+    /// Simplified on the way out. The default comes from `download_dir()` and is already ordinary,
+    /// but a configured one is whatever the folder picker returned, and that answers in the
+    /// verbatim `\\?\` form — which is what the settings screen would then show the user.
+    #[must_use]
+    pub(crate) fn download_directory(&self) -> PathBuf {
+        let chosen = self
+            .settings
+            .read()
+            .downloads
+            .directory
+            .as_deref()
+            .map_or_else(|| self.default_download_dir.clone(), PathBuf::from);
+        simplified(&chosen)
+    }
+
+    /// The tools a download would use right now, honouring the paths set in settings.
+    #[must_use]
+    pub(crate) fn download_tools(&self) -> Tools {
+        let settings = self.settings.read();
+        locate(&LocateOptions {
+            downloader: settings.downloads.tool_path.as_deref().map(Path::new),
+            ffmpeg: settings.downloads.ffmpeg_path.as_deref().map(Path::new),
+            beside: &self.tool_search_dirs,
+        })
+    }
+
+    /// Everything one download needs, resolved from the current settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DownloadError::ToolMissing`] if no downloader can be found, or
+    /// [`DownloadError::MuxerMissing`] if no `ffmpeg` can — YouTube serves video and audio as
+    /// separate tracks, so without a muxer there is nothing a download could produce.
+    pub(crate) fn download_plan(&self) -> Result<DownloadPlan, DownloadError> {
+        let tools = self.download_tools();
+        let tool = tools.downloader.ok_or(DownloadError::ToolMissing)?;
+        let ffmpeg = tools.ffmpeg.ok_or(DownloadError::MuxerMissing)?;
+        Ok(DownloadPlan {
+            tool,
+            ffmpeg,
+            js_runtime: tools.js_runtime,
+            directory: self.download_directory(),
+            cache_dir: Some(self.download_cache_dir.clone()),
+            max_height: self.settings.read().downloads.max_quality.height(),
         })
     }
 

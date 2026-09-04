@@ -20,16 +20,43 @@
         "minHeight": 320,
         "visible": false,
         "center": true,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling"
+        "theme": "Dark",
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --disable-background-timer-throttling --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --canvas-oop-rasterization"
       }
     ],
     "security": {
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/BEASTUBE/beastube/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzRjU2MzdGOTBDMEE4MgpSV1NDQ2d6NU4xWS9EZzdiT0Eyc00rRzQ1OU1jdlEwc1hIOGxGWnZsWEt2QUN4d3FERWtLaEw5cQo=",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"]
+    "createUpdaterArtifacts": true,
+    "publisher": "BEASTUBE",
+    "copyright": "Copyright (c) 2026 BEASTUBE",
+    "category": "Video",
+    "shortDescription": "A desktop YouTube client that keeps what you watch on your own machine.",
+    "longDescription": "BEASTUBE is a desktop client for YouTube. History, playlists and bookmarks are stored locally in SQLite with no account and no sync. Videos can be saved to disk using the bundled yt-dlp and ffmpeg, so downloads work on a machine with nothing else installed.",
+    "resources": ["binaries/*.exe", "binaries/licenses/*"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "startMenuFolder": "BEASTUBE",
+        "installMode": "both",
+        "languages": ["English"],
+        "displayLanguageSelector": false,
+        "compression": "lzma"
+      }
+    }
   }
 }

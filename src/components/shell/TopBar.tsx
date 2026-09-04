@@ -24,6 +24,8 @@ import {
 import { useNavigate, useRoute } from '@/app/router';
 import { SearchSuggestions } from '@/components/shell/SearchSuggestions';
 import { useTranslation } from '@/i18n/context';
+import { clearFeedCache } from '@/services/feedCache';
+import { clearVideoCache } from '@/services/videoCache';
 import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
 
@@ -259,6 +261,36 @@ function IncognitoBadge(): ReactNode {
 }
 
 /** The application masthead. */
+/**
+ * Re-fetches whatever is on screen, without leaving it.
+ *
+ * Deliberately plain text with no surface of its own: it sits beside the wordmark, and a filled
+ * button there would compete with the search field for the eye. It is not a browser reload — the
+ * route, the scroll position and the running player all survive, and only the requests the current
+ * screen actually made are issued again.
+ *
+ * The in-memory caches are dropped first. Without that the refetch would be served from the same
+ * data it is meant to replace, and the control would appear to do nothing.
+ */
+function RefreshButton(): ReactNode {
+  const t = useTranslation();
+  const refreshContent = useUiStore((state) => state.refreshContent);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        clearFeedCache();
+        clearVideoCache();
+        refreshContent();
+      }}
+      className="no-drag text-text-muted hover:text-text focus-visible:text-text shrink-0 rounded-sm px-1 text-sm font-medium transition-colors"
+    >
+      {t.t('app.refresh')}
+    </button>
+  );
+}
+
 export function TopBar(): ReactNode {
   const t = useTranslation();
   const route = useRoute();
@@ -278,6 +310,7 @@ export function TopBar(): ReactNode {
           <Menu size={24} strokeWidth={1.8} />
         </button>
         <Wordmark />
+        <RefreshButton />
       </div>
 
       <div className="flex flex-1 justify-center px-4">

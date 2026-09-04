@@ -136,6 +136,18 @@ pub struct HistoryEntry {
     pub thumbnails: ThumbnailSet,
     /// Stored playback position.
     pub position: PlaybackPosition,
+    /// View count when the video was watched, when the provider reported one.
+    ///
+    /// A snapshot rather than a live figure, so a history card can show the same line every other
+    /// card shows instead of being visibly poorer than the rows beneath it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view_count: Option<u64>,
+    /// Publication time, when an absolute one was reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published_at: Option<Timestamp>,
+    /// The channel's avatar as it was when watched, so the card needs no lookup to draw it.
+    #[serde(default, skip_serializing_if = "ThumbnailSet::is_empty")]
+    pub channel_avatar: ThumbnailSet,
     /// First time this video was opened.
     pub first_watched_at: Timestamp,
     /// Most recent time this video was opened.
@@ -297,6 +309,9 @@ mod tests {
             channel_name: None,
             thumbnails: ThumbnailSet::empty(),
             position,
+            view_count: None,
+            published_at: None,
+            channel_avatar: ThumbnailSet::empty(),
             first_watched_at: Timestamp::from_millis(0),
             last_watched_at: Timestamp::from_millis(0),
             play_count: 1,

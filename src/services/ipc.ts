@@ -23,6 +23,7 @@ import type {
   ChannelId,
   ChannelTab,
   ContinuationToken,
+  DownloadProgress,
   ErrorPayload,
   HistoryEntry,
   LocalPlaylist,
@@ -111,6 +112,41 @@ export interface AppInfo {
   playback_adapter: string;
   cpu_cores: number;
   uptime_ms: number;
+}
+
+/**
+ * What the local setup can do, from `downloads::DownloadTools`.
+ *
+ * BEASTUBE does not extract media itself; it drives `yt-dlp`, which is the software that keeps up
+ * with YouTube's player challenges (ADR-0003). This reports what was found on this computer, so
+ * the settings screen can state plainly that the downloader is missing rather than leaving a
+ * button that fails when pressed (§131).
+ *
+ * A version is present only when the tool ran and printed one — "installed but broken" therefore
+ * shows as a path with no version, not as working.
+ */
+export interface DownloadTools {
+  /** Absolute path of `yt-dlp`, or `null` if none was found. */
+  downloader_path: string | null;
+  downloader_version: string | null;
+  /** Absolute path of `ffmpeg`, or `null`. */
+  ffmpeg_path: string | null;
+  ffmpeg_version: string | null;
+  /** Which JavaScript runtime the downloader will use, if any was found. */
+  js_runtime: 'deno' | 'node' | null;
+  /** Where files are written, resolved. */
+  directory: string;
+  /** Whether a download can be started at all: both tools present. */
+  available: boolean;
+  /**
+   * Whether separate video and audio tracks can be joined.
+   *
+   * Not a quality setting. YouTube no longer offers a combined audio-and-video file to the clients
+   * `yt-dlp` reaches, so without `ffmpeg` a download produces nothing — which is why `available`
+   * requires this too. It is reported on its own so the settings screen can name which of the two
+   * tools is missing.
+   */
+  can_merge: boolean;
 }
 
 /** A creator-marked segment offered for skipping. */
@@ -220,10 +256,37 @@ export interface CommandMap {
   set_incognito: { args: { enabled: boolean }; result: boolean };
   is_incognito: { args: undefined; result: boolean };
 
+  // Downloads. The native side owns them; these start and inspect, and every subsequent change
+  // arrives on `download:progress` rather than being polled for (§69).
+  /** Starts a download, or returns the one already running for this video. */
+  start_download: { args: { videoId: VideoId; title: string }; result: DownloadProgress };
+  /** Stops one. `false` if it is unknown or already over. */
+  cancel_download: { args: { id: string }; result: boolean };
+  /** Every download of this session, for a freshly mounted shell. */
+  get_downloads: { args: undefined; result: DownloadProgress[] };
+  /** What is installed and where files go, for the settings screen. */
+  get_download_tools: { args: undefined; result: DownloadTools };
+  /** Shows a finished download in the file manager. */
+  reveal_download: { args: { id: string }; result: null };
+  /** Opens the download directory, creating it if it does not exist yet. */
+  open_download_directory: { args: undefined; result: null };
+  /** Asks for a download directory. `null` if the user cancelled. */
+  pick_download_directory: { args: undefined; result: string | null };
+  /** Asks for a `yt-dlp` executable. `null` if the user cancelled. */
+  pick_downloader_executable: { args: undefined; result: string | null };
+
   // --- window ---
   /** Reports that the first frame has painted, so the shell can reveal the window. */
   /** Opens an https link in the user's own browser. Validated on the native side. */
   open_external: { args: { url: string }; result: null };
+  /**
+   * Tells the webview which colour scheme the application is painted in.
+   *
+   * The embedded player's settings panel is YouTube's own document and follows
+   * `prefers-color-scheme`, which answers from the webview's preference rather than from ours.
+   * Without this it renders light over a dark player on a machine whose OS is set to light.
+   */
+  set_window_theme: { args: { dark: boolean }; result: null };
   frontend_ready: { args: undefined; result: null };
 }
 

@@ -132,6 +132,18 @@ export const hi: PartialCatalogue = {
     ageRestricted: 'इस वीडियो पर आयु प्रतिबंध है',
   },
 
+  download: {
+    start: 'डाउनलोड',
+    queued: 'प्रतीक्षा में',
+    inProgress: 'डाउनलोड हो रहा है',
+    percent: 'डाउनलोड {percent}%',
+    merging: 'पूरा किया जा रहा है',
+    cancel: 'डाउनलोड रद्द करें',
+    finished: '“{title}” डाउनलोड हो गया',
+    showInFolder: 'फ़ोल्डर में दिखाएँ',
+    openFolder: 'डाउनलोड फ़ोल्डर खोलें',
+  },
+
   player: {
     play: 'चलाएँ',
     pause: 'रोकें',
@@ -146,9 +158,18 @@ export const hi: PartialCatalogue = {
     exitFullscreen: 'फ़ुल स्क्रीन से बाहर',
     pictureInPicture: 'पिक्चर-इन-पिक्चर',
     miniPlayer: 'मिनी प्लेयर',
+    settings: 'सेटिंग',
+    controls: 'प्लेयर कंट्रोल',
+    controlsBeastube: 'BEASTUBE (डार्क)',
+    controlsYoutube: 'YouTube (सटीक क्वालिटी)',
+    controlsHint:
+      'BEASTUBE के कंट्रोल डार्क थीम से मेल खाते हैं और 360p से 2160p तक देते हैं। YouTube के अपने कंट्रोल तुरंत बदलते हैं और 144p तक जाते हैं, लेकिन उनका पैनल सफ़ेद है और उसे थीम नहीं किया जा सकता।',
     speed: 'चलाने की गति',
     quality: 'क्वालिटी',
+    qualityAuto: 'ऑटो',
+    qualityAutoAt: 'ऑटो ({quality})',
     captions: 'सबटाइटल',
+    captionsOn: 'चालू',
     captionsOff: 'बंद',
     audioTrack: 'ऑडियो ट्रैक',
     autoplay: 'अपने आप चलाएँ',
@@ -180,6 +201,7 @@ export const hi: PartialCatalogue = {
     unfollow: 'अनफ़ॉलो करें',
     followed: 'फ़ॉलो किया गया',
     followingLocalOnly: 'सिर्फ़ इस डिवाइस पर सहेजा गया — किसी खाते से सिंक नहीं होता',
+    verified: 'सत्यापित',
   },
 
   library: {
@@ -277,8 +299,57 @@ export const hi: PartialCatalogue = {
     },
     network: { title: 'नेटवर्क' },
     cache: { title: 'स्टोरेज' },
+    downloads: {
+      title: 'डाउनलोड',
+      subtitle:
+        'BEASTUBE वीडियो yt-dlp और ffmpeg से सहेजता है, जो ऐप के साथ ही इंस्टॉल होते हैं। अपनी अलग कॉपी तभी बताएँ जब आप उन्हें ख़ुद संभालना चाहें।',
+      folder: 'वीडियो यहाँ सहेजें',
+      changeFolder: 'बदलें',
+      openFolder: 'फ़ोल्डर खोलें',
+      quality: 'अधिकतम क्वालिटी',
+      downloader: 'डाउनलोडर',
+      downloaderMissing: 'नहीं मिला',
+      downloaderMissingHint:
+        'यह BEASTUBE के साथ आता है, इसलिए आमतौर पर इसका मतलब है कि इंस्टॉलेशन अधूरा है। दोबारा इंस्टॉल करें, या अपनी कॉपी चुनें।',
+      downloaderFound: 'yt-dlp {version}',
+      downloaderNoVersion: 'मिला, संस्करण नहीं बताया',
+      choose: 'चुनें…',
+      clear: 'अपने आप मिला हुआ उपयोग करें',
+      ffmpeg: 'ट्रैक जोड़ना',
+      ffmpegFound: 'ffmpeg मिला',
+      ffmpegMissing: 'ffmpeg नहीं मिला',
+      ffmpegMissingHint:
+        'ज़रूरी है, और BEASTUBE के साथ आता है। YouTube वीडियो और ऑडियो अलग-अलग भेजता है, इसलिए उन्हें जोड़ने वाले ffmpeg के बिना सहेजने को कुछ नहीं बचता। दोबारा इंस्टॉल करें, या अपनी कॉपी चुनें।',
+      jsRuntime: 'JavaScript रनटाइम',
+      jsRuntimeFound: '{name}',
+      jsRuntimeFoundHint: 'YouTube कुछ वीडियो पर जो जाँच लगाता है, उसे हल करने के लिए।',
+      jsRuntimeMissing: 'कोई नहीं मिला',
+      jsRuntimeMissingHint:
+        'अगर कोई वीडियो डाउनलोड होने से मना करे तो Deno या Node.js इंस्टॉल करें। ज़्यादातर बिना इसके भी चलते हैं।',
+      recheck: 'फिर से जाँचें',
+      active: 'इस सत्र के डाउनलोड',
+      noneYet: 'अभी तक कुछ डाउनलोड नहीं हुआ',
+      status: {
+        queued: 'प्रतीक्षा में',
+        starting: 'शुरू हो रहा है',
+        downloading: 'डाउनलोड हो रहा है',
+        merging: 'पूरा किया जा रहा है',
+        finished: 'सहेजा गया',
+        failed: 'विफल',
+        cancelled: 'रद्द',
+      },
+    },
     shortcuts: { title: 'कीबोर्ड शॉर्टकट' },
-    about: { title: 'ऐप के बारे में' },
+    about: {
+      installing: 'डाउनलोड हो रहा है… {percent}%',
+      installingUnknown: 'डाउनलोड हो रहा है…',
+      restarting: 'पूरा करने के लिए फिर से शुरू हो रहा है',
+      updateFailed: 'अपडेट नहीं देख सके। कनेक्शन जाँचें और दोबारा कोशिश करें।',
+      updateSize: 'अपडेट पूरी ऐप बदलता है, लगभग 50 MB।',
+      licensesHint:
+        'ffmpeg और yt-dlp BEASTUBE के साथ आते हैं। उनके लाइसेंस साथ में इंस्टॉल होते हैं।',
+      title: 'ऐप के बारे में',
+    },
   },
 
   commandPalette: {

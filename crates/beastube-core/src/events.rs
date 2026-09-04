@@ -158,6 +158,73 @@ pub struct MaintenanceProgress {
     pub finished: bool,
 }
 
+/// Where a download is in its life.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadStatus {
+    /// Accepted and waiting for a free slot.
+    Queued,
+    /// The downloader process is starting and has not reported a byte yet.
+    Starting,
+    /// Bytes are arriving.
+    Downloading,
+    /// Separate video and audio tracks are being joined into one file.
+    Merging,
+    /// The file is in its final place.
+    Finished,
+    /// No file was produced; [`DownloadProgress::error`] says why.
+    Failed,
+    /// Stopped by the user; partial files were removed.
+    Cancelled,
+}
+
+impl DownloadStatus {
+    /// Whether the download is over, one way or another.
+    #[must_use]
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Finished | Self::Failed | Self::Cancelled)
+    }
+}
+
+/// The state of one download. Producer: the download manager, on every change.
+///
+/// The whole record is sent each time rather than a delta, so a listener that missed an event —
+/// a screen mounted mid-download — is correct as soon as the next one arrives.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DownloadProgress {
+    /// Identifier of this download, for cancelling and revealing it.
+    pub id: String,
+    /// The video being downloaded.
+    pub video_id: VideoId,
+    /// Its title, so a notification can name it without a lookup.
+    pub title: String,
+    /// Where it is.
+    pub status: DownloadStatus,
+    /// Bytes received for the current file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub downloaded_bytes: Option<u64>,
+    /// Size of the current file, when the server said. Absent means unknown, not zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_bytes: Option<u64>,
+    /// Completion in `0.0..=1.0`, or `None` when the total is unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fraction: Option<f32>,
+    /// Current transfer rate in bytes per second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_bps: Option<u64>,
+    /// Estimated seconds remaining for the current file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eta_seconds: Option<u64>,
+    /// The finished file, once there is one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Why it failed, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorPayload>,
+    /// When this record last changed.
+    pub updated_at: Timestamp,
+}
+
 /// Every event the native side can emit.
 ///
 /// Serialized with an external tag so the payload shape is unambiguous on the wire and a new
@@ -181,6 +248,8 @@ pub enum AppEvent {
     UpdateAvailable(UpdateAvailable),
     /// Maintenance progressed. Producer: the task scheduler.
     MaintenanceProgress(MaintenanceProgress),
+    /// A download changed state. Producer: the download manager.
+    DownloadProgress(DownloadProgress),
 }
 
 impl AppEvent {
@@ -199,11 +268,12 @@ impl AppEvent {
             Self::FilterUpdated(_) => "filter:updated",
             Self::UpdateAvailable(_) => "update:available",
             Self::MaintenanceProgress(_) => "maintenance:progress",
+            Self::DownloadProgress(_) => "download:progress",
         }
     }
 
     /// Every event channel name, for the frontend's listener registry and for tests.
-    pub const ALL_NAMES: [&'static str; 8] = [
+    pub const ALL_NAMES: [&'static str; 9] = [
         "playback:state-changed",
         "playback:failed",
         "search:completed",
@@ -212,6 +282,7 @@ impl AppEvent {
         "filter:updated",
         "update:available",
         "maintenance:progress",
+        "download:progress",
     ];
 
     /// Whether this event may be emitted while the user is in incognito mode.
@@ -301,6 +372,20 @@ mod tests {
                 task: "cache.cleanup".to_owned(),
                 fraction: None,
                 finished: true,
+            }),
+            AppEvent::DownloadProgress(DownloadProgress {
+                id: "d1".to_owned(),
+                video_id: VideoId::new("dQw4w9WgXcQ").unwrap(),
+                title: "Clip".to_owned(),
+                status: DownloadStatus::Downloading,
+                downloaded_bytes: Some(1),
+                total_bytes: Some(2),
+                fraction: Some(0.5),
+                speed_bps: None,
+                eta_seconds: None,
+                path: None,
+                error: None,
+                updated_at: Timestamp::from_millis(0),
             }),
         ];
 

@@ -28,14 +28,21 @@ export function SettingRow({
   children: ReactNode;
 }): ReactNode {
   return (
-    <div className="border-border flex items-start justify-between gap-6 border-b py-4 last:border-b-0">
-      <div className="flex min-w-0 flex-col gap-1">
+    // Wraps. A row is a label on the left and a control on the right only while both fit; below
+    // that the control drops to its own line rather than the label being squeezed to nothing or
+    // the control being pushed past the panel's edge. `basis-64` is where that swap happens.
+    <div className="border-border flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b py-4 last:border-b-0">
+      <div className="flex min-w-0 flex-[1_1_16rem] flex-col gap-1">
         <label htmlFor={htmlFor} className="text-text text-base">
           {label}
         </label>
-        {hint !== undefined && <p className="text-text-muted max-w-prose text-xs">{hint}</p>}
+        {/* An empty hint is "no hint", not an empty paragraph: callers pass one conditionally and
+            a blank line under the label reads as a missing string. */}
+        {hint !== undefined && hint !== '' && (
+          <p className="text-text-muted max-w-prose text-xs">{hint}</p>
+        )}
       </div>
-      <div className="flex shrink-0 items-center">{children}</div>
+      <div className="flex max-w-full flex-wrap items-center justify-end gap-2">{children}</div>
     </div>
   );
 }

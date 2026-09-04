@@ -122,6 +122,30 @@ impl Default for AppearanceSettings {
     }
 }
 
+/// Which control bar the player wears.
+///
+/// Not a cosmetic preference — the two are a genuine trade, which is why both exist rather than one
+/// being chosen for the user (ADR-0004).
+///
+/// [`PlayerControls::Beastube`] crops YouTube's chrome away and draws the application's own dark
+/// controls in its place. Quality is then requested by resizing the player's frame, which reaches
+/// 360p through 2160p at 60fps but cannot go lower and takes a few seconds to settle.
+///
+/// [`PlayerControls::Youtube`] leaves the embed's own bar in place. Its gear drives the player's
+/// internal quality API directly, so switching is exact, immediate, and spans the full 144p–2160p
+/// range. The cost is that the panel it opens is YouTube's own document and styles itself from the
+/// operating system, so it renders white over a dark application and no stylesheet here can reach
+/// it; the title band and watermark return with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerControls {
+    /// The application's own dark controls, with YouTube's chrome cropped away.
+    #[default]
+    Beastube,
+    /// YouTube's own control bar, including its native quality menu.
+    Youtube,
+}
+
 /// Playback behaviour.
 ///
 /// `Eq` is not derived: `volume` and `speed` are floats.
@@ -162,6 +186,8 @@ pub struct PlaybackSettings {
     pub seek_step_seconds: u32,
     /// Seconds skipped by the long-seek controls.
     pub seek_step_large_seconds: u32,
+    /// Which control bar the player wears. See [`PlayerControls`].
+    pub player_controls: PlayerControls,
 }
 
 impl Default for PlaybackSettings {
@@ -185,6 +211,9 @@ impl Default for PlaybackSettings {
             // arrive with from every other player.
             seek_step_seconds: 5,
             seek_step_large_seconds: 10,
+            // The dark controls by default: they are the application's own, and the trade they make
+            // (no 144p, a few seconds to switch) is the one most viewers will never notice.
+            player_controls: PlayerControls::Beastube,
         }
     }
 }
@@ -326,6 +355,40 @@ impl Default for CacheSettings {
     }
 }
 
+/// Video downloads.
+///
+/// Paths are stored as strings because the document crosses the IPC boundary as JSON and is
+/// edited from the UI. They are checked in [`Settings::sanitized`], where anything that is not an
+/// absolute path becomes "not set" rather than a relative path resolved against whatever the
+/// process's working directory happens to be — Program Files, for an installed build.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DownloadSettings {
+    /// Directory downloads are saved into. `None` means a `BEASTUBE` folder inside the user's
+    /// Downloads folder, resolved by the shell.
+    pub directory: Option<String>,
+    /// Ceiling on the video height requested. `Auto` means the best available.
+    pub max_quality: Quality,
+    /// Path to the downloader executable (`yt-dlp`). `None` means it is discovered beside the
+    /// application or on `PATH`.
+    pub tool_path: Option<String>,
+    /// Path to `ffmpeg`, which joins separate video and audio tracks. `None` means discovered.
+    pub ffmpeg_path: Option<String>,
+}
+
+impl Default for DownloadSettings {
+    fn default() -> Self {
+        Self {
+            directory: None,
+            // The same ceiling as playback, for the same reason: above 1080p the file roughly
+            // doubles per tier for a difference few screens show. Users who want more raise it.
+            max_quality: Quality::P1080,
+            tool_path: None,
+            ffmpeg_path: None,
+        }
+    }
+}
+
 /// The complete settings document.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -344,6 +407,8 @@ pub struct Settings {
     pub network: NetworkSettings,
     /// Cache sizing.
     pub cache: CacheSettings,
+    /// Video downloads.
+    pub downloads: DownloadSettings,
 }
 
 impl Default for Settings {
@@ -356,6 +421,7 @@ impl Default for Settings {
             filtering: FilteringSettings::default(),
             network: NetworkSettings::default(),
             cache: CacheSettings::default(),
+            downloads: DownloadSettings::default(),
         }
     }
 }
@@ -384,6 +450,9 @@ impl Settings {
         self.cache.thumbnail_ttl_days = self.cache.thumbnail_ttl_days.clamp(1, 365);
         self.privacy.max_search_history_entries =
             self.privacy.max_search_history_entries.clamp(0, 10_000);
+        self.downloads.directory = absolute_or_none(self.downloads.directory.take());
+        self.downloads.tool_path = absolute_or_none(self.downloads.tool_path.take());
+        self.downloads.ffmpeg_path = absolute_or_none(self.downloads.ffmpeg_path.take());
 
         // A ceiling below the default request would silently pin every video to the ceiling; the
         // two are reconciled here rather than at each playback start.
@@ -419,9 +488,38 @@ fn clamp_finite(value: f32, min: f32, max: f32, fallback: f32) -> f32 {
     }
 }
 
+/// `Some(path)` only when `value` is a non-empty absolute path.
+///
+/// An empty string is what a cleared text field sends, and a relative path would be resolved
+/// against the working directory. Both mean "not set", which is what discovery then handles.
+fn absolute_or_none(value: Option<String>) -> Option<String> {
+    let value = value?;
+    let trimmed = value.trim();
+    (!trimmed.is_empty() && std::path::Path::new(trimmed).is_absolute())
+        .then(|| trimmed.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_paths_must_be_absolute_or_are_dropped() {
+        let absolute = std::env::temp_dir().join("ffmpeg").display().to_string();
+        let document = serde_json::json!({
+            "downloads": {"directory": "  ", "tool_path": "yt-dlp.exe", "ffmpeg_path": absolute}
+        });
+        let loaded: Settings = serde_json::from_value(document).unwrap();
+        let loaded = loaded.sanitized();
+
+        assert_eq!(loaded.downloads.directory, None, "blank means unset");
+        assert_eq!(
+            loaded.downloads.tool_path, None,
+            "a bare name would resolve against the working directory"
+        );
+        assert_eq!(loaded.downloads.ffmpeg_path, Some(absolute));
+        assert_eq!(loaded.downloads.max_quality, Quality::P1080);
+    }
 
     #[test]
     fn defaults_are_already_sanitized() {

@@ -10,9 +10,23 @@
  * Capability-gated, not silently broken (§131):
  *
  * * **Can**: play/pause, seek, playback rate, volume, fullscreen, captions toggle, position
- *   reporting, and therefore creator-marked segment skipping.
- * * **Cannot**: select a quality tier (`setPlaybackQuality` is a documented no-op), read buffer
- *   level, or read dropped-frame counts. The controls for those are absent rather than inert.
+ *   reporting, therefore creator-marked segment skipping — and selecting a quality tier, which
+ *   takes some explaining; see below.
+ * * **Cannot**: read buffer level or dropped-frame counts. The embed exposes neither, so the
+ *   readouts for them are absent rather than inert.
+ *
+ * ## Quality is selectable, by size rather than by command
+ *
+ * `setPlaybackQuality` really is a no-op — measured, not assumed: calling it with `hd1080` on a
+ * player showing `hd720` leaves it on `hd720`. What is *not* a no-op is the size of the frame. The
+ * embed measures its own viewport and picks the rendition to match, and it keeps doing so while
+ * playing: a frame relaid from 640×360 to 3840×2160 moves from `medium` to `hd2160` within a few
+ * seconds, with no reload and no rebuffer, and back down again just as readily.
+ *
+ * So a tier is requested by laying the frame out at the width that produces it and scaling the
+ * result down to the box the design wants. `getPlaybackQuality` and `getAvailableQualityLevels`
+ * both work and both report honestly, which is what makes the result checkable rather than hoped
+ * for. See `renderSize` and ADR-0004.
  *
  * ## The origin risk
  *
@@ -26,7 +40,7 @@
 import { useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type Ref } from 'react';
 
 import { useTranslation } from '@/i18n/context';
-import type { PlaybackState, VideoId } from '@/types/domain';
+import type { PlaybackState, Quality, VideoId } from '@/types/domain';
 
 /** How often the playhead is sampled while playing. */
 const POSITION_POLL_MS = 250;
@@ -36,6 +50,177 @@ const IFRAME_API_SRC = 'https://www.youtube.com/iframe_api';
 
 /** How long to wait for the API script before reporting failure. */
 const API_LOAD_TIMEOUT_MS = 15_000;
+
+/**
+ * The frame width, in pixels, that makes the embed choose a given tier.
+ *
+ * The embed selects its rendition from the size of its own viewport, which it measures rather than
+ * being told — so these widths *are* the quality control. Each is the width of a 16:9 frame whose
+ * picture is that many lines tall, because the embed fits the picture to the width and letterboxes
+ * whatever height is left over.
+ *
+ * `2160p` tops the ladder deliberately. The embed also names a `highres` level above it, which is
+ * not offered: honouring it would mean laying the frame out at 7680 pixels, and a tier the player
+ * would answer at 4K is the kind of control that lies about what it did (§131).
+ */
+const QUALITY_WIDTH: Record<Exclude<Quality, 'auto'>, number> = {
+  '2160p': 3840,
+  '1440p': 2560,
+  '1080p': 1920,
+  '720p': 1280,
+  '480p': 854,
+  '360p': 640,
+  '240p': 426,
+  '144p': 256,
+};
+
+/** The embed's own names for the tiers, mapped onto the vocabulary the rest of the app uses. */
+const EMBED_LEVEL: Record<string, Exclude<Quality, 'auto'>> = {
+  hd2160: '2160p',
+  hd1440: '1440p',
+  hd1080: '1080p',
+  hd720: '720p',
+  large: '480p',
+  medium: '360p',
+  small: '240p',
+  tiny: '144p',
+};
+
+/**
+ * The tiers YouTube encodes at 60fps, when a video has 60fps at all.
+ *
+ * Not a guess about this video — a fact about the ladder: YouTube produces high-frame-rate
+ * renditions from 720p upward and nothing below it. Paired with an observation that *this* video is
+ * playing at high frame rate, it is what lets the menu label `1080p60` rather than `1080p`.
+ */
+const HIGH_FRAME_RATE_TIERS: readonly Quality[] = ['2160p', '1440p', '1080p', '720p'];
+
+/**
+ * How a tier reads in a menu.
+ *
+ * The `60` suffix is appended only once the player has actually reported `hfr` for the video in
+ * hand, so it states something observed rather than something assumed (§131).
+ */
+export function qualityLabel(tier: Quality, highFrameRate: boolean): string {
+  if (tier === 'auto') return tier;
+  return highFrameRate && HIGH_FRAME_RATE_TIERS.includes(tier) ? `${tier}60` : tier;
+}
+
+/**
+ * The tiers a menu may offer, best first.
+ *
+ * It stops at 360p, and that is a measured limit rather than a preference. Quality is requested by
+ * shrinking the frame, and the embed simply refuses to go below 360p however small the frame gets:
+ * a player laid out at 120 pixels still serves `medium`. The two setters that could ask for less —
+ * `setPlaybackQuality` and the internal `setPlaybackQualityRange` that YouTube's own menu uses —
+ * are both refused over the parent's command channel, and the `vq` load parameter is ignored.
+ *
+ * `240p` and `1440p`-style entries below the floor are therefore absent rather than present and
+ * inert: offering `144p` would serve 360p and call it 144p, which is exactly the fake feature the
+ * specification forbids (§131). `EMBED_LEVEL` still names them, so a rendition the embed reports
+ * from below the floor is still reported honestly if it ever appears.
+ */
+const QUALITY_ORDER: readonly Exclude<Quality, 'auto'>[] = [
+  '2160p',
+  '1440p',
+  '1080p',
+  '720p',
+  '480p',
+  '360p',
+];
+
+/**
+ * The narrowest frame that loads into YouTube's 60fps track family.
+ *
+ * The embed settles on a 30fps or 60fps family when a video *loads* and keeps it for that load,
+ * while resolution goes on following the frame size for as long as the video plays. YouTube encodes
+ * 60fps from 720p up, so a video loaded into a frame whose picture is shorter than 720 lines lands
+ * in the 30fps family — and then climbs to 2160p at 30fps and stays there. Measured in the
+ * application: a 1050-wide player carries a 590-line picture, loaded at 30fps, and reached `hd2160`
+ * with no `hfr` however large the frame was afterwards.
+ *
+ * So every load is bootstrapped at this width and the frame settles to its real size once playback
+ * has started. 1280 is the 16:9 width whose picture is exactly 720 lines.
+ */
+const HIGH_FRAME_RATE_MIN_WIDTH = 1280;
+
+/**
+ * How long the bootstrap frame is held after playback starts, in milliseconds.
+ *
+ * Long enough for the embed to report the rendition it chose. The frame rate of a video is only
+ * knowable by watching a rendition that carries it, and the bootstrap window is the one moment a
+ * 60fps rendition is guaranteed to be in flight — so settling the instant `playing` fires means a
+ * player whose real box is small never observes it, and a 60fps video is indistinguishable from a
+ * 30fps one. Held briefly, the observation is reliable and the menu can say `1080p60` because it
+ * has seen 60, rather than because 1080p usually is.
+ */
+const SETTLE_DELAY_MS = 4000;
+
+/** Bounds on the laid-out frame. The floor is what an unmeasured element reports; the ceiling is 4K. */
+const MIN_RENDER_WIDTH = 320;
+const MAX_RENDER_WIDTH = 3840;
+const MIN_RENDER_HEIGHT = 180;
+
+/** How far the wanted width may drift before the frame is actually re-laid-out. */
+const RESIZE_THRESHOLD_PX = 24;
+
+/**
+ * The frame width `auto` should ask for, given the pixels the picture is painted across.
+ *
+ * Rounds *up* to the next tier rather than passing the raw measurement through, because a tier is
+ * a ceiling and the embed picks the largest one that fits. A 1050-pixel-wide player carries a
+ * 590-line picture; asked for 1050 the embed serves 480p and the browser upscales it by a quarter,
+ * which is precisely the "the player is blurry" complaint. Rounding up asks for 720p, which is
+ * what YouTube's own player does at that size and what the ladder exists for.
+ *
+ * Never above `ceiling`, which is the viewer's `max_quality` setting.
+ */
+function autoWidth(measured: number, ceiling: number): number {
+  const fits = [...QUALITY_ORDER].reverse().find((tier) => QUALITY_WIDTH[tier] >= measured);
+  const rounded = fits === undefined ? MAX_RENDER_WIDTH : QUALITY_WIDTH[fits];
+  return Math.min(rounded, ceiling);
+}
+
+/**
+ * How large to lay the embed's frame out, in pixels, for a given quality.
+ *
+ * This is the whole quality mechanism, and it is worth being precise about why it is a *layout*
+ * size rather than the `width`/`height` the API accepts. Those are attributes, and the iframe the
+ * API builds inherits the mount node's class — so a stylesheet rule sized it and the attributes
+ * never applied. Measured: an iframe constructed at 1800 and styled `width: 100%` inside a 900px
+ * box reports `offsetWidth` of 900, and the embed serves the rendition for 900.
+ *
+ * What the embed actually reads is its own viewport, which is this element's layout box. So asking
+ * for 2160p means genuinely laying the frame out 3840 pixels wide and scaling the result down to
+ * the box the design wants — see the `scaler` element in the markup below.
+ *
+ * Width drives and height follows the frame's own proportions. Driving from height would aim the
+ * tier at the *box* rather than at the picture, and land a tier low wherever the box is taller
+ * than 16:9 — which is the normal case here, since the host over-sizes the frame to crop the
+ * embed's chrome away.
+ *
+ * `auto` asks for the box's size in device pixels, because that is what the picture is finally
+ * resampled to: on a 150% display a player 800 CSS pixels wide is painted across 1200 real ones,
+ * and a rendition chosen for 800 is visibly soft there.
+ */
+function renderSize(
+  rect: { width: number; height: number },
+  quality: Quality,
+  maxAuto: Quality,
+): { width: number; height: number } {
+  const cssWidth = rect.width || 640;
+  const cssHeight = rect.height || 360;
+  const ratio = typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+  // The ceiling bounds the *frame*, which is the only thing the embed reads — so a capped `auto`
+  // is capped in fact and not merely in the menu.
+  const ceiling = maxAuto === 'auto' ? MAX_RENDER_WIDTH : QUALITY_WIDTH[maxAuto];
+  const wanted = quality === 'auto' ? autoWidth(cssWidth * ratio, ceiling) : QUALITY_WIDTH[quality];
+  const width = Math.min(MAX_RENDER_WIDTH, Math.max(MIN_RENDER_WIDTH, Math.round(wanted)));
+  return {
+    width,
+    height: Math.max(MIN_RENDER_HEIGHT, Math.round(width * (cssHeight / cssWidth))),
+  };
+}
 
 /** The subset of the player API this component uses. */
 interface YouTubePlayerInstance {
@@ -53,6 +238,32 @@ interface YouTubePlayerInstance {
   /** The rates this player will actually accept. Asked rather than assumed. */
   getAvailablePlaybackRates: () => number[];
   loadVideoById: (options: { videoId: string; startSeconds?: number }) => void;
+  /**
+   * Writes the `<iframe>`'s `width` and `height` attributes.
+   *
+   * Bookkeeping, not the quality lever. The iframe inherits the mount node's class, so a
+   * stylesheet rule wins over these attributes and the embed measures the styled box instead —
+   * which is what `renderSize` sets. This is called anyway so the attributes never disagree with
+   * the layout for anyone reading the DOM.
+   */
+  setSize: (width: number, height: number) => void;
+  /** The tier the embed is currently serving, in its own vocabulary. */
+  getPlaybackQuality: () => string;
+  /**
+   * Metadata about what is playing.
+   *
+   * Read for `video_quality_features`, which carries `hfr` when the rendition in flight is a
+   * high-frame-rate one. It is the only signal the embed gives about frame rate.
+   */
+  getVideoData: () => { video_quality_features?: string[] };
+  /**
+   * The tiers this video actually has, in the embed's vocabulary.
+   *
+   * Genuinely per-video rather than a fixed ladder — measured: a 240p-era upload answers with
+   * `["small", "auto"]` and nothing else. That is what lets a quality menu offer only tiers that
+   * exist for the video in front of the viewer (§131).
+   */
+  getAvailableQualityLevels: () => string[];
   /** Names of the option modules the player currently has, e.g. `captions`. */
   getOptions: () => string[];
   loadModule: (module: string) => void;
@@ -70,6 +281,8 @@ interface YouTubeApi {
     element: HTMLElement,
     options: {
       host?: string;
+      width?: number;
+      height?: number;
       videoId: string;
       playerVars: Record<string, string | number>;
       events: {
@@ -254,6 +467,22 @@ export interface YouTubePlayerProps {
   muted?: boolean;
   /** Show the player's own controls. Off for previews, where the card underneath is the control. */
   controls?: boolean;
+  /**
+   * The tier to ask the embed for, or `auto` to let it choose for the size it is displayed at.
+   *
+   * Applied by relaying the frame out, not by a command — see `renderSize`. A tier the video does
+   * not have is simply not offered by the menu that sets this; if one arrives anyway the embed
+   * serves the closest it has, which is the same thing it does for `auto`.
+   */
+  quality?: Quality;
+  /**
+   * A ceiling on what `auto` may climb to.
+   *
+   * The viewer's `max_quality` setting, whose stated purpose is exactly this: stopping automatic
+   * selection reaching 4K on a metered connection. It bounds `auto` only — an explicit `quality`
+   * is a deliberate choice and is honoured as given.
+   */
+  maxAutoQuality?: Quality;
   /** Loop the video. Used by previews, which are shorter than what they preview. */
   loop?: boolean;
   /**
@@ -292,6 +521,22 @@ export interface PlayerHandle {
   rate: () => number;
   availableRates: () => number[];
   setRate: (rate: number) => void;
+  /**
+   * The tiers this video actually offers, best first, and the one being served right now.
+   *
+   * Both are asked of the player rather than assumed, so a menu can list exactly what exists and
+   * report what the request actually achieved — which matters because a tier is requested by
+   * resizing rather than commanded, and the embed takes a few seconds to move.
+   */
+  availableQualities: () => Quality[];
+  currentQuality: () => Quality | null;
+  /**
+   * Whether the rendition in flight is a high-frame-rate one.
+   *
+   * A property of what is playing, not of the video: a 60fps upload reports `false` while its 360p
+   * rendition is on screen, because that rendition genuinely is 30fps.
+   */
+  isHighFrameRate: () => boolean;
   setMuted: (muted: boolean) => void;
   /** Sets the volume, `0..100`, as the embed expresses it. */
   setVolume: (volume: number) => void;
@@ -347,17 +592,39 @@ export function YouTubePlayer({
   controls = true,
   loop = false,
   transparent = false,
+  quality = 'auto',
+  maxAutoQuality = 'auto',
   ref,
 }: YouTubePlayerProps): React.ReactNode {
   const t = useTranslation();
+  const frameRef = useRef<HTMLDivElement>(null);
+  const scalerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
+
+  /**
+   * The size the frame is currently laid out at, and the quality that chose it.
+   *
+   * The width is sticky: for a fixed tier it never moves, and for `auto` it only moves once the
+   * box has drifted far enough to change the rendition. Relaying the frame reaches into the
+   * embed's document, so a resize drag must not do it on every pointer move. The *height* and the
+   * scale are recomputed every time regardless, because those are what keep the picture filling
+   * its box — a stale one would show as a gap.
+   */
+  const layoutRef = useRef<{ width: number; height: number; quality: Quality }>({
+    width: 0,
+    height: 0,
+    quality: 'auto',
+  });
 
   /** Which video the live player currently holds, so a redundant swap is skipped. */
   const loadedIdRef = useRef<VideoId | null>(null);
 
   /** A resume position that arrived before the player was ready, drained by `onReady`. */
   const pendingResumeRef = useRef<number | null>(null);
+
+  /** The pending drop from the load-time frame back to the viewer's own size. */
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * The failure, tagged with the video it belongs to.
@@ -407,6 +674,70 @@ export function YouTubePlayer({
   const autoplayNow = useEffectEvent(() => autoplay);
 
   /**
+   * Lays the frame out at the size the current quality asks for, and scales it back into its box.
+   *
+   * The two halves are the whole trick. The `scaler` is given a real pixel size — 3840 wide for
+   * 2160p — so the embed inside it has a 4K viewport and serves a 4K rendition. It is then scaled
+   * by `box width / render width`, which puts it back exactly where the design wanted it. A
+   * transform does not touch the transformed element's own layout, so the embed keeps measuring
+   * the large box while the viewer sees the small one.
+   *
+   * Because the scale is derived from the same width the layout used, the picture lands on the box
+   * to the pixel at any tier — including the host's deliberately over-tall frame, whose letterbox
+   * bars scale down to exactly the chrome crop they are there to hide.
+   */
+  const applyLayout = useEffectEvent((minWidth = 0) => {
+    const frame = frameRef.current;
+    const scaler = scalerRef.current;
+    if (!frame || !scaler) return;
+
+    const rect = frame.getBoundingClientRect();
+    // Nothing useful to measure yet; the observer fires again once the box has a size.
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const wanted = renderSize(rect, quality, maxAutoQuality);
+    const settled = layoutRef.current;
+    const stable =
+      settled.width === 0 ||
+      settled.quality !== quality ||
+      Math.abs(wanted.width - settled.width) >= RESIZE_THRESHOLD_PX
+        ? wanted.width
+        : settled.width;
+    // `minWidth` is the load-time bootstrap, never a permanent floor: the next call settles back.
+    const width = Math.min(MAX_RENDER_WIDTH, Math.max(stable, minWidth));
+    // Follows the box's proportions against whichever width survived, so the scale below fits both
+    // axes with one factor.
+    const height = Math.max(MIN_RENDER_HEIGHT, Math.round(width * (rect.height / rect.width)));
+
+    // The bootstrap width is deliberately not recorded, so the settle that follows sees the size
+    // the viewer actually asked for rather than the one the load needed.
+    if (minWidth === 0) layoutRef.current = { width, height, quality };
+    scaler.style.width = `${String(width)}px`;
+    scaler.style.height = `${String(height)}px`;
+    scaler.style.transform = `scale(${String(rect.width / width)})`;
+
+    try {
+      playerRef.current?.setSize(width, height);
+    } catch {
+      // Attribute bookkeeping only, and the player is mid-teardown. The layout above is what counts.
+    }
+  });
+
+  /**
+   * Drops the frame from its load-time width back to the one the viewer asked for.
+   *
+   * Deferred rather than immediate, and re-armed on every call so a burst of state changes settles
+   * once. See `SETTLE_DELAY_MS` for why the delay exists at all.
+   */
+  const scheduleSettle = useEffectEvent(() => {
+    if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      settleTimerRef.current = null;
+      applyLayout();
+    }, SETTLE_DELAY_MS);
+  });
+
+  /**
    * Constructs the player against the current render's props.
    *
    * `isCancelled` is passed in rather than read here: it belongs to one particular run of the
@@ -422,6 +753,10 @@ export function YouTubePlayer({
       const id = videoId;
       loadedIdRef.current = id;
 
+      // Already settled by the `applyLayout` call the construction effect makes before this runs,
+      // so the frame the API builds into is the right size from its very first measurement.
+      const size = layoutRef.current;
+
       return new api.Player(mount, {
         // The privacy-preserving host, which the API accepts as a first-class option. Nothing is
         // stored against the viewer until they actually play something — and the hover preview,
@@ -429,6 +764,11 @@ export function YouTubePlayer({
         // default host paints over the top of the picture.
         host: 'https://www.youtube-nocookie.com',
         videoId: id,
+        // The attributes, matching the layout `applyLayout` has already set. The layout is what
+        // the embed measures — see `renderSize` — but starting the attributes anywhere else would
+        // leave the DOM describing a player that does not exist.
+        width: size.width,
+        height: size.height,
         playerVars: {
           autoplay: autoplay ? 1 : 0,
           // Required for the API to accept commands from this page.
@@ -488,6 +828,10 @@ export function YouTubePlayer({
           },
           onStateChange: (event) => {
             if (isCancelled()) return;
+            // Playing means the format selection for this load is committed, so the frame can drop
+            // back to the size the viewer actually asked for without changing the frame rate — but
+            // not instantly; see `SETTLE_DELAY_MS`.
+            if (event.data === EMBED_STATE.playing) scheduleSettle();
             reportState(toPlaybackState(event.data));
             // Sample immediately on transition so a pause records its exact position rather than
             // waiting up to a poll interval.
@@ -519,6 +863,9 @@ export function YouTubePlayer({
     if (!player || loadedIdRef.current === id) return;
     loadedIdRef.current = id;
     pendingResumeRef.current = null;
+    // A swap is a load, and the frame-rate family is chosen per load — so the frame is widened for
+    // it exactly as it is at construction, and settles again once the new video is playing.
+    applyLayout(HIGH_FRAME_RATE_MIN_WIDTH);
     try {
       // Deliberately no `startSeconds`. At the instant `videoId` changes, a resume position fetched
       // for the *previous* video is still the newest settled value the parent holds — the resource
@@ -576,6 +923,11 @@ export function YouTubePlayer({
     let cancelled = false;
     let poll: ReturnType<typeof setInterval> | undefined;
     const isCancelled = () => cancelled;
+
+    // Before the API is even asked for. The embed reads its viewport as it boots, so a frame still
+    // at its placeholder size would have the first rendition chosen against the wrong number — and
+    // the frame rate with it, which no later resize can undo.
+    applyLayout(HIGH_FRAME_RATE_MIN_WIDTH);
     // Captured now rather than read in the cleanup: by teardown the ref may already point somewhere
     // else, and the node this run appended its player into is the one that must be emptied.
     const host = containerRef.current;
@@ -599,6 +951,10 @@ export function YouTubePlayer({
     return () => {
       cancelled = true;
       if (poll !== undefined) clearInterval(poll);
+      if (settleTimerRef.current !== null) {
+        clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
       try {
         playerRef.current?.destroy();
       } catch {
@@ -632,7 +988,55 @@ export function YouTubePlayer({
     applyResume(startAtMs);
   }, [startAtMs]);
 
-  const frameRef = useRef<HTMLDivElement>(null);
+  /**
+   * Effect 5 — size. Keeps the frame's layout in step with the box it has to fill.
+   *
+   * Without this the size is only correct at construction, and the player is constructed once per
+   * session: entering theatre mode, resizing the window or collapsing the sidebar would all leave
+   * the embed serving a rendition chosen for a box it no longer occupies, and — now that the frame
+   * is scaled — leave the picture visibly the wrong size inside it.
+   *
+   * The frame is observed rather than the container, because the container is now the *result* of
+   * the layout rather than an input to it; observing it would feed the effect its own output.
+   *
+   * Coalesced to a frame, because a resize drag would otherwise relay the embed's document on
+   * every pointer move.
+   */
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || typeof ResizeObserver === 'undefined') return undefined;
+
+    let scheduled = 0;
+    const observer = new ResizeObserver(() => {
+      if (scheduled !== 0) return;
+      scheduled = requestAnimationFrame(() => {
+        scheduled = 0;
+        applyLayout();
+      });
+    });
+    observer.observe(frame);
+
+    return () => {
+      observer.disconnect();
+      if (scheduled !== 0) cancelAnimationFrame(scheduled);
+    };
+  }, []);
+
+  /**
+   * Effect 6 — quality. Relays the frame, which is how a tier is actually requested.
+   *
+   * A live change, not a rebuild: the embed notices its new viewport and moves to the matching
+   * rendition within a few seconds while playback continues — in either direction, and without a
+   * rebuffer. That is why `auto` can track the window continuously, and why choosing a tier by hand
+   * costs nothing either.
+   *
+   * Resolution follows the frame; *frame rate* does not. The embed settles on a 30fps or 60fps
+   * track family when a video loads and keeps it for that load, which is why the player is parked
+   * at a 720p-shaped box rather than a 360p-shaped one — see `PARKED` in `PlayerHost`.
+   */
+  useEffect(() => {
+    applyLayout();
+  }, [quality, maxAutoQuality]);
 
   /**
    * The name the embed uses for its caption module, or `null` when this video has none.
@@ -680,6 +1084,35 @@ export function YouTubePlayer({
           playerRef.current?.setPlaybackRate(rate);
         } catch {
           // The player throws once torn down; a command with nothing to command is a no-op.
+        }
+      },
+      availableQualities: () => {
+        try {
+          const levels = playerRef.current?.getAvailableQualityLevels() ?? [];
+          // Intersected with the ladder this application knows how to ask for, in menu order. The
+          // embed's `auto` entry is dropped: it is a mode rather than a tier, and the menu offers
+          // it separately.
+          return QUALITY_ORDER.filter((tier) =>
+            levels.some((level) => EMBED_LEVEL[level] === tier),
+          );
+        } catch {
+          // Nothing to offer is the honest answer; the menu omits the section entirely.
+          return [];
+        }
+      },
+      currentQuality: () => {
+        try {
+          const level = playerRef.current?.getPlaybackQuality();
+          return level === undefined ? null : (EMBED_LEVEL[level] ?? null);
+        } catch {
+          return null;
+        }
+      },
+      isHighFrameRate: () => {
+        try {
+          return playerRef.current?.getVideoData().video_quality_features?.includes('hfr') ?? false;
+        } catch {
+          return false;
         }
       },
       seek: (positionMs: number) => {
@@ -766,8 +1199,17 @@ export function YouTubePlayer({
       style={fill ? undefined : { aspectRatio }}
       aria-label={t.t('a11y.playerRegion')}
     >
-      {/* React owns this element. The API replaces a throwaway child appended inside it. */}
-      <div ref={containerRef} className="size-full" />
+      {/*
+        The frame, laid out at the size the chosen quality needs and scaled back into the box.
+
+        Sized imperatively rather than from React state: it changes on every resize frame, and
+        routing that through a render would re-render the player — and everything under it — at
+        pointer rate. `size-full` is only the starting value, until `applyLayout` writes pixels.
+      */}
+      <div ref={scalerRef} className="absolute top-0 left-0 size-full origin-top-left">
+        {/* React owns this element. The API replaces a throwaway child appended inside it. */}
+        <div ref={containerRef} className="size-full" />
+      </div>
 
       {/* The failure is painted OVER the container rather than instead of it. Returning early here
           would unmount the container, and since the construction effect runs once per mount there

@@ -12,6 +12,8 @@
 //! to load can never leave the application running with no visible window.
 
 mod commands;
+mod downloads;
+mod logging;
 // Request interception is a WebView2 facility; there is no cross-platform equivalent, and the
 // module is absent rather than stubbed on other targets so a missing capability is a compile error
 // rather than a silent no-op (§131).
@@ -65,6 +67,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        // Updates. The dependency was declared long before anything used it, which meant the
+        // "Check for updates" string existed with nothing behind it; registering the plugin is what
+        // turns that into a real control rather than a label (§131).
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
             commands::get_settings,
@@ -109,11 +115,24 @@ pub fn run() {
             commands::get_shorts_feed,
             commands::get_more_shorts,
             commands::open_external,
+            commands::set_window_theme,
             commands::set_incognito,
             commands::is_incognito,
+            downloads::start_download,
+            downloads::cancel_download,
+            downloads::get_downloads,
+            downloads::get_download_tools,
+            downloads::reveal_download,
+            downloads::open_download_directory,
+            downloads::pick_download_directory,
+            downloads::pick_downloader_executable,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Before anything else, so the startup path is the first thing in the log rather than
+            // the first thing missing from it.
+            logging::init(&handle);
 
             // Subsystems are constructed before the window is revealed, but the construction
             // itself makes no network request — so being offline costs nothing at startup (§86).

@@ -215,7 +215,11 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
             <div className="skeleton h-6 w-3/4 rounded" />
           )}
 
-          <div className="border-border flex items-center gap-3 border-b pb-4">
+          {/* Wraps rather than crushes. The action pills have a fixed width and the channel
+              block does not, so on a narrow window the old row squeezed the channel name to
+              nothing and *still* pushed the last button off the right edge. Wrapping puts the
+              actions on their own line instead, which is what YouTube does at the same width. */}
+          <div className="border-border flex flex-wrap items-center gap-x-3 gap-y-3 border-b pb-4">
             {details?.channel_avatar?.at(-1) && (
               <img
                 src={details.channel_avatar.at(-1)?.url}
@@ -223,7 +227,9 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
                 className="size-10 shrink-0 rounded-full object-cover"
               />
             )}
-            <div className="flex min-w-0 flex-1 flex-col">
+            {/* `basis-48` is the width below which the channel block stops sharing the line and
+                the actions wrap under it, rather than both getting too little to read. */}
+            <div className="flex min-w-0 flex-[1_1_12rem] flex-col">
               <span className="text-text truncate text-sm font-medium">
                 {details?.channel_name ?? ''}
               </span>
@@ -235,9 +241,10 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
                 </span>
               )}
             </div>
-            {/* Save and share, on the row with the channel — where YouTube puts them. There is no
-                download button: this application cannot produce a file, and a control that cannot
-                do its job is worse than its absence (§131). */}
+            {/* Save, download and share, on the row with the channel — where YouTube puts them.
+                The download control is present only on a computer that has `yt-dlp` installed,
+                because that is the program which actually produces the file (ADR-0003); without
+                it the button would be a control that cannot do its job (§131). */}
             {details && <VideoActions video={details} orientation="horizontal" />}
           </div>
 

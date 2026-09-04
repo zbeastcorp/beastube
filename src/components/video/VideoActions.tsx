@@ -16,14 +16,26 @@
  * user pressing it again to find out whether it worked.
  */
 
-import { Bookmark, BookmarkCheck, Check, ExternalLink, ListPlus, Share2 } from 'lucide-react';
+import {
+  Bookmark,
+  BookmarkCheck,
+  Check,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  ListPlus,
+  Share2,
+  X,
+} from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
 import { invoke } from '@/services/ipc';
+import { canDownload, useDownloadsStore } from '@/stores/downloads';
 import { useUiStore } from '@/stores/ui';
-import type { VideoSummary } from '@/types/domain';
+import type { DownloadProgress, VideoSummary } from '@/types/domain';
+import { isTerminalDownload } from '@/types/domain';
 
 /** How long a confirmation stays on the button before it returns to its resting label. */
 const CONFIRMATION_MS = 1800;
@@ -38,16 +50,32 @@ function RailButton({
   onClick,
   active = false,
   horizontal = false,
+  showLabel = false,
   children,
 }: {
   label: string;
   onClick: () => void;
   active?: boolean;
   horizontal?: boolean;
+  /**
+   * Whether the label is printed beside the icon in the horizontal row.
+   *
+   * Off for the actions whose icon says it on its own — save, add to a playlist, open, copy. The
+   * label is still the accessible name and the tooltip, so nothing is lost to a screen reader or
+   * to a pointer that hovers; what goes is four words of chrome under every video.
+   *
+   * On for the download, because its label is not a name but a *state* — "Downloading 42%" — and
+   * an icon cannot carry that.
+   */
+  showLabel?: boolean;
   children: ReactNode;
 }): ReactNode {
   if (horizontal) {
-    // A pill with the label beside the icon, matching the row under a video.
+    const surface = active
+      ? 'bg-accent text-accent-contrast'
+      : 'bg-surface-translucent hover:bg-surface-translucent-hover text-text';
+
+    // A pill when it carries a label, a round icon button when it does not.
     return (
       <button
         type="button"
@@ -56,14 +84,15 @@ function RailButton({
         title={label}
         aria-pressed={active}
         className={[
-          'transition-surface flex h-9 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-medium',
-          active
-            ? 'bg-accent text-accent-contrast'
-            : 'bg-surface-translucent hover:bg-surface-translucent-hover text-text',
+          'transition-surface shrink-0 rounded-full',
+          showLabel
+            ? 'flex h-8 items-center gap-1.5 px-3 text-xs font-medium'
+            : 'grid size-8 place-items-center',
+          surface,
         ].join(' ')}
       >
         {children}
-        {label}
+        {showLabel && label}
       </button>
     );
   }
@@ -88,6 +117,94 @@ function RailButton({
       <span className="text-text-muted max-w-16 truncate text-center text-2xs">{label}</span>
     </div>
   );
+}
+
+/**
+ * The download control, in whichever of its four states applies.
+ *
+ * It is absent entirely when no downloader is installed. That is the §131 rule applied literally:
+ * BEASTUBE drives `yt-dlp` and cannot produce a file without it, so on a computer that has none
+ * the button would be a control that cannot do its job. The settings screen is where its absence
+ * is explained and fixed, and picking a downloader there makes this appear without a restart.
+ *
+ * While a download runs the same button cancels it, which is where a person reaches when they want
+ * it to stop — and the label carries the percentage so the state is readable without a separate
+ * progress row. A percentage appears only when the size is known; an unknown total shows the
+ * running state with no number rather than a fabricated one.
+ */
+function DownloadButton({
+  video,
+  horizontal,
+  size,
+}: {
+  video: VideoSummary;
+  horizontal: boolean;
+  size: number;
+}): ReactNode {
+  const t = useTranslation();
+  const available = useDownloadsStore(canDownload);
+  const download = useDownloadsStore((state) => state.byVideo[video.id]);
+  const start = useDownloadsStore((state) => state.start);
+  const cancel = useDownloadsStore((state) => state.cancel);
+  const reveal = useDownloadsStore((state) => state.reveal);
+
+  if (!available) return null;
+
+  const running = download !== undefined && !isTerminalDownload(download.status);
+
+  if (running) {
+    return (
+      <RailButton
+        label={runningLabel(t, download)}
+        onClick={() => {
+          void cancel(video.id);
+        }}
+        active
+        horizontal={horizontal}
+        showLabel={horizontal}
+      >
+        <X size={size} />
+      </RailButton>
+    );
+  }
+
+  if (download?.status === 'finished') {
+    return (
+      <RailButton
+        label={t.t('download.showInFolder')}
+        onClick={() => {
+          void reveal(video.id);
+        }}
+        horizontal={horizontal}
+        showLabel={horizontal}
+      >
+        <FolderOpen size={size} />
+      </RailButton>
+    );
+  }
+
+  // Failed and cancelled both come back to "download", because pressing it again is exactly what
+  // either state calls for. The reason it failed was already said, once, in a toast.
+  return (
+    <RailButton
+      label={t.t('download.start')}
+      onClick={() => {
+        void start(video);
+      }}
+      horizontal={horizontal}
+      showLabel={horizontal}
+    >
+      <Download size={size} />
+    </RailButton>
+  );
+}
+
+/** The label for a download in flight: its stage, plus a percentage when the size is known. */
+function runningLabel(t: ReturnType<typeof useTranslation>, download: DownloadProgress): string {
+  if (download.status === 'merging') return t.t('download.merging');
+  if (download.status === 'queued') return t.t('download.queued');
+  if (download.fraction === undefined) return t.t('download.inProgress');
+  return t.t('download.percent', { percent: Math.round(download.fraction * 100) });
 }
 
 export interface VideoActionsProps {
@@ -155,10 +272,19 @@ export function VideoActions({ video, orientation = 'vertical' }: VideoActionsPr
   };
 
   const horizontal = orientation === 'horizontal';
-  const size = horizontal ? 18 : 22;
+  const size = horizontal ? 16 : 22;
 
   return (
-    <div className={horizontal ? 'flex shrink-0 items-center gap-2' : 'flex flex-col gap-4'}>
+    <div
+      className={
+        horizontal
+          ? // Wraps rather than scrolls. A scrollbar under four buttons hides the last one behind
+            // a gesture nobody expects on a desktop panel; a second line shows all of them. The
+            // pills are short enough that one can always fit, so nothing is ever clipped.
+            'ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2'
+          : 'flex flex-col gap-4'
+      }
+    >
       <RailButton
         label={saved ? t.t('video.removeBookmark') : t.t('video.bookmark')}
         onClick={toggleSave}
@@ -180,12 +306,17 @@ export function VideoActions({ video, orientation = 'vertical' }: VideoActionsPr
         <ListPlus size={size} />
       </RailButton>
 
-      {/* Hands the video to the browser rather than pretending to be one.
-          This is deliberately not a download button. Obtaining the file means defeating the
-          signature cipher, the `n`-parameter throttling and BotGuard attestation, which is
-          circumvention machinery whoever writes it — see ADR-0001, where its absence is an
-          architectural invariant. Opening YouTube proper is the honest version of the same
-          intent: their own download is there for anyone entitled to it. */}
+      {/* Saves the video as a file, by driving `yt-dlp` (ADR-0003). The cryptography this needs —
+          the signature cipher, the `n`-parameter transform, the player challenges — is not
+          implemented here and never will be; the tool that already solves it is run as a separate
+          program the user installs. That keeps ADR-0001's invariant intact: no such machinery, and
+          no JavaScript engine, enters this application's dependency graph. Absent when no
+          downloader is installed. */}
+      <DownloadButton video={video} horizontal={horizontal} size={size} />
+
+      {/* Hands the video to the browser rather than pretending to be one. Kept alongside the
+          download: opening YouTube proper is what you want when the answer is their player, not a
+          file — their own offline download included. */}
       <RailButton
         label={t.t('video.openExternally')}
         onClick={() => {

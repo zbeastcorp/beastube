@@ -320,6 +320,7 @@ dependencies = [
  "beastube-cache",
  "beastube-core",
  "beastube-db",
+ "beastube-download",
  "beastube-filtering",
  "beastube-gateway",
  "beastube-network",
@@ -401,6 +402,21 @@ dependencies = [
  "time",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "beastube-download"
+version = "0.1.0"
+dependencies = [
+ "beastube-core",
+ "parking_lot",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

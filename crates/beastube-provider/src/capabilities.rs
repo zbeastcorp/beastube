@@ -99,8 +99,8 @@ impl Default for ProviderCapabilities {
 /// What a playback adapter supports.
 ///
 /// Mirrors the TypeScript `PlaybackCapabilities`; the contract fixture test keeps the two in step.
-/// Under the sanctioned embed adapter most of these are false, which is why the player renders
-/// without a quality menu rather than with an inert one.
+/// Several are false under the sanctioned embed adapter, which is why the player renders without a
+/// buffer readout rather than with an inert one.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaybackCapabilities {
@@ -149,15 +149,22 @@ impl PlaybackCapabilities {
 
     /// What the sanctioned embed player supports.
     ///
-    /// Quality selection is absent because the embed API's quality methods are documented no-ops;
-    /// buffer and frame metrics are absent because the embed exposes neither. Seeking, rate,
+    /// Buffer and frame metrics are absent because the embed exposes neither. Seeking, rate,
     /// volume, fullscreen and segment skipping all work, because they are driven through the
     /// player API rather than by touching the media element.
+    ///
+    /// Quality is selectable, though not by the obvious route. `setPlaybackQuality` really is
+    /// inert, but the embed chooses its rendition from the size of its own viewport and keeps
+    /// doing so during playback, so the shell requests a tier by laying the player's frame out at
+    /// the matching width and scaling it back down — measured to move a live player between 360p
+    /// and 2160p60 with no reload. `getPlaybackQuality` and `getAvailableQualityLevels` both
+    /// answer honestly, and the latter is per-video, so the list offered is the list that exists.
+    /// See ADR-0004.
     #[must_use]
     pub const fn embedded_player() -> Self {
         Self {
-            quality_selection: false,
-            reports_available_qualities: false,
+            quality_selection: true,
+            reports_available_qualities: true,
             playback_rate: true,
             caption_control: true,
             audio_track_selection: false,
@@ -209,12 +216,14 @@ mod tests {
     }
 
     #[test]
-    fn the_embed_player_reports_no_quality_menu() {
-        // The embed API's quality methods are documented no-ops, so offering the control would be
-        // a fake feature.
+    fn the_embed_player_reports_a_quality_menu_but_no_metrics() {
+        // A tier is requested by resizing the frame rather than by `setPlaybackQuality`, and the
+        // embed reports the tiers each video actually has — so the menu is real. Buffer level and
+        // frame counts are exposed by nothing, so those readouts stay absent (§131).
         let embed = PlaybackCapabilities::embedded_player();
-        assert!(!embed.has_quality_menu());
-        assert!(!embed.quality_selection);
+        assert!(embed.has_quality_menu());
+        assert!(embed.quality_selection);
+        assert!(embed.reports_available_qualities);
         assert!(!embed.buffer_metrics);
         assert!(!embed.frame_metrics);
     }

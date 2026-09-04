@@ -26,6 +26,7 @@ beastube-provider-youtube.workspace = true
 beastube-filtering.workspace = true
 beastube-gateway.workspace = true
 beastube-playback.workspace = true
+beastube-download.workspace = true
 tauri.workspace = true
 tauri-plugin-updater.workspace = true
 tauri-plugin-notification.workspace = true

@@ -31,6 +31,7 @@
 #![forbid(unsafe_code)]
 
 mod map;
+mod visitor;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -66,6 +67,9 @@ pub const PROVIDER_NAME: &str = "youtube";
 #[derive(Clone)]
 pub struct YouTubeProvider {
     client: Arc<RustyPipe>,
+    /// The visitor ID attached to every query, so the extractor never fetches its own. See
+    /// [`visitor`] for why that fetch is the single largest cost of a cold request.
+    visitor: visitor::VisitorDataPool,
 }
 
 impl std::fmt::Debug for YouTubeProvider {
@@ -102,14 +106,32 @@ impl YouTubeProvider {
                 detail: error.to_string(),
             })?;
 
+        let visitor = visitor::VisitorDataPool::new().map_err(|error| ProviderError::Transport {
+            detail: format!("could not build the visitor-data client: {error}"),
+        })?;
+
         Ok(Self {
             client: Arc::new(client),
+            visitor,
         })
     }
 
-    /// A query handle for one operation.
-    fn query(&self) -> RustyPipeQuery {
-        self.client.query()
+    /// A query handle for one operation, carrying our visitor ID.
+    ///
+    /// Async because the first call fetches the ID. Every call after that reads it from memory;
+    /// the await is a single lock read.
+    async fn query(&self) -> RustyPipeQuery {
+        self.client
+            .query()
+            .visitor_data_opt(self.visitor.current().await)
+    }
+
+    /// Fetches the visitor ID ahead of the first request.
+    ///
+    /// Called once at startup from a background task, so the first thing the user asks for does
+    /// not pay for the page load that gets it. Safe to skip: the first query fetches it itself.
+    pub async fn warm(&self) {
+        self.visitor.warm().await;
     }
 
     /// Runs `operation`, abandoning it if `cancel` fires first and surviving it if it panics.
@@ -236,7 +258,7 @@ impl SearchProvider for YouTubeProvider {
         }
 
         let filters = filters.clone().normalized();
-        let client = self.query();
+        let client = self.query().await;
         let owned = trimmed.to_owned();
         let cursor_in = continuation_token.map(|token| token.as_str().to_owned());
 
@@ -309,7 +331,7 @@ impl SearchProvider for YouTubeProvider {
             });
         }
 
-        let client = self.query();
+        let client = self.query().await;
         let body = serde_json::json!({ "query": trimmed });
 
         let json = Self::with_cancellation(cancel, async move {
@@ -333,7 +355,7 @@ impl SearchProvider for YouTubeProvider {
             return Ok(Vec::new());
         }
 
-        let client = self.query();
+        let client = self.query().await;
         let owned = trimmed.to_owned();
 
         let suggestions = Self::with_cancellation(cancel, async move {
@@ -377,7 +399,7 @@ impl VideoProvider for YouTubeProvider {
         id: &VideoId,
         cancel: &CancellationToken,
     ) -> ProviderResult<VideoDetails> {
-        let client = self.query();
+        let client = self.query().await;
         let owned = id.as_str().to_owned();
 
         let details = Self::with_cancellation(cancel, async move {
@@ -394,6 +416,8 @@ impl VideoProvider for YouTubeProvider {
             title: details.name,
             channel_id: ChannelId::new(channel.id.clone()).ok(),
             channel_name: Some(channel.name.clone()),
+            channel_avatar: map::thumbnails(&channel.avatar),
+            channel_verified: map::is_verified(channel.verification),
             // The watch-page payload reports neither a thumbnail list nor a duration. The
             // thumbnail is derived from the video id (see `map::derived_thumbnails`) so a video
             // opened directly is not recorded into history as a grey rectangle; the duration is
@@ -437,26 +461,28 @@ impl VideoProvider for YouTubeProvider {
         id: &VideoId,
         cancel: &CancellationToken,
     ) -> ProviderResult<Page<VideoSummary>> {
-        let client = self.query();
-        let owned = id.as_str().to_owned();
+        let client = self.query().await;
+        let body = serde_json::json!({ "videoId": id.as_str() });
 
-        let details = Self::with_cancellation(cancel, async move {
+        // The raw response, read directly, for the same reason `search_shorts` does it: the typed
+        // parser turns this shelf into items with no channel, no view count and no date — measured
+        // against the live service, all twenty of them — because YouTube moved it to
+        // `lockupViewModel`, which the parser does not recognise. A Home feed built on those showed
+        // titles and nothing else, while the identical cards from search showed everything.
+        let json = Self::with_cancellation(cancel, async move {
             client
-                .video_details(owned)
+                .raw(rustypipe::client::ClientType::Desktop, "next", &body)
                 .await
                 .map_err(|error| classify(&error, "related"))
         })
         .await?;
 
-        let cursor = continuation(details.recommended.ctoken.clone());
         Ok(Page {
-            items: details
-                .recommended
-                .items
-                .into_iter()
-                .filter_map(map::video_summary)
-                .collect(),
-            continuation: cursor,
+            items: map::related_from_next(&json),
+            // The shelf paginates by continuation token, which this reader does not yet follow.
+            // Twenty recommendations is already more than the surface shows, and claiming a cursor
+            // that nothing can resume would be worse than reporting the end of the list.
+            continuation: None,
             total_estimate: None,
         })
     }
@@ -469,7 +495,7 @@ impl ChannelProvider for YouTubeProvider {
         id: &ChannelId,
         cancel: &CancellationToken,
     ) -> ProviderResult<ChannelDetails> {
-        let client = self.query();
+        let client = self.query().await;
         let owned = id.as_str().to_owned();
 
         let channel = Self::with_cancellation(cancel, async move {
@@ -519,7 +545,7 @@ impl ChannelProvider for YouTubeProvider {
             }
         };
 
-        let client = self.query();
+        let client = self.query().await;
         let owned = id.as_str().to_owned();
 
         let channel = Self::with_cancellation(cancel, async move {

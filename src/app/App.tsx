@@ -18,6 +18,7 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { NavigationProgress } from '@/components/shell/NavigationProgress';
 import { PlayerHost } from '@/components/video/PlayerHost';
 import { OverlayHost } from '@/components/shell/OverlayHost';
+import { ToastHost } from '@/components/shell/ToastHost';
 import { preloadPlayerApi } from '@/components/video/YouTubePlayer';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
@@ -26,9 +27,10 @@ import { useTranslation } from '@/i18n/context';
 import { TranslationProvider } from '@/i18n/context';
 import { loadCapabilities } from '@/services/capabilities';
 import { preloadFeeds } from '@/services/feedCache';
+import { subscribeToDownloads, useDownloadsStore } from '@/stores/downloads';
 import { useFeedStore } from '@/stores/feed';
 import { invoke, isTauriRuntime, listen } from '@/services/ipc';
-import { applyPresentation, useSettingsStore } from '@/stores/settings';
+import { applyPresentation, applyWebviewScheme, useSettingsStore } from '@/stores/settings';
 import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
 
@@ -41,6 +43,10 @@ function usePresentation(): void {
 
   useEffect(() => {
     applyPresentation(settings);
+    // And the webview itself, so the embedded player's own settings panel is painted in the same
+    // scheme. It is another origin's document; its colours answer to the webview preference and to
+    // nothing we can style.
+    applyWebviewScheme(settings);
   }, [settings]);
 
   // Follow the OS colour scheme while the theme is "system". Without this, changing the Windows
@@ -50,6 +56,7 @@ function usePresentation(): void {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const onChange = () => {
       applyPresentation(settings);
+      applyWebviewScheme(settings);
     };
     media.addEventListener('change', onChange);
     return () => {
@@ -129,6 +136,24 @@ function useShellEvents(): void {
       unlistenFilter();
     };
   }, [toast]);
+
+  /**
+   * Downloads, subscribed once for the whole application.
+   *
+   * A download outlives the screen that started it, so the subscription cannot live on the button:
+   * one that finishes while the user is on another video still has to announce itself, and a
+   * button remounting must not re-announce a download it merely learned about. The session's
+   * existing downloads are read once, so a reloaded shell shows what is still running.
+   */
+  useEffect(() => {
+    const unsubscribe = subscribeToDownloads();
+    const downloads = useDownloadsStore.getState();
+    void downloads.hydrate();
+    // What is installed decides whether the control exists at all, so it is read at startup
+    // rather than when a button first renders.
+    void downloads.refreshTools();
+    return unsubscribe;
+  }, []);
 }
 
 /** The chrome plus the routed view. */
@@ -155,6 +180,9 @@ function Shell(): ReactNode {
       {/* At the root, so a dialog outlives whatever opened it — a menu that closes on click would
           otherwise take the dialog it just opened down with it. */}
       <OverlayHost />
+      {/* Likewise at the root: a download that finishes after you have navigated away still has
+          to say so, and a notice mounted inside a screen dies with that screen. */}
+      <ToastHost />
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <Sidebar collapsed={collapsed} />

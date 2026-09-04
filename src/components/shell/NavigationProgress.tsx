@@ -28,8 +28,28 @@ import { useEffect, useRef, type ReactNode } from 'react';
 
 import { useProgressStore } from '@/stores/progress';
 
-/** Where the ramp stops and waits for the request to actually finish. */
+/** Where the measured ramp ends and the trickle begins. */
 const HOLD_AT = 0.8;
+
+/**
+ * Where the trickle tends to, and never reaches.
+ *
+ * YouTube's bar parks dead at 80%. On a request that takes three seconds that reads as *frozen*:
+ * the one thing the bar exists to say is "still working", and a bar that has stopped moving says
+ * the opposite. So past the ramp it keeps creeping, closing a fixed fraction of the remaining gap
+ * each frame — visibly moving for as long as the request runs, visibly slowing so it can never
+ * arrive early. The jump to full on completion is preserved, and the space left for it is what
+ * keeps that jump legible.
+ */
+const TRICKLE_TO = 0.94;
+
+/**
+ * Fraction of the remaining gap to {@link TRICKLE_TO} closed per second of trickle.
+ *
+ * At this rate the bar is at ~86% after one second past the ramp and ~91% after three — always
+ * moving, never done.
+ */
+const TRICKLE_RATE_PER_S = 0.45;
 
 /** How long the ramp takes to travel from nothing to {@link HOLD_AT}. */
 const RAMP_MS = 600;
@@ -101,29 +121,40 @@ export function NavigationProgress(): ReactNode {
     // wherever it had reached rather than restarting, and it is not re-delayed: it is visible, so
     // there is nothing left to decide about whether to show it.
     const visible = track.style.opacity === '1';
-    const from = visible ? Math.min(reached.current, HOLD_AT) : 0;
+    const from = visible ? reached.current : 0;
 
     // The remaining distance is travelled in the remaining share of the ramp, so a run that picks
     // up near the hold point does not crawl the last few percent over the full duration.
-    const distance = HOLD_AT - from;
+    const distance = Math.max(0, HOLD_AT - from);
     const duration = RAMP_MS * (distance / HOLD_AT);
 
     let frame = 0;
     let start = 0;
+    let previous = 0;
     const step = (now: number) => {
-      if (start === 0) start = now;
-      // Already at the hold point: nothing to animate, so hold rather than spin a rAF loop
-      // recomputing the same number sixty times a second.
-      if (duration <= 0) {
-        fill.style.transform = `scaleX(${String(HOLD_AT)})`;
-        reached.current = HOLD_AT;
-        return;
+      if (start === 0) {
+        start = now;
+        previous = now;
       }
-      const elapsed = Math.min(1, (now - start) / duration);
-      const scale = from + distance * elapsed;
+      const dt = Math.min(0.1, (now - previous) / 1000);
+      previous = now;
+
+      let scale: number;
+      if (duration > 0 && now - start < duration) {
+        // The measured ramp: linear to the hold point.
+        scale = from + distance * ((now - start) / duration);
+      } else {
+        // Past it: close a fixed share of the remaining gap per second. Frame-rate independent —
+        // the same motion at 60 Hz and 144 Hz — and asymptotic, so it slows but never stops and
+        // never arrives before the data does.
+        const current = Math.max(reached.current, HOLD_AT);
+        scale = current + (TRICKLE_TO - current) * (1 - Math.exp(-TRICKLE_RATE_PER_S * dt));
+      }
+
       reached.current = scale;
       fill.style.transform = `scaleX(${String(scale)})`;
-      if (elapsed < 1) frame = requestAnimationFrame(step);
+      // Keeps going until the run is cancelled by completion. A stopped loop was the frozen bar.
+      frame = requestAnimationFrame(step);
     };
 
     if (visible) {

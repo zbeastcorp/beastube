@@ -127,6 +127,18 @@ export const es: PartialCatalogue = {
     ageRestricted: 'Este vídeo tiene restricción de edad',
   },
 
+  download: {
+    start: 'Descargar',
+    queued: 'En espera',
+    inProgress: 'Descargando',
+    percent: 'Descargando {percent}%',
+    merging: 'Finalizando',
+    cancel: 'Cancelar la descarga',
+    finished: 'Se descargó “{title}”',
+    showInFolder: 'Mostrar en la carpeta',
+    openFolder: 'Abrir la carpeta de descargas',
+  },
+
   player: {
     play: 'Reproducir',
     pause: 'Pausar',
@@ -141,9 +153,18 @@ export const es: PartialCatalogue = {
     exitFullscreen: 'Salir de pantalla completa',
     pictureInPicture: 'Imagen en imagen',
     miniPlayer: 'Reproductor pequeño',
+    settings: 'Configuración',
+    controls: 'Controles del reproductor',
+    controlsBeastube: 'BEASTUBE (oscuro)',
+    controlsYoutube: 'YouTube (calidad exacta)',
+    controlsHint:
+      'Los controles de BEASTUBE siguen el tema oscuro y ofrecen de 360p a 2160p. Los de YouTube cambian al instante y llegan a 144p, pero su panel es blanco y no se puede adaptar al tema.',
     speed: 'Velocidad de reproducción',
     quality: 'Calidad',
+    qualityAuto: 'Automática',
+    qualityAutoAt: 'Automática ({quality})',
     captions: 'Subtítulos',
+    captionsOn: 'Activados',
     captionsOff: 'Desactivados',
     audioTrack: 'Pista de audio',
     autoplay: 'Reproducción automática',
@@ -175,6 +196,7 @@ export const es: PartialCatalogue = {
     unfollow: 'Dejar de seguir',
     followed: 'Siguiendo',
     followingLocalOnly: 'Guardado solo en este dispositivo; no se sincroniza con una cuenta',
+    verified: 'Verificado',
   },
 
   library: {
@@ -273,8 +295,58 @@ export const es: PartialCatalogue = {
     },
     network: { title: 'Red' },
     cache: { title: 'Almacenamiento' },
+    downloads: {
+      title: 'Descargas',
+      subtitle:
+        'BEASTUBE guarda vídeos con yt-dlp y ffmpeg, instalados junto a la aplicación. Indica tus propias copias solo si prefieres gestionarlas tú.',
+      folder: 'Guardar los vídeos en',
+      changeFolder: 'Cambiar',
+      openFolder: 'Abrir la carpeta',
+      quality: 'Calidad máxima',
+      downloader: 'Descargador',
+      downloaderMissing: 'No encontrado',
+      downloaderMissingHint:
+        'Viene con BEASTUBE, así que normalmente significa que la instalación está incompleta. Reinstala o elige una copia propia.',
+      downloaderFound: 'yt-dlp {version}',
+      downloaderNoVersion: 'Encontrado, sin versión',
+      choose: 'Elegir…',
+      clear: 'Usar el encontrado automáticamente',
+      ffmpeg: 'Combinación de pistas',
+      ffmpegFound: 'ffmpeg encontrado',
+      ffmpegMissing: 'ffmpeg no encontrado',
+      ffmpegMissingHint:
+        'Necesario, y viene con BEASTUBE. YouTube envía el vídeo y el audio como pistas separadas, así que sin ffmpeg para unirlas no hay nada que guardar. Reinstala o elige una copia propia.',
+      jsRuntime: 'Entorno JavaScript',
+      jsRuntimeFound: '{name}',
+      jsRuntimeFoundHint:
+        'Se usa para resolver las comprobaciones que YouTube pone en algunos vídeos.',
+      jsRuntimeMissing: 'Ninguno encontrado',
+      jsRuntimeMissingHint:
+        'Instala Deno o Node.js si algún vídeo se niega a descargarse. La mayoría funciona sin ello.',
+      recheck: 'Volver a comprobar',
+      active: 'Descargas de esta sesión',
+      noneYet: 'Todavía no has descargado nada',
+      status: {
+        queued: 'En espera',
+        starting: 'Iniciando',
+        downloading: 'Descargando',
+        merging: 'Finalizando',
+        finished: 'Guardado',
+        failed: 'Falló',
+        cancelled: 'Cancelado',
+      },
+    },
     shortcuts: { title: 'Atajos de teclado' },
-    about: { title: 'Acerca de' },
+    about: {
+      installing: 'Descargando… {percent}%',
+      installingUnknown: 'Descargando…',
+      restarting: 'Reiniciando para terminar',
+      updateFailed: 'No se pudo buscar actualizaciones. Revisa tu conexión e inténtalo de nuevo.',
+      updateSize: 'Una actualización reemplaza toda la aplicación, unos 50 MB.',
+      licensesHint:
+        'ffmpeg y yt-dlp se incluyen con BEASTUBE. Sus licencias se instalan junto a él.',
+      title: 'Acerca de',
+    },
   },
 
   commandPalette: {

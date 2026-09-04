@@ -27,6 +27,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 
 import { isCancellation, normalizeError } from '@/services/ipc';
 import { useProgressStore } from '@/stores/progress';
+import { useUiStore } from '@/stores/ui';
 import type { ErrorPayload } from '@/types/domain';
 
 /** The state of one async resource. */
@@ -73,8 +74,14 @@ export function useAsyncResource<T>(
     error: null,
   });
 
-  // Reloading must re-run even when the key has not changed, so the nonce is part of the identity.
-  const token = key === null ? null : `${key}#${nonce}`;
+  // The Refresh control's counter. Subscribed to rather than read imperatively, because the whole
+  // point is that raising it re-runs this fetch — and because only *mounted* resources subscribe,
+  // pressing Refresh re-fetches exactly what the current screen is showing and nothing else.
+  const contentRevision = useUiStore((state) => state.contentRevision);
+
+  // Reloading must re-run even when the key has not changed, so the nonce and the refresh counter
+  // are both part of the identity.
+  const token = key === null ? null : `${key}#${nonce}#${contentRevision}`;
 
   // Guards against a superseded run committing after a newer one, independently of abort timing.
   const latestToken = useRef<string | null>(null);
