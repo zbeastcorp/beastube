@@ -484,6 +484,14 @@ export interface YouTubePlayerProps {
   /** Show the player's own controls. Off for previews, where the card underneath is the control. */
   controls?: boolean;
   /**
+   * Turn captions on without being asked, when the video has them.
+   *
+   * The viewer's `captions_enabled` setting. Applied as a player var at construction rather than
+   * as a command afterwards, because the embed decides its caption state as it loads and toggling
+   * a moment later shows an unwanted flash of uncaptioned video.
+   */
+  captionsByDefault?: boolean;
+  /**
    * The tier to ask the embed for, or `auto` to let it choose for the size it is displayed at.
    *
    * Applied by relaying the frame out, not by a command — see `renderSize`. A tier the video does
@@ -617,6 +625,7 @@ export function YouTubePlayer({
   transparent = false,
   quality = 'auto',
   maxAutoQuality = 'auto',
+  captionsByDefault = false,
   ref,
 }: YouTubePlayerProps): React.ReactNode {
   const t = useTranslation();
@@ -828,6 +837,9 @@ export function YouTubePlayer({
           // No annotation or card overlays on top of the picture.
           iv_load_policy: 3,
           mute: muted ? 1 : 0,
+          // 1 forces captions on where the video has them; 3 is the embed's own "off unless the
+          // viewer has asked elsewhere". Without this the setting was stored and never read.
+          cc_load_policy: captionsByDefault ? 1 : 3,
           controls: controls ? 1 : 0,
           // Keyboard handling belongs to the application, not to a preview embedded in a card.
           disablekb: controls ? 0 : 1,

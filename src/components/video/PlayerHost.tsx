@@ -114,6 +114,15 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   const videoId = usePlayerStore((state) => state.lastVideoId);
   // Bounds `auto` only. A tier chosen by hand in the menu below is honoured as given.
   const maxAutoQuality = useSettingsStore((state) => state.settings.playback.max_quality);
+  // Preferences the settings screen has always persisted. Until now nothing read them, so each of
+  // those rows moved a value into the database and changed nothing a viewer could see (§131).
+  const preferredRate = useSettingsStore((state) => state.settings.playback.speed);
+  const defaultQuality = useSettingsStore((state) => state.settings.playback.default_quality);
+  const seekStepSeconds = useSettingsStore((state) => state.settings.playback.seek_step_seconds);
+  const seekStepLargeSeconds = useSettingsStore(
+    (state) => state.settings.playback.seek_step_large_seconds,
+  );
+  const captionsByDefault = useSettingsStore((state) => state.settings.playback.captions_enabled);
   /**
    * Whether the viewer has asked for YouTube's own control bar instead of ours.
    *
@@ -127,6 +136,8 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   const playerRef = useRef<PlayerHandle>(null);
   /** The element fullscreen is requested on: the whole player, controls included. */
   const boxRef = useRef<HTMLDivElement>(null);
+  /** The video the viewer's preferred playback speed has already been applied to. */
+  const ratedFor = useRef<string | null>(null);
   // Parked to match the mode, so a player constructed before its slot has been measured starts at
   // a size close to the one it will end up at rather than shrinking into place afterwards.
   const parked = nativeControls ? PARKED_SMALL : PARKED;
@@ -143,7 +154,9 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   const [at, setAt] = useState({ positionMs: 0, durationMs: 0 });
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(100);
-  const [captionsOn, setCaptionsOn] = useState(false);
+  // Seeded from the setting so the caption button reflects what the embed is actually doing
+  // rather than always starting "off" over a player that has captions showing.
+  const [captionsOn, setCaptionsOn] = useState(captionsByDefault);
   const [captionsAvailable, setCaptionsAvailable] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   /**
@@ -169,7 +182,9 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    * `auto` until someone chooses otherwise, which is the right default: left alone the embed picks
    * the best rendition for the size it is displayed at.
    */
-  const [quality, setQuality] = useState<Quality>('auto');
+  // Seeded from the viewer's default rather than hardcoded to `auto`, which is what left
+  // `playback.default_quality` a setting with no consumer.
+  const [quality, setQuality] = useState<Quality>(defaultQuality);
   const [qualities, setQualities] = useState<Quality[]>([]);
   /**
    * The tier actually being served, which is not the same thing as the one requested.
@@ -350,6 +365,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             // Off when we crop the chrome away — a half-visible bar is worse than none — and on
             // when the viewer has asked for YouTube's, which is the whole point of that setting.
             controls={nativeControls}
+            captionsByDefault={captionsByDefault}
             // Left on `auto` under YouTube's controls: its gear sets the embed's own preference,
             // which overrides frame size entirely, so asking by size as well would be two hands on
             // the same lever.
@@ -365,10 +381,19 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               // Caption availability is a property of the video, and the embed only knows once it
               // has loaded one. Asked here so the control is absent for a video that has none.
               setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
-              // Likewise the rate and the rates on offer: a new video resets both, and the menu
-              // must show what is true rather than what the last video allowed.
-              setRate(playerRef.current?.rate() ?? 1);
+              // Likewise the rates on offer: a new video resets them, and the menu must show what
+              // is true rather than what the last video allowed.
               setRates(playerRef.current?.availableRates() ?? []);
+              // The viewer's chosen speed is applied rather than read back. A new video resets the
+              // embed to 1x, so without this the preference was overwritten on every video and the
+              // settings slider changed nothing that could be observed.
+              if (state === 'playing' && ratedFor.current !== videoId) {
+                ratedFor.current = videoId;
+                playerRef.current?.setRate(preferredRate);
+                setRate(preferredRate);
+              } else {
+                setRate(playerRef.current?.rate() ?? 1);
+              }
               // And the tiers: they are a property of the video, so a 240p-era upload must offer
               // 240p and nothing above it.
               // Only ever the list. The viewer's choice is never revised from here.
@@ -450,6 +475,9 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             >
               <Scrubber
                 fraction={fraction}
+                durationMs={at.durationMs}
+                stepSeconds={seekStepSeconds}
+                largeStepSeconds={seekStepLargeSeconds}
                 label={t.t('player.seek')}
                 onSeek={(next) => {
                   const target = next * at.durationMs;
@@ -918,10 +946,16 @@ function OptionRow({
  */
 function Scrubber({
   fraction,
+  durationMs,
+  stepSeconds,
+  largeStepSeconds,
   label,
   onSeek,
 }: {
   fraction: number;
+  durationMs: number;
+  stepSeconds: number;
+  largeStepSeconds: number;
   label: string;
   onSeek: (fraction: number) => void;
 }): ReactNode {
@@ -951,9 +985,15 @@ function Scrubber({
         seekTo(event.currentTarget, event.clientX);
       }}
       onKeyDown={(event) => {
-        // Five percent a press, roughly what YouTube's arrow keys move.
-        if (event.key === 'ArrowRight') onSeek(Math.min(1, fraction + 0.05));
-        if (event.key === 'ArrowLeft') onSeek(Math.max(0, fraction - 0.05));
+        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+        // The viewer's own step, in seconds, converted to a fraction of this video. It used to be
+        // a hardcoded five percent, which made both "skip amount" settings inert — and meant one
+        // press moved eight seconds of a three-minute song and three minutes of an hour-long talk.
+        // Shift takes the larger step, which is what the second setting is for.
+        const seconds = event.shiftKey ? largeStepSeconds : stepSeconds;
+        const step = durationMs > 0 ? (seconds * 1000) / durationMs : 0.05;
+        if (event.key === 'ArrowRight') onSeek(Math.min(1, fraction + step));
+        else onSeek(Math.max(0, fraction - step));
       }}
     >
       <div className="h-[3px] w-full rounded-full bg-white/30 transition-[height] group-hover:h-[5px]">

@@ -22,6 +22,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { ShortsCard } from '@/components/video/ShortsCard';
 import { VideoActions } from '@/components/video/VideoActions';
 import { VideoCard, VideoGrid } from '@/components/video/VideoCard';
+import { useNavigate } from '@/app/router';
 import { setPlayerHandlers, usePlayerStore } from '@/stores/player';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
@@ -105,6 +106,29 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
       checkpoint();
     }
   }, [playbackState, checkpoint]);
+
+  /**
+   * Playing on when a video ends.
+   *
+   * The setting behind this has existed for a long time with nothing reading it, which made the
+   * row a switch that stored a value and changed nothing (§131). "The next video" here is the top
+   * of the recommendation shelf already on screen — the same one a viewer would click — so this
+   * continues to somewhere they can see rather than somewhere chosen out of sight.
+   *
+   * Guarded on the video that ended: `playbackState` can report `ended` again after the route has
+   * changed, and without the guard that would jump onward a second time from the new video.
+   */
+  const advancedFrom = useRef<string | null>(null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (playbackState !== 'ended') return;
+    if (!settings.playback.autoplay_next) return;
+    if (advancedFrom.current === videoId) return;
+    const next = related.data?.items.find((item) => item.id !== videoId);
+    if (!next) return;
+    advancedFrom.current = videoId;
+    navigate({ name: 'watch', videoId: next.id });
+  }, [playbackState, settings.playback.autoplay_next, videoId, related.data, navigate]);
 
   // Handlers are pushed rather than passed, because the player is not this component's child.
   //
