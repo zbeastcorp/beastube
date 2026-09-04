@@ -183,7 +183,15 @@ export function sharedRecommended(
   revision: number,
   signal?: AbortSignal,
 ): Promise<RecommendedFeed> {
-  return feed(recommendedKey(limit), revision, () => invoke('get_recommended', { limit }), signal);
+  // The revision is both the cache key's freshness marker *and* the draw selector. Refresh raises
+  // it, so the request that follows asks the provider for a different set of seeds instead of
+  // re-fetching the same recommendations and returning a feed the viewer has already scrolled.
+  return feed(
+    recommendedKey(limit),
+    revision,
+    () => invoke('get_recommended', { limit, variant: revision }),
+    signal,
+  );
 }
 
 /**

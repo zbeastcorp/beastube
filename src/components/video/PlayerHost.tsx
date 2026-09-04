@@ -123,6 +123,8 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
     (state) => state.settings.playback.seek_step_large_seconds,
   );
   const captionsByDefault = useSettingsStore((state) => state.settings.playback.captions_enabled);
+  // Which language to ask the embed for, when the viewer has stated one.
+  const captionLanguage = useSettingsStore((state) => state.settings.playback.caption_language);
   /**
    * Whether the viewer has asked for YouTube's own control bar instead of ours.
    *
@@ -150,6 +152,15 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    * session and every video after it opened on a black rectangle.
    */
   const [startedId, setStartedId] = useState<string | null>(null);
+  /**
+   * The video whose playback failed, or `null`.
+   *
+   * The poster sits at `z-10` inside a stacking context, above the player's own failure panel — so
+   * a video that never reaches `playing` (embed-blocked, private, removed) kept an opaque
+   * thumbnail over the message explaining why. Keyed on the video for the same reason the poster
+   * is: a failure belongs to one video, not to the session.
+   */
+  const [erroredId, setErroredId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [at, setAt] = useState({ positionMs: 0, durationMs: 0 });
   const [muted, setMuted] = useState(false);
@@ -366,6 +377,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             // when the viewer has asked for YouTube's, which is the whole point of that setting.
             controls={nativeControls}
             captionsByDefault={captionsByDefault}
+            {...(captionLanguage !== null ? { captionLanguage } : {})}
             // Left on `auto` under YouTube's controls: its gear sets the embed's own preference,
             // which overrides frame size entirely, so asking by size as well would be two hands on
             // the same lever.
@@ -378,6 +390,11 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               if (state === 'playing') {
                 setStartedId((was) => (was === videoId ? was : videoId));
               }
+              // Tracked so the poster can get out of the way of the message.
+              setErroredId((was) => {
+                if (state === 'error') return was === videoId ? was : videoId;
+                return was === videoId ? null : was;
+              });
               // Caption availability is a property of the video, and the embed only knows once it
               // has loaded one. Asked here so the control is absent for a video that has none.
               setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
@@ -418,6 +435,13 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               // bail-out rather than a render.
               const now = playerRef.current?.currentQuality() ?? null;
               setServing((was) => (was === now ? was : now));
+              // Captions are asked about here too, not only on a state change. The embed loads its
+              // caption module a moment *after* playback starts, so the single check on `playing`
+              // usually ran before the module existed and answered "no captions" — which is why the
+              // button was missing from videos that plainly have subtitles. Written only when it
+              // differs, so the common case is a bail-out rather than a render.
+              const captioned = playerRef.current?.hasCaptions() ?? false;
+              setCaptionsAvailable((was) => (was === captioned ? was : captioned));
               if (playerRef.current?.isHighFrameRate() === true) {
                 setHighFrameRateFor((was) => (was === videoId ? was : videoId));
               }
@@ -428,7 +452,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
 
         {/* The video's own thumbnail, over the player until the first frame lands. The embed paints
             black while it buffers, and a black rectangle reads as broken rather than as loading. */}
-        {session?.posterUrl !== undefined && (
+        {session?.posterUrl !== undefined && erroredId !== videoId && (
           <img
             src={session.posterUrl}
             alt=""

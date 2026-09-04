@@ -91,7 +91,7 @@ describe('invoke retries what the error says is retryable', () => {
       return Promise.resolve({ videos: [], source: 'discover' } as never);
     });
 
-    const result = await withoutWaiting(() => invoke('get_recommended', { limit: 1 }));
+    const result = await withoutWaiting(() => invoke('get_recommended', { limit: 1, variant: 0 }));
 
     expect(calls).toBe(2);
     expect(result).toEqual({ videos: [], source: 'discover' });
@@ -104,7 +104,9 @@ describe('invoke retries what the error says is retryable', () => {
       return rejectLikeTauri(transportFailure);
     });
 
-    await expect(withoutWaiting(() => invoke('get_recommended', { limit: 1 }))).rejects.toThrow();
+    await expect(
+      withoutWaiting(() => invoke('get_recommended', { limit: 1, variant: 0 })),
+    ).rejects.toThrow();
 
     // `max_attempts` counts the first try, so three total and not three *extra*. Getting this wrong
     // is how a retry becomes a stampede.
@@ -118,7 +120,7 @@ describe('invoke retries what the error says is retryable', () => {
       return rejectLikeTauri(schemaDrift);
     });
 
-    await expect(invoke('get_recommended', { limit: 1 })).rejects.toThrow();
+    await expect(invoke('get_recommended', { limit: 1, variant: 0 })).rejects.toThrow();
     expect(calls).toBe(1);
   });
 
@@ -142,7 +144,7 @@ describe('invoke retries what the error says is retryable', () => {
       return rejectLikeTauri(rateLimited);
     });
 
-    await expect(invoke('get_recommended', { limit: 1 })).rejects.toThrow();
+    await expect(invoke('get_recommended', { limit: 1, variant: 0 })).rejects.toThrow();
     expect(calls).toBe(1);
   });
 
@@ -156,7 +158,9 @@ describe('invoke retries what the error says is retryable', () => {
     });
 
     await expect(
-      withoutWaiting(() => invoke('get_recommended', { limit: 1 }, { signal: controller.signal })),
+      withoutWaiting(() =>
+        invoke('get_recommended', { limit: 1, variant: 0 }, { signal: controller.signal }),
+      ),
     ).rejects.toThrow();
 
     // Aborted during the first failure, so the delay is never waited out and no second request is

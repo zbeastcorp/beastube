@@ -76,5 +76,9 @@ BEASTUBE is not affiliated with, endorsed by, or sponsored by YouTube or Google.
 
 ## Licence
 
-Not yet chosen. Until a `LICENSE` file is added, the default applies: all rights reserved, and no
-permission is granted to copy, modify or redistribute this source.
+GNU General Public License v3.0 or later — the licence this project already declares in
+`Cargo.toml` and `package.json`. The full text is in [`LICENSE`](LICENSE).
+
+GPL is also the licence the bundled ffmpeg is under, so the two agree rather than pulling against
+each other. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) for what that means in practice
+and where the corresponding source lives.

@@ -72,6 +72,14 @@ interface VideoCardProps {
    * `exactOptionalPropertyTypes` without building a conditional object at every call site.
    */
   progress?: number | undefined;
+  /**
+   * Called when the viewer removes this video from their history.
+   *
+   * Passed only by the surfaces where the card *is* a history entry — Continue watching, and the
+   * History screen. Elsewhere the menu omits the item rather than offering to remove something
+   * from a list it is not in (§131).
+   */
+  onRemoveFromHistory?: (() => void) | undefined;
 }
 
 /**
@@ -85,6 +93,7 @@ export const VideoCard = memo(function VideoCard({
   video,
   width = 360,
   progress,
+  onRemoveFromHistory,
 }: VideoCardProps): ReactNode {
   const t = useTranslation();
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
@@ -229,7 +238,7 @@ export const VideoCard = memo(function VideoCard({
             </h3>
             {/* Beside the title, as YouTube places it. Hidden until the card is hovered, so a grid
                 is not forty dots. */}
-            <CardMenu video={video} />
+            <CardMenu video={video} {...(onRemoveFromHistory ? { onRemoveFromHistory } : {})} />
           </div>
 
           {video.channel_name !== undefined && (

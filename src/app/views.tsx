@@ -374,6 +374,21 @@ function HomeView(): ReactNode {
               key={entry.video_id}
               video={historyToSummary(entry)}
               progress={progressOf(entry)}
+              onRemoveFromHistory={() => {
+                void invoke('delete_history_entry', { videoId: entry.video_id })
+                  .then(() => {
+                    // Both shelves are drawn from history, so both are re-read.
+                    resumable.reload();
+                    recent.reload();
+                  })
+                  .catch((cause: unknown) => {
+                    useUiStore.getState().toast({
+                      messageKey: normalizeError(cause).message_key,
+                      tone: 'danger',
+                      durationMs: 6000,
+                    });
+                  });
+              }}
             />
           ))}
         </FeedSection>
@@ -636,6 +651,19 @@ function HistoryView(): ReactNode {
               key={entry.video_id}
               video={historyToSummary(entry)}
               progress={progressOf(entry)}
+              onRemoveFromHistory={() => {
+                void invoke('delete_history_entry', { videoId: entry.video_id })
+                  .then(() => {
+                    history.reload();
+                  })
+                  .catch((cause: unknown) => {
+                    useUiStore.getState().toast({
+                      messageKey: normalizeError(cause).message_key,
+                      tone: 'danger',
+                      durationMs: 6000,
+                    });
+                  });
+              }}
             />
           ))}
         </VideoGrid>

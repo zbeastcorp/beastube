@@ -162,6 +162,9 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   const resumedFor = useRef<string | null>(null);
 
   const details = video.data;
+  // Only once this video's own metadata has arrived: the resource retains nothing across a key
+  // change now, so an undefined `details` means "not known yet" and landscape is the right guess.
+  const portrait = details !== undefined && isPortraitVideo(details);
   // Only from *this* video's metadata. The resource retains the previous value across a key change,
   // so the guard is what stops the last video's thumbnail being shown over the new one.
   const poster = video.data?.id === videoId ? details?.thumbnails?.at(-1)?.url : undefined;
@@ -257,7 +260,15 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
               fresh `<iframe>` and a full embed bootstrap. This element is only ever an empty box
               of the right shape; it reserves the layout so nothing shifts when the picture
               appears. */}
-          <div ref={setSlot} className="w-full" style={{ aspectRatio: '16 / 9' }} />
+          {/* Shaped to the video, not to a landscape assumption. A short opened from search or
+              from a recommendation is a 9:16 picture, and a 16:9 box gave it two black pillars
+              wider than the video itself. Constrained in width when portrait so it reads as a
+              Shorts player rather than a column running off the bottom of the screen. */}
+          <div
+            ref={setSlot}
+            className={portrait ? 'mx-auto w-full max-w-[420px]' : 'w-full'}
+            style={{ aspectRatio: portrait ? '9 / 16' : '16 / 9' }}
+          />
         </div>
 
         <div className="mt-4 flex flex-col gap-3">

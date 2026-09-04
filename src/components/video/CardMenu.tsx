@@ -29,6 +29,7 @@ import {
   Link2,
   ListPlus,
   MoreVertical,
+  Trash2,
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
@@ -75,7 +76,14 @@ function MenuItem({
 }
 
 /** The `⋮` button and its panel. */
-export function CardMenu({ video }: { video: VideoSummary }): ReactNode {
+export function CardMenu({
+  video,
+  onRemoveFromHistory,
+}: {
+  video: VideoSummary;
+  /** Present only where this card is a history entry; the item is absent otherwise. */
+  onRemoveFromHistory?: () => void;
+}): ReactNode {
   const t = useTranslation();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -206,6 +214,20 @@ export function CardMenu({ video }: { video: VideoSummary }): ReactNode {
               label={t.t('download.start')}
               onSelect={() => {
                 void startDownload(video);
+                setOpen(false);
+              }}
+            />
+          )}
+
+          {/* Only where the card is a history entry. Removing one video is the granular
+              counterpart to Settings' "clear everything", and it is what a viewer reaches for when
+              a single thing should not have been recorded. */}
+          {onRemoveFromHistory && (
+            <MenuItem
+              icon={<Trash2 size={18} />}
+              label={t.t('video.removeFromHistory')}
+              onSelect={() => {
+                onRemoveFromHistory();
                 setOpen(false);
               }}
             />

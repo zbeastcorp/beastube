@@ -142,7 +142,13 @@ export function useAsyncResource<T>(
         setSettled((previous) => ({
           token,
           key,
-          data: previous.data,
+          // Only this request's own data survives a failure. Carrying `previous.data` across while
+          // also stamping the *new* key on it handed the previous request's value back under this
+          // request's identity — so a failed search rendered the last search's results under the
+          // new query's heading, with the error suppressed because the view saw data. The retention
+          // this hook promises is across a refetch of the same thing, and a failure of a different
+          // thing is not that.
+          data: previous.key === key ? previous.data : undefined,
           error: isCancellation(payload) ? null : payload,
         }));
       } finally {

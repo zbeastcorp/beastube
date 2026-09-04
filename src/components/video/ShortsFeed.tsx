@@ -34,6 +34,7 @@ import {
   ExternalLink,
   Link2,
   Maximize2,
+  Minimize2,
   MoreVertical,
   Pause,
   Play,
@@ -143,6 +144,26 @@ export function ShortsFeed({
   const t = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<PlayerHandle>(null);
+  /** The stage fullscreen is requested on: the short and every control around it. */
+  const rootRef = useRef<HTMLDivElement>(null);
+  /**
+   * Whether the stage is filling the screen.
+   *
+   * Read from the document rather than remembered from the button, because Escape and the browser
+   * can both end fullscreen and a button counting only its own presses would then disagree.
+   */
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // The document is the authority on fullscreen, so it is the thing this listens to.
+  useEffect(() => {
+    const sync = () => {
+      setFullscreen(document.fullscreenElement !== null);
+    };
+    document.addEventListener('fullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+    };
+  }, []);
 
   /**
    * Which short is on screen.
@@ -537,6 +558,13 @@ export function ShortsFeed({
 
   return (
     <div
+      // The element that goes fullscreen. It has to be this one and not the player's own frame:
+      // only a fullscreen element's *descendants* come with it into the top layer, and every
+      // control here — the action rail, the next/previous arrows, the exit button itself — is a
+      // sibling of that frame. Fullscreening the frame left them invisible and unclickable, with
+      // Escape the only way back. Taking the whole stage keeps the short, its controls and the
+      // snap scroller together, so swiping still works while filling the window.
+      ref={rootRef}
       className="relative mx-auto"
       onPointerMove={wakeChrome}
       onPointerLeave={() => {
@@ -547,7 +575,10 @@ export function ShortsFeed({
           // The height budget subtracts the shell chrome rather than guessing at a viewport
           // fraction: 82vh ignored 128px of top bar and padding, so on a short window the tab
           // scrolled behind the layout instead of inside it.
-          height: 'min(calc(100dvh - var(--layout-topbar-height) - 5rem), 900px)',
+          // In fullscreen the budget is the screen; the shell chrome it subtracts is not there.
+          height: fullscreen
+            ? '100%'
+            : 'min(calc(100dvh - var(--layout-topbar-height) - 5rem), 900px)',
         } satisfies CSSProperties
       }
     >
@@ -904,12 +935,20 @@ export function ShortsFeed({
                   </StageButton>
 
                   <StageButton
-                    label={t.t('player.fullscreen')}
+                    label={t.t(fullscreen ? 'player.exitFullscreen' : 'player.fullscreen')}
                     onClick={() => {
-                      playerRef.current?.requestFullscreen();
+                      if (document.fullscreenElement !== null) {
+                        void document.exitFullscreen().catch(() => {
+                          // Already left, or refused. Nothing to recover.
+                        });
+                      } else {
+                        void rootRef.current?.requestFullscreen().catch(() => {
+                          // Refused when the gesture is not trusted, or unavailable here.
+                        });
+                      }
                     }}
                   >
-                    <Maximize2 size={18} />
+                    {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                   </StageButton>
 
                   {menuOpen && (

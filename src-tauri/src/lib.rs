@@ -21,7 +21,7 @@ mod logging;
 mod request_filter;
 mod state;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tauri::{Manager, WindowEvent};
 
@@ -55,6 +55,15 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.set_focus();
     }
 }
+
+/// How long shutdown waits for a cancelled download to actually stop.
+///
+/// Long enough for a child process to be killed and reaped, short enough that a wedged one cannot
+/// hold the window open. Past it the application exits and logs that it did.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
+
+/// How often the wait above re-checks. Cheap: a lock and a count.
+const SHUTDOWN_POLL: Duration = Duration::from_millis(50);
 
 /// Builds and runs the desktop application.
 ///
@@ -211,6 +220,37 @@ pub fn run() {
                     tracing::info!(count = running.len(), "cancelling downloads still running");
                     for id in &running {
                         state.downloads.cancel(id);
+                    }
+
+                    // And then wait for them, which is the part that makes the cancel mean
+                    // anything. `cancel` only trips a token; the kill, the `wait()` on the child
+                    // and the removal of the partial files all happen in the download's own task.
+                    // Returning straight from here let the process exit before that task was ever
+                    // polled again — so the signal was sent, nothing acted on it, and `yt-dlp` was
+                    // orphaned exactly as before.
+                    //
+                    // Bounded, because a shutdown that can hang is worse than one that leaves a
+                    // stray process: after the deadline we go anyway and say so.
+                    let deadline = Instant::now() + SHUTDOWN_GRACE;
+                    loop {
+                        let still_running = state
+                            .downloads
+                            .snapshot()
+                            .into_iter()
+                            .filter(|entry| !entry.status.is_terminal())
+                            .count();
+                        if still_running == 0 {
+                            tracing::info!("downloads stopped cleanly");
+                            break;
+                        }
+                        if Instant::now() >= deadline {
+                            tracing::warn!(
+                                still_running,
+                                "gave up waiting for downloads to stop; exiting anyway"
+                            );
+                            break;
+                        }
+                        std::thread::sleep(SHUTDOWN_POLL);
                     }
                 }
             }

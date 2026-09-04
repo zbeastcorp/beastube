@@ -1093,6 +1093,7 @@ pub(crate) struct RecommendedFeed {
 pub(crate) async fn get_recommended(
     state: State<'_, AppState>,
     limit: u32,
+    variant: u32,
 ) -> CommandResult<RecommendedFeed> {
     let limit = limit.clamp(1, 120) as usize;
     // Asking for more than fits, because `interleave` drops duplicates and caps how many come from
@@ -1114,7 +1115,7 @@ pub(crate) async fn get_recommended(
         .collect();
 
     if personalize {
-        let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS);
+        let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS, variant);
 
         if !seeds.is_empty() {
             let videos = interleave(related_lists(&state, seeds, enough).await, &watched, limit);
@@ -1149,7 +1150,7 @@ pub(crate) async fn get_recommended(
         }
     }
 
-    let topics = rotating(DISCOVERY_TOPICS, RECOMMENDATION_SEEDS);
+    let topics = rotating(DISCOVERY_TOPICS, RECOMMENDATION_SEEDS, variant);
     Ok(RecommendedFeed {
         videos: interleave(search_lists(&state, topics, enough).await, &watched, limit),
         source: RecommendationSource::Discover,
@@ -1221,7 +1222,9 @@ pub(crate) async fn get_shorts_feed(
         .map(|entry| format!("{} #shorts", entry.query))
         .collect();
     queries.extend(rotating_often(SHORTS_TOPICS, SHORTS_TOPICS.len()));
-    let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS);
+    // The Shorts tab has its own refresh path and does not take a variant, so it keeps the plain
+    // clock-based spread it always had.
+    let seeds = spread_seeds(&history, RECOMMENDATION_SEEDS, 0);
 
     // And both network waves at once. These used to run one after the other, so the tab cost the
     // *sum* of two concurrent waves rather than the longer of them — the single largest reason
@@ -1462,16 +1465,17 @@ const MAX_PER_CHANNEL: usize = 3;
 /// agree with each other and the feed collapses onto one topic. Sampling at a stride across a wider
 /// window gives the merge genuinely different material to interleave, and the offset moves with the
 /// clock so two launches do not produce the same feed.
-fn spread_seeds(history: &[HistoryEntry], count: usize) -> Vec<VideoId> {
+fn spread_seeds(history: &[HistoryEntry], count: usize, variant: u32) -> Vec<VideoId> {
     if history.is_empty() || count == 0 {
         return Vec::new();
     }
     let stride = (history.len() / count).max(1);
-    // Minutes rather than milliseconds: within one launch the feed stays stable, across launches it
-    // moves.
-    let offset = usize::try_from(Timestamp::now().as_millis().div_euclid(60_000).max(0))
-        .unwrap_or(0)
-        % history.len();
+    // Minutes rather than milliseconds, so the feed holds still while it is being read rather than
+    // reshuffling under the cursor — plus `variant`, which is how the caller says "not that one
+    // again". Refresh raises it, and only Home passes it, so pressing Refresh on Home genuinely
+    // draws from different watched videos while every other screen refetches what it already had.
+    let clock = usize::try_from(Timestamp::now().as_millis().div_euclid(60_000).max(0)).unwrap_or(0);
+    let offset = (clock + variant as usize * stride.max(1)) % history.len();
 
     let mut seeds = Vec::with_capacity(count);
     let mut seen = HashSet::new();
@@ -1556,12 +1560,14 @@ fn rotating_often(pool: &[&str], count: usize) -> Vec<String> {
 /// Deterministic within a day so a relaunch does not reshuffle the screen under the user, and
 /// different across days so the tab is not frozen. Derived from the wall clock rather than from
 /// anything about the user.
-fn rotating(pool: &[&str], count: usize) -> Vec<String> {
+fn rotating(pool: &[&str], count: usize, variant: u32) -> Vec<String> {
     if pool.is_empty() {
         return Vec::new();
     }
     let days = Timestamp::now().as_millis().div_euclid(86_400_000).max(0);
-    let start = usize::try_from(days).unwrap_or(0) % pool.len();
+    // `variant` advances the window by a whole page of topics, so a refresh moves onto ones the
+    // previous draw did not use rather than shuffling the same few.
+    let start = (usize::try_from(days).unwrap_or(0) + variant as usize * count.max(1)) % pool.len();
     (0..count.min(pool.len()))
         .map(|offset| pool[(start + offset) % pool.len()].to_owned())
         .collect()
@@ -1687,18 +1693,36 @@ mod feed_tests {
     #[test]
     fn topic_rotation_stays_in_bounds_and_asks_for_no_more_than_exists() {
         let pool = ["a", "b", "c"];
-        let picked = rotating(&pool, 2);
+        let picked = rotating(&pool, 2, 0);
         assert_eq!(picked.len(), 2);
         assert!(picked.iter().all(|topic| pool.contains(&topic.as_str())));
 
-        assert_eq!(rotating(&pool, 99).len(), 3, "never more than the pool holds");
-        assert!(rotating(&[], 4).is_empty());
+        assert_eq!(rotating(&pool, 99, 0).len(), 3, "never more than the pool holds");
+        assert!(rotating(&[], 4, 0).is_empty());
+        // A variant must not walk off the end of the pool either.
+        assert_eq!(rotating(&pool, 2, 7).len(), 2);
     }
 
     #[test]
     fn rotation_is_stable_within_a_run() {
         // A feed that reshuffles between two renders on the same day looks broken.
-        assert_eq!(rotating(DISCOVERY_TOPICS, 4), rotating(DISCOVERY_TOPICS, 4));
+        assert_eq!(
+            rotating(DISCOVERY_TOPICS, 4, 0),
+            rotating(DISCOVERY_TOPICS, 4, 0)
+        );
+    }
+
+    #[test]
+    fn a_new_variant_draws_different_topics() {
+        // What the Refresh button is for: asking again must not hand back the same page. The
+        // offset moves by a whole `count`, so consecutive variants share no topic.
+        let first = rotating(DISCOVERY_TOPICS, 4, 0);
+        let second = rotating(DISCOVERY_TOPICS, 4, 1);
+        assert_ne!(first, second, "refreshing must change what is offered");
+        assert!(
+            first.iter().all(|topic| !second.contains(topic)),
+            "consecutive draws should not overlap: {first:?} vs {second:?}"
+        );
     }
 }
 

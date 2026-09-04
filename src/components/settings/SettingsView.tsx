@@ -721,7 +721,14 @@ function AboutPanel(): ReactNode {
     void downloadAndInstallUpdate(update, (percent) => {
       setState({ kind: 'installing', percent });
     }).then(
-      () => {
+      (outcome) => {
+        // An install already running is *not* a finished one. Restarting on that answer would take
+        // the application down in the middle of the first download — which is exactly what a naked
+        // `return` used to cause, because a resolved promise reads as success here.
+        if (outcome === 'already-running') {
+          setState({ kind: 'installing', percent: null });
+          return;
+        }
         // The installer normally takes the process down itself; reaching here means it handed
         // control back instead, and the restart is ours to do.
         setState({ kind: 'restarting' });

@@ -191,7 +191,11 @@ export interface CommandMap {
 
   // --- feeds ---
   /** Home recommendations, ranked on this device from local history. */
-  get_recommended: { args: { limit: number }; result: RecommendedFeed };
+  /**
+   * `variant` is how the caller asks for a *different* draw rather than the same one again.
+   * Home passes its refresh counter; everything else passes 0 and keeps a stable feed.
+   */
+  get_recommended: { args: { limit: number; variant: number }; result: RecommendedFeed };
   /** Short-form videos for the Shorts tab. */
   get_shorts_feed: { args: { limit: number }; result: VideoSummary[] };
   /** More shorts, seeded from what has just been watched. Drives the endless feed. */

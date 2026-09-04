@@ -64,10 +64,11 @@ export function isInstallingUpdate(): boolean {
 export async function downloadAndInstallUpdate(
   update: Update,
   onProgress: (percent: number | null) => void,
-): Promise<void> {
-  // A second install while one is in flight is refused rather than queued: there is nothing
-  // sensible for two of them to do.
-  if (installing) return;
+): Promise<'installed' | 'already-running'> {
+  // A second install while one is in flight is refused rather than queued. It must be *reported*
+  // as refused, not silently resolved: the caller treats resolution as "the install finished, now
+  // restart", so a quiet return relaunched the application in the middle of the first download.
+  if (installing) return 'already-running';
   installing = true;
 
   let total = 0;
@@ -95,6 +96,7 @@ export async function downloadAndInstallUpdate(
     // Cleared even on failure, so a network error does not leave the button dead for the session.
     installing = false;
   }
+  return 'installed';
 }
 
 /**

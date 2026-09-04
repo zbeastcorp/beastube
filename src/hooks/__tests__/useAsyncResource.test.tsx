@@ -104,6 +104,29 @@ describe('useAsyncResource', () => {
     });
   });
 
+  it('does not resurrect the previous value when the new request fails', async () => {
+    const { result, rerender } = renderHook(
+      ({ key }) =>
+        useAsyncResource(key, () =>
+          key === 'bad' ? Promise.reject(new Error('boom')) : Promise.resolve(`data for ${key}`),
+        ),
+      { initialProps: { key: 'good' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toBe('data for good');
+    });
+
+    // The failure path retained the previous value *and* stamped the new key on it, so a view
+    // gating on `error && !data` saw data, suppressed the error, and rendered the old screen's
+    // content under the new one's heading.
+    rerender({ key: 'bad' });
+    await waitFor(() => {
+      expect(result.current.error).not.toBeNull();
+    });
+    expect(result.current.data).toBeUndefined();
+  });
+
   it('drops the previous value when the request identity changes', async () => {
     const { result, rerender } = renderHook(
       ({ key }) => useAsyncResource(key, () => Promise.resolve(`data for ${key}`)),
