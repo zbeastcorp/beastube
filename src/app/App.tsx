@@ -22,6 +22,7 @@ import { ToastHost } from '@/components/shell/ToastHost';
 import { preloadPlayerApi } from '@/components/video/YouTubePlayer';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
+import { routeToHash } from '@/app/routes';
 import { detectLocale, resolveLocale } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { TranslationProvider } from '@/i18n/context';
@@ -167,9 +168,40 @@ function Shell(): ReactNode {
 
   // What the route key used to do by remounting. A new screen starts at the top; without this it
   // would inherit wherever the previous one had been scrolled to.
+  // The whole route, not its name. Watching only the discriminant meant moving between two videos,
+  // two channels or two searches — all `watch`, `channel`, `search` — kept the previous screen's
+  // scroll offset, so the next one opened halfway down for no reason a viewer could see.
+  const routeIdentity = routeToHash(route);
   useEffect(() => {
     scroller?.scrollTo({ top: 0, behavior: 'auto' });
-  }, [route.name, scroller]);
+  }, [routeIdentity, scroller]);
+
+  /**
+   * Writes any pending settings change before the window goes away.
+   *
+   * Settings persist on a 400ms debounce so dragging a slider does not write once per pixel. The
+   * cost is that a change made just before quitting was still sitting in that timer and never
+   * reached the database — the toggle moved, the application closed, and it came back off.
+   *
+   * `pagehide` is the last event a webview reliably gets, and `visibilitychange` covers the window
+   * being hidden without being closed. Neither can be awaited, so this is a best effort rather
+   * than a guarantee — it closes the ordinary case, and anything stricter would mean holding the
+   * window open on a handshake the frontend might never answer.
+   */
+  useEffect(() => {
+    const flush = () => {
+      void useSettingsStore.getState().flush();
+    };
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
+  }, []);
 
   return (
     <div className="bg-bg text-text flex h-full flex-col overflow-hidden">

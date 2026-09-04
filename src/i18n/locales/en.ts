@@ -479,6 +479,8 @@ export const en = {
     about: {
       title: 'About',
       version: 'Version {version}',
+      /** The row label, with the number in the value column beside it. */
+      versionLabel: 'Version',
       checkUpdates: 'Check for updates',
       upToDate: 'BEASTUBE is up to date',
       updateAvailable: 'Version {version} is available',

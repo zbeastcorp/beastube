@@ -157,7 +157,10 @@ pub(crate) fn cancel_download(state: State<'_, AppState>, id: String) -> bool {
 ///
 /// A screen that mounts mid-download reads this once and follows the event afterwards, which is
 /// what lets the button on a revisited video show a download that is still running.
-#[tauri::command]
+// Off the UI thread: this touches the filesystem (see `forget_missing`), and a
+// synchronous command runs inline on the main thread — so a folder of finished
+// downloads on a slow or sleeping disk stalled the window on every focus.
+#[tauri::command(async)]
 pub(crate) fn get_downloads(state: State<'_, AppState>) -> Vec<DownloadProgress> {
     state.downloads.snapshot()
 }
@@ -206,7 +209,8 @@ pub(crate) async fn get_download_tools(state: State<'_, AppState>) -> CommandRes
 ///
 /// Returns a payload if the download is unknown or unfinished, or if its file has since been moved
 /// or deleted — which is why the path is checked rather than trusted.
-#[tauri::command]
+// Off the UI thread: opens a file manager, which blocks while the shell starts.
+#[tauri::command(async)]
 pub(crate) fn reveal_download(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -238,7 +242,8 @@ pub(crate) fn reveal_download(
 /// # Errors
 ///
 /// Returns a payload if the directory cannot be created or the system refuses to open it.
-#[tauri::command]
+// Off the UI thread: same shell call, same stall.
+#[tauri::command(async)]
 pub(crate) fn open_download_directory(
     app: AppHandle,
     state: State<'_, AppState>,

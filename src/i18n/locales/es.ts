@@ -338,6 +338,7 @@ export const es: PartialCatalogue = {
     },
     shortcuts: { title: 'Atajos de teclado' },
     about: {
+      versionLabel: 'Versión',
       installing: 'Descargando… {percent}%',
       installingUnknown: 'Descargando…',
       restarting: 'Reiniciando para terminar',

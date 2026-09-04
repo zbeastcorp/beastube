@@ -27,13 +27,14 @@ import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { LOCALE_NAMES, SUPPORTED_LOCALES } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { clearFeedCache } from '@/services/feedCache';
-import { invoke } from '@/services/ipc';
+import { invoke, normalizeError } from '@/services/ipc';
 import { clearVideoCache } from '@/services/videoCache';
 import { activePlaybackCapabilities } from '@/services/playback';
 import { checkForUpdate, downloadAndInstallUpdate, relaunchApp } from '@/services/updates';
 import { useDownloadsStore } from '@/stores/downloads';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
+import { useUiStore } from '@/stores/ui';
 import type { Update } from '@tauri-apps/plugin-updater';
 
 import type { Density, FilteringMode, Quality, Theme } from '@/types/domain';
@@ -495,6 +496,23 @@ function DownloadsPanel(): ReactNode {
   );
 }
 
+/**
+ * Reports a failed action instead of dropping it.
+ *
+ * These are the destructive buttons — clearing history, searches, the cache, resetting rules. A
+ * rejected promise here used to go nowhere: the busy flag cleared, the row looked finished, and
+ * the data was still there. Worse, an unhandled rejection in a `void`-ed promise is exactly the
+ * kind of failure that never reaches a log either. The viewer now gets the reason, in their own
+ * language, from the same error payload every other surface uses.
+ */
+function reportFailure(cause: unknown): void {
+  useUiStore.getState().toast({
+    messageKey: normalizeError(cause).message_key,
+    tone: 'danger',
+    durationMs: 6000,
+  });
+}
+
 function PrivacyPanel(): ReactNode {
   const t = useTranslation();
   const privacy = useSettingsStore((state) => state.settings.privacy);
@@ -508,6 +526,7 @@ function PrivacyPanel(): ReactNode {
   const clearHistory = () => {
     setBusy(true);
     void invoke('clear_history', undefined)
+      .catch(reportFailure)
       .then(() => {
         storage.reload();
       })
@@ -519,6 +538,7 @@ function PrivacyPanel(): ReactNode {
   const clearSearches = () => {
     setBusy(true);
     void invoke('clear_search_history', undefined)
+      .catch(reportFailure)
       .then(() => {
         storage.reload();
       })
@@ -530,6 +550,7 @@ function PrivacyPanel(): ReactNode {
   const clearCache = () => {
     setBusy(true);
     void invoke('clear_cache', undefined)
+      .catch(reportFailure)
       .then(() => {
         // The in-memory caches too. Clearing only the native side left this session still holding
         // feeds and video metadata fetched before the click, so the button did not mean what it
@@ -740,7 +761,7 @@ function AboutPanel(): ReactNode {
 
   return (
     <SettingsSection title={t.t('settings.about.title')}>
-      <SettingRow label={t.t('settings.about.title')}>
+      <SettingRow label={t.t('settings.about.versionLabel')}>
         <ReadOnlyValue value={info.data?.app_version ?? '…'} mono />
       </SettingRow>
 
@@ -841,9 +862,11 @@ function FilteringPanel(): ReactNode {
       <SettingRow label={t.t('settings.filtering.resetRules')}>
         <SecondaryButton
           onClick={() => {
-            void invoke('reset_filter_rules', undefined).then(() => {
-              diagnostics.reload();
-            });
+            void invoke('reset_filter_rules', undefined)
+              .catch(reportFailure)
+              .then(() => {
+                diagnostics.reload();
+              });
           }}
         >
           {t.t('settings.filtering.resetRules')}

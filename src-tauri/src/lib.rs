@@ -186,6 +186,33 @@ pub fn run() {
                 tracing::info!(label = window.label(), "window close requested");
             }
         })
-        .run(tauri::generate_context!())
-        .expect("failed to start the BEASTUBE application shell");
+        .build(tauri::generate_context!())
+        .expect("failed to start the BEASTUBE application shell")
+        .run(|app, event| {
+            // Downloads are separate processes, and nothing was stopping them. Closing the window
+            // left `yt-dlp` — and the `ffmpeg` it spawns to join the streams — running with no
+            // window to report to, still writing partial files into the download folder. The user
+            // saw the application close; the work carried on invisibly and left its litter behind.
+            //
+            // `cancel` is the path that already knows how to end one properly: it kills the child,
+            // waits for it, and removes the partials. Running it for everything unfinished at exit
+            // is simply doing at shutdown what the cancel button does on demand.
+            if matches!(event, tauri::RunEvent::ExitRequested { .. })
+                && let Some(state) = app.try_state::<AppState>()
+            {
+                let running: Vec<String> = state
+                    .downloads
+                    .snapshot()
+                    .into_iter()
+                    .filter(|entry| !entry.status.is_terminal())
+                    .map(|entry| entry.id)
+                    .collect();
+                if !running.is_empty() {
+                    tracing::info!(count = running.len(), "cancelling downloads still running");
+                    for id in &running {
+                        state.downloads.cancel(id);
+                    }
+                }
+            }
+        });
 }

@@ -148,7 +148,13 @@ export function NavigationProgress(): ReactNode {
         // the same motion at 60 Hz and 144 Hz — and asymptotic, so it slows but never stops and
         // never arrives before the data does.
         const current = Math.max(reached.current, HOLD_AT);
-        scale = current + (TRICKLE_TO - current) * (1 - Math.exp(-TRICKLE_RATE_PER_S * dt));
+        // Clamped to where the bar already is, and the gap floored at zero. A run started while a
+        // previous one was still finishing found `reached` at 1 and pulled it back toward the 0.94
+        // trickle target — a progress bar visibly running backwards. It can now only hold or move
+        // forward, which is the one thing a progress bar must never get wrong.
+        const target =
+          current + Math.max(0, TRICKLE_TO - current) * (1 - Math.exp(-TRICKLE_RATE_PER_S * dt));
+        scale = Math.max(reached.current, target);
       }
 
       reached.current = scale;

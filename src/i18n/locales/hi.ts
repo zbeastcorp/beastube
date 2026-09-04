@@ -341,6 +341,7 @@ export const hi: PartialCatalogue = {
     },
     shortcuts: { title: 'कीबोर्ड शॉर्टकट' },
     about: {
+      versionLabel: 'वर्शन',
       installing: 'डाउनलोड हो रहा है… {percent}%',
       installingUnknown: 'डाउनलोड हो रहा है…',
       restarting: 'पूरा करने के लिए फिर से शुरू हो रहा है',

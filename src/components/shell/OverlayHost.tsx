@@ -109,7 +109,11 @@ function Dialog({
     if (!panel) return;
     const field = panel.querySelector<HTMLElement>('input, textarea, select');
     (field ?? panel).focus();
-  }, []);
+    // Re-run when the dialog changes what it is showing. The host keeps one `Dialog` mounted and
+    // swaps its contents, so with an empty list this ran once ever: moving from one overlay to
+    // another left focus on the element the previous one had, or on `<body>` once that element was
+    // gone — and a dialog nothing is focused inside is one the keyboard cannot reach.
+  }, [overlay.kind]);
 
   return (
     <div

@@ -89,6 +89,13 @@ export function RouterProvider({ children }: { children: ReactNode }): ReactNode
   }, []);
 
   const forward = useCallback(() => {
+    // Mirrors `back`, which decrements the depth. Without this the counter only ever fell, so one
+    // Back followed by one Forward left it at zero and `back` — guarded on `depth > 0` — refused
+    // to move again for the rest of the session, taking the mouse's Back button with it.
+    // Over-counting where there is no forward entry is harmless: `history.forward()` is then a
+    // no-op and the next `back` simply decrements again.
+    depth.current += 1;
+    setCanGoBack(true);
     window.history.forward();
   }, []);
 
