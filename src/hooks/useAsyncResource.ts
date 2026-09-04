@@ -36,7 +36,13 @@ export interface AsyncResource<T> {
   data: T | undefined;
   /** True while a fetch is in flight, including a refetch with data already shown. */
   loading: boolean;
-  /** The most recent failure, cleared by a successful fetch. */
+  /**
+   * The failure of the request currently being asked for, or `null`.
+   *
+   * Scoped to the current request on purpose. Unlike `data`, which is deliberately retained across
+   * a key change so a refetch does not blank the screen, an error belongs to the request that
+   * produced it and to nothing else.
+   */
   error: ErrorPayload | null;
   /** Re-runs the fetch, abandoning any in-flight one. */
   reload: () => void;
@@ -149,7 +155,13 @@ export function useAsyncResource<T>(
     data: settled.data,
     // Loading exactly when what has settled is not what is currently being asked for.
     loading: token !== null && settled.token !== token,
-    error: settled.error,
+    // Only the current request's failure. Retaining a *previous* request's error is the one place
+    // where holding on to the last result is wrong, and it was visible: once any fetch had failed,
+    // `data` stayed undefined and that stale error was reported for every video opened afterwards
+    // — so each one flashed "Something went wrong" until its own metadata arrived. Reporting the
+    // error only while it belongs to the request in hand also means a retry shows loading rather
+    // than the failure it is busy retrying.
+    error: settled.token === token ? settled.error : null,
     reload,
   };
 }
