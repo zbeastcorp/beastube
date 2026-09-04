@@ -228,23 +228,28 @@ impl DownloadManager {
 
 impl Inner {
     /// Applies `change` to one download and emits it if `emit` says so.
-    fn update(&self, id: &str, emit: bool, change: impl FnOnce(&mut DownloadProgress)) {
+    /// Applies a change, and emits it when asked. Returns whether anything was emitted.
+    fn update(&self, id: &str, emit: bool, change: impl FnOnce(&mut DownloadProgress)) -> bool {
         let updated = {
             let mut entries = self.entries.lock();
             let Some(entry) = entries.iter_mut().find(|entry| entry.progress.id == id) else {
-                return;
+                return false;
             };
             change(&mut entry.progress);
             entry.progress.updated_at = Timestamp::now();
             emit.then(|| entry.progress.clone())
         };
-        if let Some(progress) = updated {
-            (self.sink)(&progress);
+        match updated {
+            Some(progress) => {
+                (self.sink)(&progress);
+                true
+            }
+            None => false,
         }
     }
 
     fn set_status(&self, id: &str, status: DownloadStatus) {
-        self.update(id, true, |progress| progress.status = status);
+        let _ = self.update(id, true, |progress| progress.status = status);
     }
 
     /// Records a reading, emitting at most every [`EMIT_INTERVAL`] unless the status changed.
@@ -254,16 +259,26 @@ impl Inner {
     fn apply_sample(&self, id: &str, sample: ProgressSample, last_emit: &mut Option<Instant>) {
         let now = Instant::now();
         let elapsed = last_emit.is_none_or(|last| now.duration_since(last) >= EMIT_INTERVAL);
-        let mut emitted = false;
-        self.update(id, true, |progress| {
-            let status_changed = progress.status != DownloadStatus::Downloading;
+        // The decision has to be made *before* the update, because that is where it is used. It
+        // used to be computed inside the closure and then thrown away: `update` was called with a
+        // hardcoded `true`, so every line yt-dlp printed crossed the IPC boundary and re-rendered
+        // the UI — several times a second, per download — while the value that was supposed to
+        // throttle it only decided whether to move a timestamp.
+        let status_changed = self
+            .entries
+            .lock()
+            .iter()
+            .find(|entry| entry.progress.id == id)
+            .is_none_or(|entry| entry.progress.status != DownloadStatus::Downloading);
+        let emit = status_changed || elapsed || sample.finished;
+
+        let emitted = self.update(id, emit, |progress| {
             progress.status = DownloadStatus::Downloading;
             progress.downloaded_bytes = sample.downloaded_bytes;
             progress.total_bytes = sample.total_bytes;
             progress.fraction = sample.fraction();
             progress.speed_bps = sample.speed_bps;
             progress.eta_seconds = sample.eta_seconds;
-            emitted = status_changed || elapsed || sample.finished;
         });
         if emitted {
             *last_emit = Some(now);
@@ -526,6 +541,34 @@ fn is_partial(name: &str) -> bool {
     )
 }
 
+/// Everything a killed run can leave behind for one video.
+///
+/// Deliberately wider than [`is_partial`], and deliberately a separate predicate rather than a
+/// widening of it: [`find_output`] uses `is_partial` to decide which file *is* the download, so
+/// broadening that would change what a finished download resolves to. This is only ever asked
+/// about files that already carry the video's id marker, and only when a run has been killed.
+///
+/// Beyond the `.part`/`.ytdl` files `is_partial` knows about, a cancelled run leaves two kinds
+/// behind that it does not: the per-format streams yt-dlp downloads separately before joining them
+/// (`Title [id].f137.mp4`), and the scratch file the merge writes into (`Title [id].temp.mp4`).
+/// Both survived a cancel and sat in the download folder looking like real files.
+fn is_cancel_leftover(name: &str) -> bool {
+    if is_partial(name) {
+        return true;
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.contains(".temp.") {
+        return true;
+    }
+    // A `.f<digits>.` segment, matched structurally rather than by extension: the format id sits
+    // in the middle of the name, not at the end.
+    lower.split('.').any(|segment| {
+        segment.len() > 1
+            && segment.starts_with('f')
+            && segment[1..].bytes().all(|byte| byte.is_ascii_digit())
+    })
+}
+
 /// Removes the partial files a killed run left behind for `video_id`. Best effort.
 fn remove_partials(directory: &Path, video_id: &VideoId) {
     let marker = id_marker(video_id);
@@ -536,7 +579,7 @@ fn remove_partials(directory: &Path, video_id: &VideoId) {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if name.contains(&marker)
-            && is_partial(&name)
+            && is_cancel_leftover(&name)
             && let Err(error) = std::fs::remove_file(entry.path())
         {
             tracing::debug!(%error, file = %name, "could not remove a partial download");
@@ -565,6 +608,28 @@ fn find_output(directory: &Path, video_id: &VideoId) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_cancelled_run_leaves_nothing_recognisable_behind() {
+        // What `is_partial` already knew about.
+        assert!(is_cancel_leftover("Title [abc].mp4.part"));
+        assert!(is_cancel_leftover("Title [abc].mp4.ytdl"));
+        assert!(is_cancel_leftover("Title [abc].mp4.part-Frag12"));
+
+        // What it did not, and what therefore survived a cancel: the separate streams yt-dlp
+        // fetches before joining them, and the scratch file the merge writes into.
+        assert!(is_cancel_leftover("Title [abc].f137.mp4"));
+        assert!(is_cancel_leftover("Title [abc].f251.webm"));
+        assert!(is_cancel_leftover("Title [abc].temp.mp4"));
+
+        // The finished download must never match, or cancelling one video would delete another's
+        // output from the same folder.
+        assert!(!is_cancel_leftover("Title [abc].mp4"));
+        assert!(!is_cancel_leftover("Some Film [xyz].mkv"));
+        // Nor should an ordinary name that merely starts a segment with "f".
+        assert!(!is_cancel_leftover("Title [abc].final.mp4"));
+    }
+
     use super::*;
 
     fn video() -> VideoId {

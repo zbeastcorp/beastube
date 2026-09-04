@@ -328,7 +328,7 @@ mod tests {
 
         // More than one batch of rows the decoder will reject: `video_id` is not a valid provider
         // identifier, so `candidate_from_row` fails for every one of them.
-        for index in 0..(CANDIDATE_BATCH as usize + 5) {
+        for index in 0..i64::from(CANDIDATE_BATCH) + 5 {
             sqlx::query(
                 "INSERT INTO playback_positions (video_id, position_ms, duration_ms, updated_at)
                  VALUES (?, ?, ?, ?)",
@@ -336,7 +336,7 @@ mod tests {
             .bind(format!("!not a valid id!{index}"))
             .bind(60_000_i64)
             .bind(Some(600_000_i64))
-            .bind(index as i64)
+            .bind(index)
             .execute(db.writer())
             .await
             .expect("insert");

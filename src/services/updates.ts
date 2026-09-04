@@ -38,6 +38,22 @@ export async function checkForUpdate(): Promise<Update | null> {
 }
 
 /**
+ * Whether an install is already running, for the process rather than for a component.
+ *
+ * The About panel owns the progress it displays, and it unmounts the moment the viewer navigates
+ * away — but the download does not stop with it. Coming back showed an idle button over a running
+ * install, and pressing it started a second one: two installers fetching and then running against
+ * the same files. Module scope is the right home for this because the install belongs to the
+ * application, not to whichever screen happens to be showing.
+ */
+let installing = false;
+
+/** Whether an install started earlier is still running. */
+export function isInstallingUpdate(): boolean {
+  return installing;
+}
+
+/**
  * Downloads and installs an update, reporting progress as a whole percentage.
  *
  * The percentage is derived from the plugin's byte events rather than from a timer. When the server
@@ -49,26 +65,36 @@ export async function downloadAndInstallUpdate(
   update: Update,
   onProgress: (percent: number | null) => void,
 ): Promise<void> {
+  // A second install while one is in flight is refused rather than queued: there is nothing
+  // sensible for two of them to do.
+  if (installing) return;
+  installing = true;
+
   let total = 0;
   let downloaded = 0;
 
-  await update.downloadAndInstall((event) => {
-    switch (event.event) {
-      case 'Started':
-        total = event.data.contentLength ?? 0;
-        onProgress(total > 0 ? 0 : null);
-        break;
-      case 'Progress':
-        downloaded += event.data.chunkLength;
-        onProgress(total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null);
-        break;
-      case 'Finished':
-        onProgress(100);
-        break;
-      default:
-        break;
-    }
-  });
+  try {
+    await update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case 'Started':
+          total = event.data.contentLength ?? 0;
+          onProgress(total > 0 ? 0 : null);
+          break;
+        case 'Progress':
+          downloaded += event.data.chunkLength;
+          onProgress(total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : null);
+          break;
+        case 'Finished':
+          onProgress(100);
+          break;
+        default:
+          break;
+      }
+    });
+  } finally {
+    // Cleared even on failure, so a network error does not leave the button dead for the session.
+    installing = false;
+  }
 }
 
 /**
