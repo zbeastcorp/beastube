@@ -120,6 +120,18 @@ export const VideoCard = memo(function VideoCard({
       className="group card-glow feed-card flex flex-col gap-3"
       data-glow={hovered && glow !== null ? 'on' : undefined}
       style={glow !== null ? ({ '--card-glow-color': glow } as CSSProperties) : undefined}
+      // Hover is the best signal but not the only one, and it is unavailable to half the ways a
+      // card gets opened. Focus covers keyboard navigation; pointer-down covers touch, where there
+      // is no hover at all, and a mouse click quick enough that the enter and the click arrive
+      // together. The cache de-duplicates, so the extra calls cost nothing when hover got there
+      // first — and without them those paths waited the full round trip: measured at 530ms to a
+      // title, against 41ms when the fetch had already been started.
+      onFocus={() => {
+        prefetchVideoDetails(video.id);
+      }}
+      onPointerDown={() => {
+        prefetchVideoDetails(video.id);
+      }}
       onPointerEnter={(event) => {
         // Pointer rather than mouse events, and coarse pointers are excluded: on a touch screen
         // every tap would fire an enter and start a preview the user never asked for.
