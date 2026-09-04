@@ -649,6 +649,17 @@ export function YouTubePlayer({
   /** The pending drop from the load-time frame back to the viewer's own size. */
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * The width floor currently in force, or 0.
+   *
+   * Held here rather than passed in, because the bootstrap has to survive calls it does not make.
+   * A resize observed during the load window calls `applyLayout()` with no floor, and that would
+   * discard the boost while the embed was still choosing its track family — which is the whole
+   * thing the boost exists to control. Keeping the floor in a ref means any layout run during the
+   * window recomputes height and scale against the boosted width instead of undoing it.
+   */
+  const bootstrapWidthRef = useRef(0);
+
   /** The last tier acted on, so the reload fires on a change rather than on mount. */
   const pickedRef = useRef<Quality>(quality);
 
@@ -721,6 +732,8 @@ export function YouTubePlayer({
     // Nothing useful to measure yet; the observer fires again once the box has a size.
     if (rect.width <= 0 || rect.height <= 0) return;
 
+    // Whichever is larger: the floor this call asked for, or the one the load is still holding.
+    const floor = Math.max(minWidth, bootstrapWidthRef.current);
     const wanted = renderSize(rect, quality, maxAutoQuality);
     const settled = layoutRef.current;
     const stable =
@@ -729,15 +742,15 @@ export function YouTubePlayer({
       Math.abs(wanted.width - settled.width) >= RESIZE_THRESHOLD_PX
         ? wanted.width
         : settled.width;
-    // `minWidth` is the load-time bootstrap, never a permanent floor: the next call settles back.
-    const width = Math.min(MAX_RENDER_WIDTH, Math.max(stable, minWidth));
+    // The floor is the load-time bootstrap, never a permanent one: the settle clears it.
+    const width = Math.min(MAX_RENDER_WIDTH, Math.max(stable, floor));
     // Follows the box's proportions against whichever width survived, so the scale below fits both
     // axes with one factor.
     const height = Math.max(MIN_RENDER_HEIGHT, Math.round(width * (rect.height / rect.width)));
 
     // The bootstrap width is deliberately not recorded, so the settle that follows sees the size
     // the viewer actually asked for rather than the one the load needed.
-    if (minWidth === 0) layoutRef.current = { width, height, quality };
+    if (floor === 0) layoutRef.current = { width, height, quality };
     scaler.style.width = `${String(width)}px`;
     scaler.style.height = `${String(height)}px`;
     scaler.style.transform = `scale(${String(rect.width / width)})`;
@@ -759,6 +772,8 @@ export function YouTubePlayer({
     if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
     settleTimerRef.current = setTimeout(() => {
       settleTimerRef.current = null;
+      // Lifting the floor is what ends the load window; the layout that follows is the real size.
+      bootstrapWidthRef.current = 0;
       applyLayout();
     }, SETTLE_DELAY_MS);
   });
@@ -854,6 +869,9 @@ export function YouTubePlayer({
           },
           onStateChange: (event) => {
             if (isCancelled()) return;
+            // Playing is proof the failure has passed, which covers re-entering the same video
+            // without an intervening swap.
+            if (event.data === EMBED_STATE.playing) setFailure(null);
             // Playing means the format selection for this load is committed, so the frame can drop
             // back to the size the viewer actually asked for without changing the frame rate — but
             // not instantly; see `SETTLE_DELAY_MS`.
@@ -889,9 +907,14 @@ export function YouTubePlayer({
     if (!player || loadedIdRef.current === id) return;
     loadedIdRef.current = id;
     pendingResumeRef.current = null;
+    // Pointing the player somewhere else is exactly when the old failure stops applying. Without
+    // this the overlay was never cleared by anything, so one transient error — a decode hiccup, a
+    // network stall during load — left an opaque panel over that video for the rest of the session.
+    setFailure(null);
     // A swap is a load, and the frame-rate family is chosen per load — so the frame is widened for
     // it exactly as it is at construction, and settles again once the new video is playing.
-    applyLayout(needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0);
+    bootstrapWidthRef.current = needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0;
+    applyLayout(bootstrapWidthRef.current);
     try {
       // Deliberately no `startSeconds`. At the instant `videoId` changes, a resume position fetched
       // for the *previous* video is still the newest settled value the parent holds — the resource
@@ -981,7 +1004,8 @@ export function YouTubePlayer({
     // Before the API is even asked for. The embed reads its viewport as it boots, so a frame still
     // at its placeholder size would have the first rendition chosen against the wrong number — and
     // the frame rate with it, which no later resize can undo.
-    applyLayout(needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0);
+    bootstrapWidthRef.current = needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0;
+    applyLayout(bootstrapWidthRef.current);
     // Captured now rather than read in the cleanup: by teardown the ref may already point somewhere
     // else, and the node this run appended its player into is the one that must be emptied.
     const host = containerRef.current;

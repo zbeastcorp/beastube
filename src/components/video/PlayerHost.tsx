@@ -125,11 +125,20 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
     useSettingsStore((state) => state.settings.playback.player_controls) === 'youtube';
 
   const playerRef = useRef<PlayerHandle>(null);
+  /** The element fullscreen is requested on: the whole player, controls included. */
+  const boxRef = useRef<HTMLDivElement>(null);
   // Parked to match the mode, so a player constructed before its slot has been measured starts at
   // a size close to the one it will end up at rather than shrinking into place afterwards.
   const parked = nativeControls ? PARKED_SMALL : PARKED;
   const [box, setBox] = useState<Box>(parked);
-  const [started, setStarted] = useState(false);
+  /**
+   * The video that has actually painted a frame, or `null`.
+   *
+   * Keyed on the video rather than a plain flag. As a flag it latched true on the first video ever
+   * played and never went back, so the poster covered the black buffering frame exactly once per
+   * session and every video after it opened on a black rectangle.
+   */
+  const [startedId, setStartedId] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [at, setAt] = useState({ positionMs: 0, durationMs: 0 });
   const [muted, setMuted] = useState(false);
@@ -226,7 +235,16 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   // Nothing wants the player: stop it, but keep it. Pausing rather than unmounting is what makes
   // the next video instant.
   useEffect(() => {
-    if (session === null) playerRef.current?.pause();
+    if (session === null) {
+      playerRef.current?.pause();
+      // And drop out of fullscreen. The player is about to be parked off-screen, so staying
+      // fullscreen would leave the whole window filled by an element that is no longer shown.
+      if (document.fullscreenElement !== null) {
+        void document.exitFullscreen().catch(() => {
+          // Nothing to recover; the player is being put away either way.
+        });
+      }
+    }
   }, [session]);
 
   useEffect(
@@ -298,6 +316,14 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
       }}
     >
       <div
+        // The element that goes fullscreen, and it has to be this one rather than the player's own
+        // frame inside it. A fullscreen element is promoted to the browser's top layer with an
+        // opaque backdrop behind it, and *only its descendants* come with it. The frame is a child
+        // of this box but every control below is a sibling of the frame — so fullscreening the
+        // frame left the scrubber, the volume, the settings menu and the exit-fullscreen button
+        // itself outside the top layer: invisible and unclickable, with Escape the only way back.
+        // Fullscreening the box takes the whole player, chrome crop included.
+        ref={boxRef}
         // 12px, measured on youtube.com. Promoting the box to its own layer is what makes an
         // `<iframe>` actually respect the radius — without it the embed's square corners show
         // through.
@@ -333,7 +359,9 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             {...(session?.startAtMs !== undefined ? { startAtMs: session.startAtMs } : {})}
             onStateChange={(state, forId) => {
               setPlaying(state === 'playing' || state === 'buffering');
-              if (state === 'playing') setStarted(true);
+              if (state === 'playing') {
+                setStartedId((was) => (was === videoId ? was : videoId));
+              }
               // Caption availability is a property of the video, and the embed only knows once it
               // has loaded one. Asked here so the control is absent for a video that has none.
               setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
@@ -382,7 +410,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 z-10 size-full object-cover"
             style={{
-              opacity: started ? 0 : 1,
+              opacity: startedId === videoId ? 0 : 1,
               transition: 'opacity 220ms var(--ease-player-out)',
             }}
           />
@@ -518,8 +546,15 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
                 <ControlButton
                   label={t.t(fullscreen ? 'player.exitFullscreen' : 'player.fullscreen')}
                   onClick={() => {
-                    if (fullscreen) playerRef.current?.exitFullscreen();
-                    else playerRef.current?.requestFullscreen();
+                    if (document.fullscreenElement !== null) {
+                      void document.exitFullscreen().catch(() => {
+                        // Already left, or refused. Nothing to recover.
+                      });
+                    } else {
+                      void boxRef.current?.requestFullscreen().catch(() => {
+                        // Refused when the gesture is not trusted, or unavailable here.
+                      });
+                    }
                   }}
                 >
                   {fullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}

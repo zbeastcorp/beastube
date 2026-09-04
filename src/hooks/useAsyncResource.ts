@@ -52,6 +52,15 @@ export interface AsyncResource<T> {
 interface Settled<T> {
   /** The request token this result belongs to, or `null` before anything has settled. */
   token: string | null;
+  /**
+   * The request *identity* it belongs to, without the reload and refresh counters.
+   *
+   * Kept separately from the token because the two answer different questions. The token says
+   * "is this the run currently being awaited", which is what `loading` needs. The key says "is
+   * this even the same thing being asked about", which is what decides whether the previous value
+   * is still worth showing.
+   */
+  key: string | null;
   data: T | undefined;
   error: ErrorPayload | null;
 }
@@ -76,6 +85,7 @@ export function useAsyncResource<T>(
   const [nonce, setNonce] = useState(0);
   const [settled, setSettled] = useState<Settled<T>>({
     token: null,
+    key: null,
     data: undefined,
     error: null,
   });
@@ -122,7 +132,7 @@ export function useAsyncResource<T>(
       try {
         const data = await run(controller.signal);
         if (latestToken.current !== token) return;
-        setSettled({ token, data, error: null });
+        setSettled({ token, key, data, error: null });
       } catch (cause) {
         if (latestToken.current !== token) return;
         const payload = normalizeError(cause);
@@ -131,6 +141,7 @@ export function useAsyncResource<T>(
         // hook does not appear to load forever.
         setSettled((previous) => ({
           token,
+          key,
           data: previous.data,
           error: isCancellation(payload) ? null : payload,
         }));
@@ -145,14 +156,24 @@ export function useAsyncResource<T>(
       // count above zero forever.
       release();
     };
-  }, [token, tracksNavigation]);
+    // `key` is listed although `token` already embeds it: the effect now records which request a
+    // result belongs to, so it genuinely reads both. A change to `key` always changes `token`, so
+    // this adds no extra runs.
+  }, [token, key, tracksNavigation]);
 
   const reload = useCallback(() => {
     setNonce((current) => current + 1);
   }, []);
 
   return {
-    data: settled.data,
+    // Retained across a *refetch* of the same thing, discarded when the thing itself changes.
+    // Both halves matter. Keeping it across a refetch is what stops the Refresh button blanking a
+    // screen that is about to show the same content. Dropping it when the key changes is what
+    // stops one search's results sitting under the next search's heading, or one channel's videos
+    // under another channel's name — the previous answer rendered as though it were this one's.
+    // `token` carries the reload and refresh counters and `key` does not, which is exactly the
+    // distinction needed here.
+    data: settled.key === key ? settled.data : undefined,
     // Loading exactly when what has settled is not what is currently being asked for.
     loading: token !== null && settled.token !== token,
     // Only the current request's failure. Retaining a *previous* request's error is the one place

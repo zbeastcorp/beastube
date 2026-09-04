@@ -313,11 +313,18 @@ function DownloadsPanel(): ReactNode {
         // appear is less use than the unchanged row the user is looking at.
       })
       .finally(() => {
-        // Deliberately after the write: the settings store persists on a debounce, but the native
-        // side reads the in-memory document, which is already updated.
-        void refreshTools().finally(() => {
-          setBusy(false);
-        });
+        // The write has to reach the native side before the probe, and `update` only touches the
+        // store and arms a 400ms debounce. Probing straight after therefore asked Rust about the
+        // settings it still held — so choosing a working yt-dlp.exe reported it as missing and left
+        // the Download button hidden, and choosing a folder left the row naming the old one while
+        // files went to the new one. `flush` sends the pending write now.
+        void useSettingsStore
+          .getState()
+          .flush()
+          .then(() => refreshTools())
+          .finally(() => {
+            setBusy(false);
+          });
       });
   };
 
@@ -401,7 +408,11 @@ function DownloadsPanel(): ReactNode {
               disabled={busy}
               onClick={() => {
                 update({ downloads: { tool_path: null } });
-                void refreshTools();
+                // Same race as the picker: the probe must see the cleared path, not the old one.
+                void useSettingsStore
+                  .getState()
+                  .flush()
+                  .then(() => refreshTools());
               }}
             >
               {t.t('settings.downloads.clear')}

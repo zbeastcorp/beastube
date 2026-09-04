@@ -78,26 +78,50 @@ describe('useAsyncResource', () => {
     });
   });
 
-  it('keeps the previous value visible while the next request runs', async () => {
-    const { result, rerender } = renderHook(
-      ({ key }) => useAsyncResource(key, () => Promise.resolve(key)),
-      {
-        initialProps: { key: 'first' },
-      },
+  it('keeps the previous value visible across a refetch of the same request', async () => {
+    let n = 0;
+    const { result } = renderHook(() =>
+      useAsyncResource('same', () => {
+        n += 1;
+        return Promise.resolve(`value ${String(n)}`);
+      }),
     );
 
     await waitFor(() => {
-      expect(result.current.data).toBe('first');
+      expect(result.current.data).toBe('value 1');
     });
 
-    rerender({ key: 'second' });
-    // Deliberately still the old value: blanking the screen on every navigation is worse than
-    // briefly showing what was there, and callers that must not do this compare against the key.
-    expect(result.current.data).toBe('first');
+    act(() => {
+      result.current.reload();
+    });
+    // Still the old value: blanking a screen that is about to show the same content is worse than
+    // briefly showing what is already there. This is what the Refresh button relies on.
+    expect(result.current.data).toBe('value 1');
     expect(result.current.loading).toBe(true);
 
     await waitFor(() => {
-      expect(result.current.data).toBe('second');
+      expect(result.current.data).toBe('value 2');
+    });
+  });
+
+  it('drops the previous value when the request identity changes', async () => {
+    const { result, rerender } = renderHook(
+      ({ key }) => useAsyncResource(key, () => Promise.resolve(`data for ${key}`)),
+      { initialProps: { key: 'search:cats' } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toBe('data for search:cats');
+    });
+
+    // A different question, so the previous answer is not an approximation of this one — it is the
+    // wrong answer. Showing it would put one search's results under the next search's heading.
+    rerender({ key: 'search:dogs' });
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.loading).toBe(true);
+
+    await waitFor(() => {
+      expect(result.current.data).toBe('data for search:dogs');
     });
   });
 });

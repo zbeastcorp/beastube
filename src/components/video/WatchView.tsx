@@ -134,6 +134,9 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
     [setSession, setSlot],
   );
 
+  /** The video whose stored position has already been handed to the player. */
+  const resumedFor = useRef<string | null>(null);
+
   const details = video.data;
   // Only from *this* video's metadata. The resource retains the previous value across a key change,
   // so the guard is what stops the last video's thumbnail being shown over the new one.
@@ -145,7 +148,7 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   // while a new request runs, so at the moment the video changes `stored.data` still holds the
   // PREVIOUS video's position — and handing that to the player would start the new video at the old
   // one's timestamp. Waiting for the fetch that belongs to this video is the only honest test.
-  const resumeAt =
+  const computedResume =
     startAtMs ??
     (settings.playback.resume_playback &&
     !stored.loading &&
@@ -157,12 +160,37 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
       ? stored.data.position_ms
       : undefined);
 
+  /**
+   * The resume position, decided once per video and then held.
+   *
+   * Latched because `resumeAt` feeds the session, and the session is what tells the player where to
+   * start. Refetching the stored position for the *same* video — which the Refresh button in the
+   * top bar does — produced a new checkpoint written by the video that is currently playing, so the
+   * session changed under a running player and threw it back to that checkpoint. Refresh reloaded
+   * the page's data and rewound the video with it.
+   *
+   * Deciding once per video is also simply what the value means: where to *begin*. After that the
+   * playhead belongs to the player.
+   */
+  const resumeAt = computedResume;
+
   // What to play. Set after `resumeAt` is known so a stored position is honoured on the first
   // attempt rather than by seeking a moment after playback has already started somewhere else.
   useEffect(() => {
+    // A resume position is where to *begin*, so it is handed to the player once per video and
+    // never again. The position is also a moving target: the video currently playing writes its
+    // own checkpoints, so refetching it — which the Refresh button in the top bar does — produced
+    // a newer timestamp for the same video, changed the session under a running player, and threw
+    // playback back to that checkpoint. Refresh reloaded the page's data and rewound the video.
+    //
+    // The ref is written from inside the effect rather than during render, which is what keeps
+    // this safe under concurrent rendering.
+    const applying = resumedFor.current !== videoId && resumeAt !== undefined;
+    if (applying) resumedFor.current = videoId;
+
     setSession({
       videoId,
-      ...(resumeAt !== undefined ? { startAtMs: resumeAt } : {}),
+      ...(applying ? { startAtMs: resumeAt } : {}),
       autoplay,
       ...(poster !== undefined ? { posterUrl: poster } : {}),
     });
