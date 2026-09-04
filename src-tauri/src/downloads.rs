@@ -165,6 +165,41 @@ pub(crate) fn get_downloads(state: State<'_, AppState>) -> Vec<DownloadProgress>
     state.downloads.snapshot()
 }
 
+/// Why the provider will not play a video, in its own words.
+///
+/// Called only after the embedded player has already refused. The player reports a number, and the
+/// numbers it uses for a refusal cover several unrelated situations — an age gate, a region block, a
+/// copyright claim, a video that has gone — so the application used to guess at the cause and put
+/// that guess on screen as a fact. It guessed wrong often enough to be worth fixing.
+///
+/// `yt-dlp` is already bundled and already driven as a child process, and it will say. Measured on
+/// a video the player refused: the web client answers "Video unavailable" while the android client
+/// answers "It was blocked due to the claimed content by Netflix" — same video, same moment.
+///
+/// `None` when there is nothing better to say than the caller already has: no downloader installed,
+/// the probe timed out, or the provider offered no reason. The caller keeps its own wording then,
+/// rather than replacing it with a worse one.
+///
+/// # Errors
+///
+/// Never. A diagnosis that cannot be made is `None`; the caller is already showing a failure and a
+/// second failure stacked on it would help nobody.
+#[tauri::command(async)]
+pub(crate) async fn diagnose_playback(
+    state: State<'_, AppState>,
+    video_id: String,
+) -> CommandResult<Option<String>> {
+    let Some(downloader) = state.download_tools().downloader else {
+        return Ok(None);
+    };
+    match beastube_download::playability(&downloader, &video_id).await {
+        beastube_download::Playability::Refused { reason } => Ok(Some(reason)),
+        beastube_download::Playability::Available | beastube_download::Playability::Unknown => {
+            Ok(None)
+        }
+    }
+}
+
 /// What is installed, and where files will go.
 #[tauri::command]
 pub(crate) async fn get_download_tools(state: State<'_, AppState>) -> CommandResult<DownloadTools> {

@@ -267,6 +267,12 @@ export interface CommandMap {
   /** Stops one. `false` if it is unknown or already over. */
   cancel_download: { args: { id: string }; result: boolean };
   /** Every download of this session, for a freshly mounted shell. */
+  /**
+   * Why the provider refuses a video, in its own words, or `null` when it will not say.
+   *
+   * Asked only after the player has already failed. See `downloads::diagnose_playback`.
+   */
+  diagnose_playback: { args: { videoId: VideoId }; result: string | null };
   get_downloads: { args: undefined; result: DownloadProgress[] };
   /** What is installed and where files go, for the settings screen. */
   get_download_tools: { args: undefined; result: DownloadTools };

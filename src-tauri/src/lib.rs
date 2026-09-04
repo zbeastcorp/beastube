@@ -131,6 +131,7 @@ pub fn run() {
             downloads::cancel_download,
             downloads::get_downloads,
             downloads::get_download_tools,
+            downloads::diagnose_playback,
             downloads::reveal_download,
             downloads::open_download_directory,
             downloads::pick_download_directory,

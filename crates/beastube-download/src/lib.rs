@@ -31,6 +31,7 @@
 #![forbid(unsafe_code)]
 
 pub mod command;
+pub mod diagnose;
 pub mod error;
 pub mod locate;
 pub mod manager;
@@ -38,6 +39,7 @@ pub mod progress;
 
 pub use beastube_core::events::{DownloadProgress, DownloadStatus};
 pub use command::DownloadPlan;
+pub use diagnose::{Playability, playability};
 pub use error::{DownloadError, DownloadResult, classify_failure};
 pub use locate::{JsRuntime, JsRuntimeKind, LocateOptions, Tools, locate, simplified, version_of};
 pub use manager::{DownloadManager, DownloadRequest, ProgressSink};

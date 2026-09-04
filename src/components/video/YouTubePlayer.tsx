@@ -707,6 +707,16 @@ export function YouTubePlayer({
    */
   const [attempt, setAttempt] = useState(0);
 
+  /**
+   * The provider's own reason for refusing, once it has been asked.
+   *
+   * The embed reports a number, and the numbers it uses cover several unrelated situations. Rather
+   * than guess at which, the failure path asks `yt-dlp` — already bundled, already used for
+   * downloads — and shows what it says. Keyed by video so one video's reason never appears over
+   * another's failure.
+   */
+  const [reason, setReason] = useState<{ id: VideoId; text: string } | null>(null);
+
   // Callbacks are wrapped as effect events so changing one does not tear down and rebuild the
   // player — which would restart playback from the beginning every time a parent re-rendered.
   const reportState = useEffectEvent((state: PlaybackState) => {
@@ -1413,6 +1423,30 @@ export function YouTubePlayer({
     [],
   );
 
+  /**
+   * Asks why, once, whenever a failure appears.
+   *
+   * Deliberately after the fact and never on the happy path: it starts a child process, so it runs
+   * only when the viewer is already looking at an error and a better explanation is worth a couple
+   * of seconds. A refusal to answer leaves the caller's own wording in place.
+   */
+  useEffect(() => {
+    if (failure === null) return undefined;
+    let cancelled = false;
+    void invoke('diagnose_playback', { videoId: failure.id })
+      .then((text) => {
+        if (!cancelled && text !== null && text.length > 0) {
+          setReason({ id: failure.id, text });
+        }
+      })
+      .catch(() => {
+        // No downloader, or the probe failed. The generic message stands.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [failure]);
+
   // A failure belongs to the video that produced it. Once a different video is loaded the frame is
   // live again, so the error must not outlive its subject.
   const failed = failure !== null && failure.id === videoId ? failure.key : null;
@@ -1453,12 +1487,16 @@ export function YouTubePlayer({
             {t.t(failed as Parameters<typeof t.t>[0])}
           </p>
 
-          {/* Why it might be refusing, without claiming to know which. The code YouTube returns
-              covers several causes and does not say which one applies. */}
-          {failed === 'error.playback.not_embeddable' && (
-            <p className="text-text-muted max-w-prose text-sm">
-              {t.t('error.playback.notEmbeddableHint')}
-            </p>
+          {/* The provider's own reason when it gave one, and the honest list of possibilities
+              when it did not. Never both: a specific answer makes the guesswork noise. */}
+          {reason !== null && reason.id === videoId ? (
+            <p className="text-text-muted max-w-prose text-sm">{reason.text}</p>
+          ) : (
+            failed === 'error.playback.not_embeddable' && (
+              <p className="text-text-muted max-w-prose text-sm">
+                {t.t('error.playback.notEmbeddableHint')}
+              </p>
+            )
           )}
 
           {/* A dead end is the real complaint here. Both ways out are offered: try again, because
