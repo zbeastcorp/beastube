@@ -140,9 +140,9 @@ impl Default for AppearanceSettings {
 #[serde(rename_all = "snake_case")]
 pub enum PlayerControls {
     /// The application's own dark controls, with YouTube's chrome cropped away.
-    #[default]
     Beastube,
     /// YouTube's own control bar, including its native quality menu.
+    #[default]
     Youtube,
 }
 
@@ -211,9 +211,12 @@ impl Default for PlaybackSettings {
             // arrive with from every other player.
             seek_step_seconds: 5,
             seek_step_large_seconds: 10,
-            // The dark controls by default: they are the application's own, and the trade they make
-            // (no 144p, a few seconds to switch) is the one most viewers will never notice.
-            player_controls: PlayerControls::Beastube,
+            // YouTube's own bar by default. The application's dark controls are the better-looking
+            // option and remain one setting away, but the embed's own gear drives the player's
+            // internal quality API directly: every tier from 144p up, applied the instant it is
+            // chosen, with no reload and no waiting for a buffer to drain. Quality is the thing
+            // people actually reach for, so it wins the default and appearance yields to it.
+            player_controls: PlayerControls::Youtube,
         }
     }
 }

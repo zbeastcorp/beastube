@@ -55,8 +55,9 @@ export const DEFAULT_SETTINGS: Settings = {
     hardware_acceleration: true,
     seek_step_seconds: 5,
     seek_step_large_seconds: 10,
-    // Matches the Rust default; the dark controls are the application's own.
-    player_controls: 'beastube',
+    // Matches the Rust default. YouTube's own bar wins because its gear reaches the player's
+    // internal quality API: every tier from 144p, applied immediately.
+    player_controls: 'youtube',
   },
   privacy: {
     history_enabled: true,

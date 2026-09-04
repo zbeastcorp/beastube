@@ -123,7 +123,19 @@ applied to the frame width, so a capped `Auto` is capped in fact and not merely 
 Choosing a tier by hand is a deliberate act and goes as high as the video offers, which is how
 YouTube's own player behaves.
 
-**Crop YouTube's chrome and use our own controls.** This reverses commit `0818c1e`, which had
+**Ship YouTube's own controls by default, and keep ours one setting away.**
+
+Both bars exist and both work; `playback.player_controls` chooses. YouTube's is the default because
+its gear reaches the player's _internal_ quality API — the same `setPlaybackQualityRange` that is
+refused across the postMessage boundary — so it offers every tier from 144p and applies each one the
+instant it is chosen. The frame-size mechanism below cannot match that: it stops at 360p, and a
+downward change waits for the buffered high-quality segments to drain unless the video is reloaded.
+
+The cost is real and is the reason this was not the original choice: YouTube's settings panel is
+their document, styles itself from the operating system, and renders white over a dark application.
+Appearance yields to quality here because quality is what people actually reach for.
+
+**Crop YouTube's chrome and use our own controls, when asked to.** This reverses commit `0818c1e`, which had
 itself reverted `d806832`. `0818c1e` restored YouTube's band because cropping it takes the settings
 gear, and that gear held the only working quality selector. That is no longer true: the gear's
 replacement selects quality by the mechanism above, reports the tiers the video actually has, and
