@@ -156,8 +156,15 @@ const HIGH_FRAME_RATE_MIN_WIDTH = 1280;
  * API, which selects the track directly and gets the frame rate right on its own, so paying that
  * flicker would buy nothing at all.
  */
-function needsFrameRateBootstrap(nativeControls: boolean): boolean {
-  return !nativeControls;
+function needsFrameRateBootstrap(nativeControls: boolean, quality: Quality): boolean {
+  // Not when YouTube's own controls are in charge: their gear selects the track directly and gets
+  // the frame rate right without any help, so the boost would only cost a visible resize.
+  if (nativeControls) return false;
+  // And not for a tier that has no 60fps to reach. YouTube encodes high frame rate from 720p up,
+  // so below that the boost cannot improve anything — while its 1280-pixel floor would hold 480p
+  // and 360p at the same width as 720p and make all three render identically. `auto` keeps it,
+  // because auto can climb into the range where it matters.
+  return quality === 'auto' || HIGH_FRAME_RATE_TIERS.includes(quality);
 }
 
 /**
@@ -720,6 +727,17 @@ export function YouTubePlayer({
   const autoplayNow = useEffectEvent(() => autoplay);
 
   /**
+   * The load-time width floor for the load about to happen, or 0.
+   *
+   * An effect event so the construction effect can consult the *current* quality without taking it
+   * as a dependency — which would rebuild the whole player, and its iframe, on every quality
+   * change. That rebuild is exactly what the single session-long player exists to avoid.
+   */
+  const bootstrapWidthNow = useEffectEvent(() =>
+    needsFrameRateBootstrap(controls, quality) ? HIGH_FRAME_RATE_MIN_WIDTH : 0,
+  );
+
+  /**
    * Lays the frame out at the size the current quality asks for, and scales it back into its box.
    *
    * The two halves are the whole trick. The `scaler` is given a real pixel size — 3840 wide for
@@ -925,8 +943,12 @@ export function YouTubePlayer({
     setFailure(null);
     // A swap is a load, and the frame-rate family is chosen per load — so the frame is widened for
     // it exactly as it is at construction, and settles again once the new video is playing.
-    bootstrapWidthRef.current = needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0;
+    bootstrapWidthRef.current = bootstrapWidthNow();
     applyLayout(bootstrapWidthRef.current);
+    // Armed here as well as on `playing`, so the floor lifts even for a load that never reaches
+    // it — a refused autoplay, a video that errors. A floor that outlived its window would hold
+    // every lower tier at the same width for the rest of the session.
+    if (bootstrapWidthRef.current !== 0) scheduleSettle();
     try {
       // Deliberately no `startSeconds`. At the instant `videoId` changes, a resume position fetched
       // for the *previous* video is still the newest settled value the parent holds — the resource
@@ -1016,8 +1038,12 @@ export function YouTubePlayer({
     // Before the API is even asked for. The embed reads its viewport as it boots, so a frame still
     // at its placeholder size would have the first rendition chosen against the wrong number — and
     // the frame rate with it, which no later resize can undo.
-    bootstrapWidthRef.current = needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0;
+    bootstrapWidthRef.current = bootstrapWidthNow();
     applyLayout(bootstrapWidthRef.current);
+    // Armed here as well as on `playing`, so the floor lifts even for a load that never reaches
+    // it — a refused autoplay, a video that errors. A floor that outlived its window would hold
+    // every lower tier at the same width for the rest of the session.
+    if (bootstrapWidthRef.current !== 0) scheduleSettle();
     // Captured now rather than read in the cleanup: by teardown the ref may already point somewhere
     // else, and the node this run appended its player into is the one that must be emptied.
     const host = containerRef.current;
@@ -1125,6 +1151,11 @@ export function YouTubePlayer({
    * at a 720p-shaped box rather than a 360p-shaped one — see `PARKED` in `PlayerHost`.
    */
   useEffect(() => {
+    // A chosen tier outranks the load-time floor, and ends it. Without this the floor could still
+    // be in force when the pick was applied, and since it is 1280 wide every tier at or below 720p
+    // — 720p, 480p, 360p — was clamped up to the same width and produced the same picture. The
+    // boost exists to fix the frame rate of a *load*; it has no business overriding a choice.
+    if (quality !== 'auto') bootstrapWidthRef.current = 0;
     applyLayout();
   }, [quality, maxAutoQuality]);
 

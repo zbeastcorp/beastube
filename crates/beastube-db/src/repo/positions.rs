@@ -133,10 +133,20 @@ impl PositionsRepo {
             let exhausted = rows.len() < batch as usize;
 
             for row in &rows {
+                // The cursor advances from the raw columns, before anything is decoded. It has to:
+                // a row that fails to decode is skipped, and if it were skipped *before* the cursor
+                // moved then a page whose rows all failed would leave the cursor untouched, return
+                // a full page every time, and loop forever. The comment below used to claim this
+                // already happened; it did not, because the `continue` jumped over the assignment.
+                if let (Ok(updated_at), Ok(raw_id)) = (
+                    column::<i64>(row, "updated_at"),
+                    column::<String>(row, "video_id"),
+                ) {
+                    cursor = Some((updated_at, raw_id));
+                }
                 let Some(entry) = degrade(candidate_from_row(row), "playback_positions") else {
                     continue;
                 };
-                cursor = Some((entry.1.updated_at.as_millis(), entry.0.as_str().to_owned()));
                 if entry.1.resume_at_ms().is_some() {
                     found.push(entry);
                     if found.len() == limit as usize {
@@ -145,8 +155,8 @@ impl PositionsRepo {
                 }
             }
 
-            // A row that failed to decode still advanced the cursor above, so an all-undecodable
-            // page cannot spin; an exhausted page ends the scan.
+            // Every row advanced the cursor above, decodable or not, so an all-undecodable page
+            // moves the scan on rather than spinning; an exhausted page ends it.
             if exhausted || rows.is_empty() {
                 break;
             }
@@ -304,6 +314,46 @@ mod tests {
         assert_eq!(position.position_ms, 120_000);
         assert_eq!(position.duration_ms, Some(600_000));
         assert_eq!(position.updated_at, Timestamp::from_millis(5));
+    }
+
+    /// A page of rows that all fail to decode must move the scan on, not restart it.
+    ///
+    /// The cursor used to advance only *after* a row decoded, and the `continue` for a bad row
+    /// jumped over that. A full page of undecodable rows therefore left the cursor untouched, and
+    /// because a full page also means "not exhausted" the same page was fetched again, forever.
+    /// This test hangs rather than fails if that returns, which is exactly the defect.
+    #[tokio::test]
+    async fn an_undecodable_page_does_not_spin() {
+        let (db, repo) = repo().await;
+
+        // More than one batch of rows the decoder will reject: `video_id` is not a valid provider
+        // identifier, so `candidate_from_row` fails for every one of them.
+        for index in 0..(CANDIDATE_BATCH as usize + 5) {
+            sqlx::query(
+                "INSERT INTO playback_positions (video_id, position_ms, duration_ms, updated_at)
+                 VALUES (?, ?, ?, ?)",
+            )
+            .bind(format!("!not a valid id!{index}"))
+            .bind(60_000_i64)
+            .bind(Some(600_000_i64))
+            .bind(index as i64)
+            .execute(db.writer())
+            .await
+            .expect("insert");
+        }
+
+        let resumable = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            repo.resumable(10),
+        )
+        .await
+        .expect("resumable must terminate rather than re-reading the same page forever")
+        .expect("query");
+
+        assert!(
+            resumable.is_empty(),
+            "nothing decodes, so nothing is resumable"
+        );
     }
 
     #[tokio::test]
