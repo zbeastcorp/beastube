@@ -78,6 +78,17 @@ import type { Quality } from '@/types/domain';
 const PARKED = { top: -100_000, left: 0, width: 1280, height: 720 } as const;
 
 /**
+ * Where the player waits under YouTube's own controls.
+ *
+ * Deliberately modest. The 1280-wide park above exists so a size-driven quality choice loads into
+ * the 60fps family, and nothing under YouTube's controls needs that — their gear selects the track
+ * directly. Parking wide anyway would mean a player constructed before its slot is measured boots
+ * believing it is 1280 across, then shrinks to the real box, and the embed spends a second or two
+ * visibly re-fitting its picture. Parking at the size it will actually occupy avoids that entirely.
+ */
+const PARKED_SMALL = { top: -100_000, left: 0, width: 640, height: 360 } as const;
+
+/**
  * How much of the embed's top and bottom edge is cropped away, in CSS pixels.
  *
  * Comfortably taller than either band. See the note above for why it applies to both edges and why
@@ -114,7 +125,10 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
     useSettingsStore((state) => state.settings.playback.player_controls) === 'youtube';
 
   const playerRef = useRef<PlayerHandle>(null);
-  const [box, setBox] = useState<Box>(PARKED);
+  // Parked to match the mode, so a player constructed before its slot has been measured starts at
+  // a size close to the one it will end up at rather than shrinking into place afterwards.
+  const parked = nativeControls ? PARKED_SMALL : PARKED;
+  const [box, setBox] = useState<Box>(parked);
   const [started, setStarted] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [at, setAt] = useState({ positionMs: 0, durationMs: 0 });
@@ -253,6 +267,9 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   if (videoId === null) return null;
 
   const hidden = session === null || slot === null;
+  // No slot means nothing on screen wants the player, so the parked size applies rather than
+  // whichever box it last occupied.
+  const shown = slot === null ? parked : box;
   const fraction = at.durationMs > 0 ? Math.min(1, at.positionMs / at.durationMs) : 0;
   // Held open while the menu is: controls that faded out from under an open panel would leave it
   // floating over the picture attached to nothing.
@@ -266,10 +283,10 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
       aria-hidden={hidden}
       className="absolute"
       style={{
-        top: box.top,
-        left: box.left,
-        width: box.width,
-        height: box.height,
+        top: shown.top,
+        left: shown.left,
+        width: shown.width,
+        height: shown.height,
         // Kept out of the way rather than removed, so the browsing context survives.
         visibility: hidden ? 'hidden' : 'visible',
         pointerEvents: hidden ? 'none' : 'auto',

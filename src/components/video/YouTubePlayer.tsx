@@ -145,6 +145,22 @@ const QUALITY_ORDER: readonly Exclude<Quality, 'auto'>[] = [
 const HIGH_FRAME_RATE_MIN_WIDTH = 1280;
 
 /**
+ * Whether a load needs the bootstrap above.
+ *
+ * Only when this application is choosing the quality. The bootstrap exists so a *size-driven*
+ * selection lands in the 60fps family, and it is not free: the frame is briefly laid out wider than
+ * the box it sits in, and the embed spends a second or two re-fitting its picture to the new
+ * viewport afterwards — which is visible as the player rendering small and then settling.
+ *
+ * Under YouTube's own controls nothing needs it. Their gear calls the player's internal quality
+ * API, which selects the track directly and gets the frame rate right on its own, so paying that
+ * flicker would buy nothing at all.
+ */
+function needsFrameRateBootstrap(nativeControls: boolean): boolean {
+  return !nativeControls;
+}
+
+/**
  * How long the bootstrap frame is held after playback starts, in milliseconds.
  *
  * Long enough for the embed to report the rendition it chose. The frame rate of a video is only
@@ -875,7 +891,7 @@ export function YouTubePlayer({
     pendingResumeRef.current = null;
     // A swap is a load, and the frame-rate family is chosen per load — so the frame is widened for
     // it exactly as it is at construction, and settles again once the new video is playing.
-    applyLayout(HIGH_FRAME_RATE_MIN_WIDTH);
+    applyLayout(needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0);
     try {
       // Deliberately no `startSeconds`. At the instant `videoId` changes, a resume position fetched
       // for the *previous* video is still the newest settled value the parent holds — the resource
@@ -965,7 +981,7 @@ export function YouTubePlayer({
     // Before the API is even asked for. The embed reads its viewport as it boots, so a frame still
     // at its placeholder size would have the first rendition chosen against the wrong number — and
     // the frame rate with it, which no later resize can undo.
-    applyLayout(HIGH_FRAME_RATE_MIN_WIDTH);
+    applyLayout(needsFrameRateBootstrap(controls) ? HIGH_FRAME_RATE_MIN_WIDTH : 0);
     // Captured now rather than read in the cleanup: by teardown the ref may already point somewhere
     // else, and the node this run appended its player into is the one that must be emptied.
     const host = containerRef.current;
