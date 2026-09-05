@@ -89,10 +89,29 @@ const PARKED = { top: -100_000, left: 0, width: 1280, height: 720 } as const;
 const PARKED_SMALL = { top: -100_000, left: 0, width: 640, height: 360 } as const;
 
 /**
- * How much of the embed's top and bottom edge is cropped away, in CSS pixels.
+ * How much of the embed's top and bottom edge is cropped away, in the embed's *own* pixels.
  *
  * Comfortably taller than either band. See the note above for why it applies to both edges and why
  * that costs no picture.
+ *
+ * In the embed's pixels, not the screen's, and that distinction is the whole of a bug that was
+ * visible at every quality but one. The bands are drawn inside the embed's viewport, and the player
+ * scales that viewport to fit this box — so their height on screen is this number multiplied by
+ * that scale. Cut as a fixed 64 screen pixels, the crop was only ever correct while the scale
+ * happened to be 1.
+ *
+ * Measured in fullscreen on a 1920-wide screen, changing quality:
+ *
+ * ```text
+ * 2160p   frame 3840 wide, scale 0.5   bands ~32px   crop 64px   over-cropped
+ * 1080p   frame 1920 wide, scale 1     bands ~64px   crop 64px   correct
+ *  360p   frame  640 wide, scale 3     bands ~192px  crop 64px   YouTube's title,
+ *                                                                pause overlay, "More
+ *                                                                videos" bar and logo
+ *                                                                all visible over the video
+ * ```
+ *
+ * Multiplied by the live scale below, it is correct at every tier.
  */
 const EMBED_CHROME_CROP_PX = 64;
 
@@ -187,6 +206,14 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    * bar stays up for as long as focus is inside it, and the idle timer resumes when focus leaves.
    */
   const [chromeFocused, setChromeFocused] = useState(false);
+  /**
+   * What the player is currently scaling its frame by, reported by the player itself.
+   *
+   * Drives the chrome crop, which has to grow and shrink with it — see
+   * {@link EMBED_CHROME_CROP_PX}. Starts at 1, the value it holds whenever the frame is laid out at
+   * the size it is displayed at.
+   */
+  const [frameScale, setFrameScale] = useState(1);
   /**
    * Which video the settings menu was opened for, or `null` for closed.
    *
@@ -369,6 +396,10 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   // Held open while the menu is: controls that faded out from under an open panel would leave it
   // floating over the picture attached to nothing.
   const settingsOpen = menuFor === videoId;
+  // The crop is cut in screen pixels; what it hides is drawn in the embed's. Multiplying by the
+  // live scale is what keeps the two in step at every tier.
+  const crop = EMBED_CHROME_CROP_PX * frameScale;
+
   const chromeUp = chromeVisible || !playing || settingsOpen || chromeFocused;
 
   return (
@@ -423,8 +454,8 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             nativeControls
               ? { top: 0, height: '100%' }
               : {
-                  top: -EMBED_CHROME_CROP_PX,
-                  height: `calc(100% + ${String(EMBED_CHROME_CROP_PX * 2)}px)`,
+                  top: -crop,
+                  height: `calc(100% + ${String(crop * 2)}px)`,
                 }
           }
         >
@@ -440,6 +471,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             // Left on `auto` under YouTube's controls: its gear sets the embed's own preference,
             // which overrides frame size entirely, so asking by size as well would be two hands on
             // the same lever.
+            onScale={setFrameScale}
             quality={nativeControls ? 'auto' : quality}
             maxAutoQuality={maxAutoQuality}
             autoplay={session?.autoplay ?? false}

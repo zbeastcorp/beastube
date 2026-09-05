@@ -86,28 +86,47 @@ export function HoverPreview({ videoId, active }: HoverPreviewProps): ReactNode 
   if (!armed) return null;
 
   return (
-    <div
-      // `pointer-events-none` is what keeps the card clickable: without it the player swallows the
-      // click and opening a video from a hovered card stops working.
-      className="pointer-events-none absolute inset-0"
-      style={{
-        opacity: playing ? 1 : 0,
-        transition: `opacity ${FADE_MS}ms var(--ease-yt, ease)`,
-      }}
-      aria-hidden="true"
-    >
-      <YouTubePlayer
-        videoId={videoId}
-        fill
-        muted
-        loop
-        autoplay
-        controls={false}
-        onStateChange={(state: PlaybackState) => {
-          // The first frame is on screen at `playing`; anything earlier would fade in a black box.
-          setPlaying(state === 'playing');
+    <>
+      <div
+        // `pointer-events-none` is what keeps the card clickable: without it the player swallows the
+        // click and opening a video from a hovered card stops working.
+        className="pointer-events-none absolute inset-0"
+        style={{
+          opacity: playing ? 1 : 0,
+          transition: `opacity ${FADE_MS}ms var(--ease-yt, ease)`,
         }}
-      />
-    </div>
+        aria-hidden="true"
+      >
+        <YouTubePlayer
+          videoId={videoId}
+          fill
+          muted
+          loop
+          autoplay
+          controls={false}
+          onStateChange={(state: PlaybackState) => {
+            // The first frame is on screen at `playing`; anything earlier would fade in a black box.
+            setPlaying(state === 'playing');
+          }}
+        />
+      </div>
+      {/*
+        A transparent sheet over the preview, and the reason for it is the mouse cursor.
+
+        `pointer-events: none` above stops the embed stealing the *click*, but it does not stop it
+        setting the *cursor*. The embed is cross-origin, so it lives in its own process, and the
+        browser asks whichever frame is under the mouse what the cursor should be — a question that
+        never reaches the parent's `pointer-events`. So resting on a card gave: the link's hand,
+        then the embed's arrow the moment its blank document appeared, then the hand again once
+        YouTube's own player had loaded and set `pointer` itself. A visible flicker on every card,
+        every time.
+
+        This sheet is a hit target in *our* document sitting on top, so the mouse is never over the
+        embed and the cursor is ours throughout. It is inside the card's `<a>`, so a press on it
+        bubbles and still opens the video — which is why it can afford to take the pointer when the
+        embed could not.
+      */}
+      <div className="absolute inset-0 z-10 cursor-pointer" aria-hidden="true" />
+    </>
   );
 }

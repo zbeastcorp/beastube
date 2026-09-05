@@ -492,6 +492,19 @@ export interface YouTubePlayerProps {
    */
   onError?: (messageKey: string, code: number, videoId: VideoId) => void;
   /**
+   * Called with the factor the frame is currently scaled by, whenever it changes.
+   *
+   * The host crops the embed's own title band and bottom strip away by over-sizing the box they sit
+   * in. How much of the screen those bands cover is not fixed: they are drawn in the embed's own
+   * viewport, and this component scales that viewport to fit the box — so at 360p, where a 640-wide
+   * frame is magnified three times to fill a 1920-wide screen, the bands are three times taller
+   * than the crop was cut for and YouTube's title, its pause overlay and its "More videos" bar all
+   * reappear over the video. Measured in fullscreen, changing quality.
+   *
+   * The scale is the missing number, and only this component knows it.
+   */
+  onScale?: (scale: number) => void;
+  /**
    * Aspect ratio of the player box, as a CSS `aspect-ratio` value.
    *
    * The default is the landscape frame every ordinary video wants. Shorts pass `9 / 16` so the
@@ -643,6 +656,7 @@ export function YouTubePlayer({
   onStateChange,
   onPosition,
   onError,
+  onScale,
   aspectRatio = '16 / 9',
   fill = false,
   muted = false,
@@ -795,6 +809,22 @@ export function YouTubePlayer({
    * to the pixel at any tier — including the host's deliberately over-tall frame, whose letterbox
    * bars scale down to exactly the chrome crop they are there to hide.
    */
+  /** The last factor handed to `onScale`, so an unchanged one is not re-reported. */
+  const lastScaleRef = useRef(0);
+
+  /**
+   * Tells the host what the frame is currently scaled by.
+   *
+   * Filtered, because `applyLayout` runs on every resize frame and the host uses this to size a
+   * crop: relaying an identical number would re-render the player's whole chrome during a window
+   * drag. The threshold is far below anything a viewer could see.
+   */
+  const reportScale = useEffectEvent((scale: number) => {
+    if (Math.abs(scale - lastScaleRef.current) < 0.001) return;
+    lastScaleRef.current = scale;
+    onScale?.(scale);
+  });
+
   const applyLayout = useEffectEvent((minWidth = 0) => {
     const frame = frameRef.current;
     const scaler = scalerRef.current;
@@ -823,9 +853,14 @@ export function YouTubePlayer({
     // The bootstrap width is deliberately not recorded, so the settle that follows sees the size
     // the viewer actually asked for rather than the one the load needed.
     if (floor === 0) layoutRef.current = { width, height, quality };
+    const scale = rect.width / width;
     scaler.style.width = `${String(width)}px`;
     scaler.style.height = `${String(height)}px`;
-    scaler.style.transform = `scale(${String(rect.width / width)})`;
+    scaler.style.transform = `scale(${String(scale)})`;
+    // The host's crop is cut in screen pixels, and what it has to cover is drawn in the embed's
+    // pixels — so it is only right while these two agree. Reported rather than recomputed there,
+    // because this is the only place the factor exists.
+    reportScale(scale);
 
     try {
       playerRef.current?.setSize(width, height);
