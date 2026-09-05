@@ -4,8 +4,6 @@ dist/
 dist-ssr/
 *.local
 coverage/
-playwright-report/
-test-results/
 
 # Rust
 target/

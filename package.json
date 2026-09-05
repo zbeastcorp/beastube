@@ -20,8 +20,6 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "bench": "vitest bench --run",
     "tools:fetch": "pwsh -NoProfile -File scripts/fetch-tools.ps1",
     "export:github": "pwsh -NoProfile -File scripts/export-github.ps1"
   },
@@ -37,7 +35,6 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.62.1",
     "@tailwindcss/vite": "4.3.3",
     "@tauri-apps/cli": "2.11.4",
     "@testing-library/jest-dom": "7.0.1",

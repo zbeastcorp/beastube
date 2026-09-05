@@ -10,8 +10,6 @@ src-tauri/gen/
 src-tauri/target/
 src-tauri/binaries/
 coverage/
-playwright-report/
-test-results/
 
 # The reading that went into the design, kept as it was written.
 #

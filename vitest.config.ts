@@ -16,9 +16,6 @@ export default mergeConfig(
         include: ['src/**/*.{ts,tsx}'],
         exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
       },
-      benchmark: {
-        include: ['benchmarks/frontend/**/*.bench.{ts,tsx}'],
-      },
     },
   }),
 );

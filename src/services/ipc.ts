@@ -10,8 +10,8 @@
  * 2. **Errors arrive as {@link ErrorPayload}, always.** Tauri rejects with whatever the command
  *    returned; {@link normalizeError} guarantees callers get one shape, including for the "not
  *    running under Tauri" case.
- * 3. **The app runs in a plain browser.** When the Tauri runtime is absent — Playwright against the
- *    Vite dev server, or a component test — calls route to a registered mock instead of throwing.
+ * 3. **The app runs in a plain browser.** When the Tauri runtime is absent — a component test, or
+ *    the front end served on its own — calls route to a registered mock instead of throwing.
  *    Without this, no UI test could run without building the whole native shell.
  */
 
@@ -358,8 +358,9 @@ const mockEventListeners = new Map<string, Set<(payload: unknown) => void>>();
 /**
  * Routes IPC to `handler` instead of the native side.
  *
- * Used by component tests and by Playwright runs against the Vite dev server. Passing `null`
- * restores normal behaviour.
+ * Used by the component and store tests, which is the whole of it: the sixteen suites that touch
+ * IPC install a handler here rather than standing up the native shell. Passing `null` restores
+ * normal behaviour, and each suite does so in its teardown.
  */
 export function setIpcMock(handler: IpcMock | null): void {
   mockHandler = handler;

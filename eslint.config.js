@@ -12,8 +12,6 @@ export default tseslint.config(
       'target/**',
       'crates/**',
       'coverage/**',
-      'playwright-report/**',
-      'test-results/**',
       // The flat config is plain JS outside the TypeScript project; type-aware linting of it
       // would require adding it to tsconfig for no benefit.
       'eslint.config.js',
