@@ -54,7 +54,6 @@ cargo clippy --workspace --all-targets
 | `crates/beastube-db`           | SQLite storage and migrations                                    |
 | `crates/beastube-provider*`    | Fetching from YouTube, and the traits that keep that swappable   |
 | `crates/beastube-download`     | Driving `yt-dlp` as a child process                              |
-| `crates/beastube-playback`     | Playback adapters and their capability sets                      |
 | `docs/architecture-decisions/` | Why things are the way they are, with the measurements behind it |
 
 The architecture decision records are worth reading before changing playback or downloads; both

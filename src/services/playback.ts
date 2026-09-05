@@ -46,8 +46,3 @@ export const IFRAME_CAPABILITIES: PlaybackCapabilities = {
 export function activePlaybackCapabilities(): PlaybackCapabilities {
   return IFRAME_CAPABILITIES;
 }
-
-/** Human-facing name of the active adapter, for the diagnostics screen only. */
-export function activePlaybackAdapterName(): string {
-  return 'iframe';
-}

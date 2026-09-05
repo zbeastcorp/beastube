@@ -49,8 +49,3 @@ export const useSessionStore = create<SessionState>((set) => ({
     set({ ready });
   },
 }));
-
-/** Whether speculative work should be suppressed for the current connectivity. */
-export function shouldSuppressPrefetch(status: NetworkStatus): boolean {
-  return status !== 'online';
-}

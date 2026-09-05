@@ -22,12 +22,16 @@
 // wrappers, not the copies the lint imagines.
 #![allow(clippy::needless_pass_by_value)]
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
+use std::time::SystemTime;
 
 use beastube_core::error::{ErrorKind, ErrorPayload, Recovery};
 use beastube_core::events::DownloadProgress;
 use beastube_core::ids::VideoId;
 use beastube_download::{DownloadError, DownloadRequest, JsRuntimeKind, version_of};
+use parking_lot::Mutex;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -200,24 +204,82 @@ pub(crate) async fn diagnose_playback(
     }
 }
 
+/// Enough of a file to notice it being replaced, without reading it.
+///
+/// Length and modification time together: a new `yt-dlp.exe` written over the old one changes at
+/// least one of them, and neither costs more than a `stat`.
+#[derive(PartialEq, Eq)]
+struct Stamp {
+    len: u64,
+    modified: Option<SystemTime>,
+}
+
+/// What has already been read from one executable: the stamp it had, and what it said.
+type Known = (Stamp, Option<String>);
+
+/// Version strings already read, keyed by the executable they were read from.
+///
+/// Reading a version means launching the tool and waiting for it to print one. For `yt-dlp` that is
+/// a `PyInstaller` bundle unpacking itself before it will answer, and measured in the built
+/// application the pair cost **960 ms every time `get_download_tools` was called** — at every
+/// launch, and again on every visit to the settings screen.
+///
+/// Nothing about that answer changes while the file does not, so it is read once per file. The
+/// stamp is what makes that safe: the settings screen updates `yt-dlp` in place and then asks
+/// again, and a cache keyed only on the path would have gone on reporting the version it replaced.
+static VERSIONS: LazyLock<Mutex<HashMap<PathBuf, Known>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Stats `tool` for a stamp, or `None` if it cannot be read.
+fn stamp_of(tool: &Path) -> Option<Stamp> {
+    let meta = std::fs::metadata(tool).ok()?;
+    Some(Stamp {
+        len: meta.len(),
+        modified: meta.modified().ok(),
+    })
+}
+
+/// The tool's version, launching it only when this build has not already asked this exact file.
+async fn cached_version_of(tool: &Path) -> Option<String> {
+    let Some(stamp) = stamp_of(tool) else {
+        // Gone since it was located. Nothing to run, and nothing worth remembering.
+        return None;
+    };
+    if let Some((seen, version)) = VERSIONS.lock().get(tool)
+        && *seen == stamp
+    {
+        return version.clone();
+    }
+
+    // Deliberately not holding the lock across the launch: two screens asking at once should wait
+    // for the tool, not for each other, and running it twice is merely wasteful rather than wrong.
+    let version = version_of(tool).await;
+    VERSIONS
+        .lock()
+        .insert(tool.to_path_buf(), (stamp, version.clone()));
+    version
+}
+
 /// What is installed, and where files will go.
 #[tauri::command]
 pub(crate) async fn get_download_tools(state: State<'_, AppState>) -> CommandResult<DownloadTools> {
     let tools = state.download_tools();
     let directory = state.download_directory();
 
-    // Both versions at once: each is a process launch, and running them in sequence would make the
-    // settings screen wait for the sum rather than for the slower of the two.
+    // Both versions at once: on the first call for a given pair of files each is a process launch,
+    // and running them in sequence would make the settings screen wait for the sum rather than for
+    // the slower of the two. Afterwards both are answered from `VERSIONS` without launching
+    // anything.
     let (downloader_version, ffmpeg_version) = tokio::join!(
         async {
             match &tools.downloader {
-                Some(path) => version_of(path).await,
+                Some(path) => cached_version_of(path).await,
                 None => None,
             }
         },
         async {
             match &tools.ffmpeg {
-                Some(path) => version_of(path).await,
+                Some(path) => cached_version_of(path).await,
                 None => None,
             }
         }

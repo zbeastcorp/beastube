@@ -20,34 +20,29 @@ beastube-core.workspace = true
 beastube-db.workspace = true
 beastube-network.workspace = true
 beastube-cache.workspace = true
-beastube-tasks.workspace = true
 beastube-provider.workspace = true
 beastube-provider-youtube.workspace = true
 beastube-filtering.workspace = true
-beastube-gateway.workspace = true
-beastube-playback.workspace = true
 beastube-download.workspace = true
 tauri.workspace = true
 tauri-plugin-updater.workspace = true
-tauri-plugin-notification.workspace = true
-tauri-plugin-global-shortcut.workspace = true
-tauri-plugin-single-instance.workspace = true
 tauri-plugin-opener.workspace = true
 tauri-plugin-dialog.workspace = true
 tauri-plugin-process.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 serde.workspace = true
+# Named by no line in this crate. `#[tauri::command]` expands to code that serialises the return
+# value through it, so dropping it fails the build at macro expansion rather than at a `use` — which
+# is why a scan for unreferenced dependencies wrongly flags it.
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 time.workspace = true
-uuid.workspace = true
 url.workspace = true
 parking_lot.workspace = true
-sysinfo.workspace = true
 windows.workspace = true
 webview2-com.workspace = true
 

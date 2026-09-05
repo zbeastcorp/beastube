@@ -21,8 +21,6 @@ beastube-tasks = { path = "crates/beastube-tasks" }
 beastube-provider = { path = "crates/beastube-provider" }
 beastube-provider-youtube = { path = "crates/beastube-provider-youtube" }
 beastube-filtering = { path = "crates/beastube-filtering" }
-beastube-gateway = { path = "crates/beastube-gateway" }
-beastube-playback = { path = "crates/beastube-playback" }
 beastube-download = { path = "crates/beastube-download" }
 
 # --- async runtime ---
@@ -45,7 +43,6 @@ tracing-appender = "0.2"
 # --- networking (0.12 line is shared with rustypipe so one client/pool serves both) ---
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "gzip", "brotli", "stream", "json", "charset"] }
 http = "1"
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 url = "2"
 percent-encoding = "2"
 
@@ -76,9 +73,6 @@ webview2-com = "0.38"
 tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
 tauri-build = "2.6"
 tauri-plugin-updater = "2.11"
-tauri-plugin-notification = "2.4"
-tauri-plugin-global-shortcut = "2.3"
-tauri-plugin-single-instance = "2.4"
 tauri-plugin-opener = "2.5"
 tauri-plugin-dialog = "2.7"
 tauri-plugin-process = "2.3"

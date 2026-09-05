@@ -30,7 +30,12 @@ import { clearFeedCache } from '@/services/feedCache';
 import { invoke, normalizeError } from '@/services/ipc';
 import { clearVideoCache } from '@/services/videoCache';
 import { activePlaybackCapabilities } from '@/services/playback';
-import { checkForUpdate, downloadAndInstallUpdate, relaunchApp } from '@/services/updates';
+import {
+  checkForUpdate,
+  downloadAndInstallUpdate,
+  isInstallingUpdate,
+  relaunchApp,
+} from '@/services/updates';
 import { useDownloadsStore } from '@/stores/downloads';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
@@ -700,7 +705,14 @@ type UpdateState =
 function AboutPanel(): ReactNode {
   const t = useTranslation();
   const info = useAsyncResource('app-info', () => invoke('get_app_info', undefined));
-  const [state, setState] = useState<UpdateState>({ kind: 'idle' });
+  // Seeded from the install that may already be running, not from `idle`. This panel unmounts the
+  // moment the viewer navigates away and the download does not stop with it, so coming back showed
+  // an idle button over a live install — and pressing it was answered with `already-running`
+  // rather than with anything the viewer could see. The percentage is unknown until the next
+  // progress event, which is what `null` means here.
+  const [state, setState] = useState<UpdateState>(() =>
+    isInstallingUpdate() ? { kind: 'installing', percent: null } : { kind: 'idle' },
+  );
 
   const check = () => {
     setState({ kind: 'checking' });

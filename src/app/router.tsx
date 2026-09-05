@@ -141,12 +141,6 @@ export function useNavigate(): RouterValue['navigate'] {
   return useRouter().navigate;
 }
 
-/** Back/forward controls and whether back is meaningful. */
-export function useHistoryControls(): Pick<RouterValue, 'back' | 'forward' | 'canGoBack'> {
-  const { back, forward, canGoBack } = useRouter();
-  return { back, forward, canGoBack };
-}
-
 /**
  * An anchor that navigates in-app.
  *

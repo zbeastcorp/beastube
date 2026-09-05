@@ -73,9 +73,3 @@ export function loadCapabilities(): Promise<ProviderCapabilities> {
     });
   return inFlight;
 }
-
-/** Drops the cached answer. Used by tests; the set cannot change within a session. */
-export function resetCapabilities(): void {
-  known = null;
-  inFlight = null;
-}

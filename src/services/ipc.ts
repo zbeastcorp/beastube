@@ -364,13 +364,6 @@ export function setIpcMock(handler: IpcMock | null): void {
   mockHandler = handler;
 }
 
-/** Delivers a fake event to listeners registered through {@link listen}. Test-only. */
-export function emitMockEvent<E extends AppEventName>(event: E, payload: AppEventMap[E]): void {
-  for (const listener of mockEventListeners.get(event) ?? []) {
-    listener(payload);
-  }
-}
-
 /**
  * Whether the Tauri runtime is present.
  *

@@ -403,28 +403,6 @@ export interface PlaylistItem {
 export type PlaybackState =
   'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'buffering' | 'seeking' | 'ended' | 'error';
 
-/** Whether the playhead is advancing or trying to. Keeps OS controls from flickering on a stall. */
-export function isPlaybackActive(state: PlaybackState): boolean {
-  return state === 'playing' || state === 'buffering' || state === 'seeking';
-}
-
-/** Whether a busy indicator belongs on screen. */
-export function isPlaybackBusy(state: PlaybackState): boolean {
-  return state === 'loading' || state === 'buffering' || state === 'seeking';
-}
-
-/** Whether media is loaded, so position and track selection are meaningful. */
-export function hasMedia(state: PlaybackState): boolean {
-  return (
-    state === 'ready' ||
-    state === 'playing' ||
-    state === 'paused' ||
-    state === 'buffering' ||
-    state === 'seeking' ||
-    state === 'ended'
-  );
-}
-
 /**
  * What the active playback adapter can actually do.
  *
@@ -456,21 +434,6 @@ export interface PlaybackCapabilities {
   /** Creator-marked segments can be skipped automatically. */
   segment_skipping: boolean;
 }
-
-/** A capability set with everything off, used before an adapter reports in. */
-export const NO_CAPABILITIES: PlaybackCapabilities = {
-  quality_selection: false,
-  reports_available_qualities: false,
-  playback_rate: false,
-  caption_control: false,
-  audio_track_selection: false,
-  buffer_metrics: false,
-  frame_metrics: false,
-  picture_in_picture: false,
-  fullscreen: false,
-  volume_control: false,
-  segment_skipping: false,
-};
 
 // ---------------------------------------------------------------------------------------------
 // Errors
@@ -741,11 +704,6 @@ export interface DownloadProgress {
 /** Whether a download is over, one way or another. Mirrors `DownloadStatus::is_terminal`. */
 export function isTerminalDownload(status: DownloadStatus): boolean {
   return status === 'finished' || status === 'failed' || status === 'cancelled';
-}
-
-/** Whether a download is running, so the control offers to stop it rather than to start one. */
-export function isActiveDownload(status: DownloadStatus): boolean {
-  return !isTerminalDownload(status);
 }
 
 /**

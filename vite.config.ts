@@ -46,10 +46,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        // Split the two large, rarely-changing dependencies into their own chunks so an
-        // application-code change does not invalidate them in the webview's cache.
+        // React is split out so an application-code change does not invalidate it in the
+        // webview's cache: it is the one dependency large enough for that to be worth a request.
         manualChunks: (id: string) => {
-          if (id.includes('node_modules/shaka-player')) return 'shaka';
           if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
             return 'react';
           }

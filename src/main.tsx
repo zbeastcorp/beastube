@@ -29,9 +29,14 @@ createRoot(container).render(
       What it catches may be the theme, the router, the translation catalogue or a store, so it can
       depend on none of them — hence plain text and inline styles rather than the design system.
       A last resort that needed the thing it is reporting on would fail for the same reason.
+
+      The exception's own message is not shown. It is written for whoever reads the log — a
+      stack-shaped string naming a component nobody outside this repository has heard of — and
+      printing it under an apology told the viewer nothing they could act on. It still reaches the
+      console from the boundary's componentDidCatch, which is where it is useful.
     */}
     <ErrorBoundary
-      fallback={(error, reset) => (
+      fallback={(_error, reset) => (
         <div
           style={{
             padding: '2rem',
@@ -48,11 +53,6 @@ createRoot(container).render(
             Your library, playlists and bookmarks are safe — they are stored on this device and this
             failure did not touch them.
           </p>
-          <pre
-            style={{ opacity: 0.5, fontSize: '12px', whiteSpace: 'pre-wrap', margin: '0 0 1rem' }}
-          >
-            {error.message}
-          </pre>
           <button
             type="button"
             onClick={reset}

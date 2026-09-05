@@ -9,10 +9,19 @@
  * would drift from the native side's actual retry policy, and users would be offered a retry for
  * something that can never succeed — a geo-blocked video, a deleted one — which is worse than no
  * button at all (§74, §75).
+ *
+ * ## Nothing engineer-facing reaches the screen
+ *
+ * The payload also carries a `code` and a `diagnostic` — a raw string from the native side, along
+ * the lines of `playlist 5 vanished between insert and read`. Those used to sit behind a "More"
+ * button here. They are deliberately not rendered any more: they are written for whoever reads the
+ * log, they are never localized, and putting them one click away from a viewer made an ordinary
+ * failure look like a broken program. They stay on the payload, and in the native log, for the
+ * reader they were written for.
  */
 
 import { RotateCw, TriangleAlert, WifiOff } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { useTranslation } from '@/i18n/context';
 import type { TranslationKey } from '@/i18n';
@@ -29,7 +38,6 @@ interface ErrorStateProps {
 /** A failure explanation, with a retry only where one is meaningful. */
 export function ErrorState({ error, onRetry, compact = false }: ErrorStateProps): ReactNode {
   const t = useTranslation();
-  const [showDetail, setShowDetail] = useState(false);
 
   // A message key is always present, but a build can fall behind the native side; falling back to
   // the generic message beats rendering a raw key at the user.
@@ -59,39 +67,15 @@ export function ErrorState({ error, onRetry, compact = false }: ErrorStateProps)
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        {canRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="transition-surface bg-primary text-primary-contrast hover:bg-primary-hover flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium"
-          >
-            <RotateCw size={16} />
-            {t.t('app.retry')}
-          </button>
-        )}
-
-        {error.diagnostic !== undefined && (
-          <button
-            type="button"
-            onClick={() => {
-              setShowDetail((shown) => !shown);
-            }}
-            aria-expanded={showDetail}
-            className="transition-surface text-text-muted hover:bg-surface-hover hover:text-text rounded-full px-4 py-2 text-sm"
-          >
-            {t.t('app.more')}
-          </button>
-        )}
-      </div>
-
-      {showDetail && error.diagnostic !== undefined && (
-        // Engineer-facing, never localized, and never transmitted anywhere.
-        <code className="text-text-subtle selectable bg-surface max-w-xl rounded-md p-3 text-left font-mono text-xs break-all">
-          {error.code}
-          {'\n'}
-          {error.diagnostic}
-        </code>
+      {canRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="transition-surface bg-primary text-primary-contrast hover:bg-primary-hover flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium"
+        >
+          <RotateCw size={16} />
+          {t.t('app.retry')}
+        </button>
       )}
     </div>
   );
