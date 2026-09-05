@@ -347,6 +347,22 @@
     border-radius: var(--radius-sm);
   }
 
+  /*
+   * ...except the containers that are focused *for* the viewer rather than by them.
+   *
+   * A route change moves focus to the content region so the new screen is announced and the tab
+   * ring restarts there. That region is `tabindex="-1"` — it is a destination, not a control — and
+   * Chromium still treats a programmatic focus as `:focus-visible`, so every navigation drew a
+   * two-pixel ring around the entire page. It was in every screenshot of the application.
+   *
+   * The ring is what tells someone where the keyboard is, and it is not lost: it is on the control
+   * they tab to next. Announcing the landmark, which is the point of moving focus here, does not
+   * depend on drawing a box around it.
+   */
+  [tabindex='-1']:focus-visible {
+    outline: none;
+  }
+
   /* YouTube's scrollbar: an unobtrusive thumb that only appears against the dark ground. The OS
      default on Windows is a bright light slab that ruins a dark UI. */
   * {

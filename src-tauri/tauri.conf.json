@@ -56,7 +56,9 @@
         "installMode": "both",
         "languages": ["English"],
         "displayLanguageSelector": false,
-        "compression": "lzma"
+        "compression": "lzma",
+        "headerImage": "icons/installer-header.bmp",
+        "sidebarImage": "icons/installer-sidebar.bmp"
       }
     }
   }
