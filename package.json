@@ -20,6 +20,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "dev:app": "pwsh -NoProfile -File scripts/dev.ps1",
     "tools:fetch": "pwsh -NoProfile -File scripts/fetch-tools.ps1",
     "export:github": "pwsh -NoProfile -File scripts/export-github.ps1"
   },

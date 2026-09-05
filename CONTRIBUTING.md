@@ -14,6 +14,10 @@ pnpm tools:fetch     # downloads yt-dlp and ffmpeg, each verified against a vend
 pnpm tauri dev
 ```
 
+`pnpm dev:app` does the same thing and stops the previous run first. `tauri dev` binds a fixed
+port and fails outright if it is still held, which it routinely is after an earlier run was killed
+without its child going with it.
+
 `pnpm tools:fetch` is not optional for a bundled build. The two executables it downloads are
 installer resources, and downloads above roughly 360p cannot be produced without ffmpeg, because
 YouTube serves no combined audio-and-video stream at those sizes.
