@@ -124,5 +124,9 @@ jobs:
             echo "::error::No .sig beside the installer; the release would be unusable for updates."
             exit 1
           fi
+          if ! ls target/release/bundle/msi/*.msi >/dev/null 2>&1; then
+            echo "::error::No .msi produced. WiX may have failed to download; see the bundler output."
+            exit 1
+          fi
           echo "Signed artefacts:"
-          ls -la target/release/bundle/nsis/
+          ls -la target/release/bundle/nsis/ target/release/bundle/msi/

@@ -70,19 +70,30 @@ you have not prepared, and it installs the WebView2 runtime if Windows does not 
 
 ### Release files
 
-| File                                   | Description                                                      |
-| -------------------------------------- | ---------------------------------------------------------------- |
-| **`BEASTUBE_<version>_x64-setup.exe`** | **The installer. This is the one you want.**                     |
-| `BEASTUBE_<version>_x64-setup.exe.sig` | Signature for the file above, used by the built-in updater.      |
-| `latest.json`                          | Update manifest. Installed copies read this; you do not need it. |
+| File                                   | Description                                                          |
+| -------------------------------------- | -------------------------------------------------------------------- |
+| **`BEASTUBE_<version>_x64-setup.exe`** | **The installer. This is the one you want.** ~51 MB.                 |
+| `BEASTUBE_<version>_x64_en-US.msi`     | Same application as an MSI, for Group Policy and managed deployment. |
+| `*.sig`                                | Signatures, used by the built-in updater. Not needed by hand.        |
+| `latest.json`                          | Update manifest. Installed copies read this; you do not need it.     |
+
+**Which one.** Take the `.exe` unless you know you want the `.msi`. The `.exe` installs per-user
+without an administrator prompt and is what the in-app updater downloads. The `.msi` exists for
+deploying across a fleet — `msiexec /i BEASTUBE_<version>_x64_en-US.msi /qn` — and is larger,
+because MSI cannot compress as well as NSIS.
 
 Every release is signed with the project's updater key. The public half is compiled into the
 application, so a build will refuse an update it cannot verify — including one we did not sign.
 
 ### Updating
 
-BEASTUBE updates itself. **Settings → About → Check for updates** fetches the next installer,
-verifies its signature, and installs it without a wizard.
+BEASTUBE updates itself, and it tells you when there is something to update to: about ten seconds
+after launch it checks, and if a newer version exists a notice appears with a link to it. Nothing is
+downloaded until you say so.
+
+**Settings → About → Check for updates** does the same on demand, and is where the download reports
+its progress. The installer runs without a wizard and the application restarts into the new version
+— there is no uninstall-and-reinstall step.
 
 It is a full installer each time rather than a patch, because Windows offers no delta mechanism on
 this path — around 50 MB, most of which is ffmpeg. The settings row says so before you press it.

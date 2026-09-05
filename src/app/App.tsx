@@ -27,6 +27,7 @@ import { detectLocale, resolveLocale } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { TranslationProvider } from '@/i18n/context';
 import { loadCapabilities } from '@/services/capabilities';
+import { checkForUpdate } from '@/services/updates';
 import { preloadFeeds } from '@/services/feedCache';
 import { subscribeToDownloads, useDownloadsStore } from '@/stores/downloads';
 import { useFeedStore } from '@/stores/feed';
@@ -35,7 +36,7 @@ import { applyPresentation, applyWebviewScheme, useSettingsStore } from '@/store
 import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
 
-import { RouterProvider, useRoute } from './router';
+import { RouterProvider, useNavigate, useRoute } from './router';
 import { renderRoute } from './views';
 
 /** Applies presentation settings to the document root whenever they change. */
@@ -165,10 +166,57 @@ function Shell(): ReactNode {
   const closeDrawer = useUiStore((state) => state.closeDrawer);
   const t = useTranslation();
   const route = useRoute();
+  const navigate = useNavigate();
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
 
   usePresentation();
   useShellEvents();
+
+  /**
+   * Looks for an update once per launch, and says so if there is one.
+   *
+   * The updater has worked for a while, but nothing ever *asked*: the only way to discover a new
+   * version was to open Settings, find About, and press a button on the chance that something had
+   * changed. Nobody does that, so in practice installations simply never updated — a working
+   * update mechanism that goes unused is the same outcome as not having one.
+   *
+   * A toast, not a dialog. There is nothing to decide urgently and interrupting playback to say
+   * "there is a newer version" would be worse than the problem. It stays until dismissed
+   * (`durationMs: null`) because a notice that vanishes after four seconds is one most people will
+   * miss, and its action opens About, where the download reports progress and the restart is
+   * explained. Installing 50 MB silently from a toast with no way to see how far it has got is the
+   * one shape this should not take.
+   *
+   * Silent when there is nothing to report, and silent on failure: being offline is the ordinary
+   * case, not an error worth a notice.
+   */
+  useEffect(() => {
+    if (!isTauriRuntime()) return undefined;
+    const timer = setTimeout(() => {
+      void checkForUpdate()
+        .then((update) => {
+          if (!update) return;
+          useUiStore.getState().toast({
+            messageKey: 'settings.about.updateAvailable',
+            params: { version: update.version },
+            tone: 'info',
+            durationMs: null,
+            action: {
+              labelKey: 'settings.about.checkUpdates',
+              run: () => {
+                navigate({ name: 'settings', section: 'about' });
+              },
+            },
+          });
+        })
+        .catch(() => {
+          // Offline, or no release published yet. Neither is worth telling anyone about.
+        });
+    }, UPDATE_CHECK_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [navigate]);
 
   // What the route key used to do by remounting. A new screen starts at the top; without this it
   // would inherit wherever the previous one had been scrolled to.
@@ -343,6 +391,15 @@ const HOME_SHORTS_LIMIT = 16;
 
 /** Matches `RECOMMENDED_COUNT` in the views; the preload must ask for the same size to be reused. */
 const RECOMMENDED_LIMIT = 36;
+
+/**
+ * How long after launch the update check runs.
+ *
+ * Late enough that it is not competing with the feed, the capabilities probe and the player API for
+ * the first seconds of a cold start — the moment the viewer is actually waiting on something — and
+ * early enough that they learn about an update in the session they opened, not the next one.
+ */
+const UPDATE_CHECK_DELAY_MS = 12_000;
 
 /** The application root. */
 export function App(): ReactNode {
