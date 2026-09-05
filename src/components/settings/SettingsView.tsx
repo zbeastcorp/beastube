@@ -24,10 +24,10 @@ import {
   useControlId,
 } from '@/components/common/Controls';
 import { useAsyncResource } from '@/hooks/useAsyncResource';
-import { LOCALE_NAMES, SUPPORTED_LOCALES } from '@/i18n';
+import { LOCALE_NAMES, SUPPORTED_LOCALES, type TranslationKey } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { clearFeedCache } from '@/services/feedCache';
-import { invoke, normalizeError } from '@/services/ipc';
+import { invoke, normalizeError, type StorageLocation } from '@/services/ipc';
 import { clearVideoCache } from '@/services/videoCache';
 import { activePlaybackCapabilities } from '@/services/playback';
 import {
@@ -571,15 +571,16 @@ function PrivacyPanel(): ReactNode {
       });
   };
 
-  const clearCache = () => {
+  const clearLocation = (target: StorageLocation['id']) => {
     setBusy(true);
-    void invoke('clear_cache', undefined)
+    void invoke('clear_storage', { target })
       .then(() => {
-        // The in-memory caches too. Clearing only the native side left this session still holding
-        // feeds and video metadata fetched before the click, so the button did not mean what it
-        // said until the application was restarted.
-        clearFeedCache();
-        clearVideoCache();
+        // The in-memory caches go with the metadata one, or this session keeps serving feeds and
+        // video details fetched before the click and the button does not mean what it says.
+        if (target === 'provider_cache') {
+          clearFeedCache();
+          clearVideoCache();
+        }
         storage.reload();
       }, reportFailure)
       .finally(() => {
@@ -654,8 +655,7 @@ function PrivacyPanel(): ReactNode {
           value={
             storage.data
               ? [
-                  `${t.bytes(storage.data.database_bytes)} library`,
-                  `${t.bytes(storage.data.cache_bytes)} cache`,
+                  t.bytes(storage.data.locations.reduce((sum, l) => sum + l.bytes, 0)),
                   t.plural('library.itemCount', storage.data.history_entries),
                 ].join(' · ')
               : '…'
@@ -663,11 +663,52 @@ function PrivacyPanel(): ReactNode {
         />
       </SettingRow>
 
-      <SettingRow label={t.t('settings.privacy.clearCache')}>
-        <SecondaryButton onClick={clearCache} disabled={busy}>
-          {t.t('settings.privacy.clearCache')}
-        </SecondaryButton>
+      {/* Every location, not a summary of two of them.
+          The old row reported the library and the metadata cache — 4.4 MB on a real installation
+          whose actual footprint was 629 MB, because nothing counted the embedded browser's profile.
+          Each row now names its own path, so the figure is checkable rather than trusted (§100),
+          and each clearable one has its own button: the browser cache is where the space is, and it
+          was previously unreachable. */}
+      <SettingRow
+        label={t.t('settings.privacy.storageBreakdown')}
+        hint={t.t('settings.privacy.storageHint')}
+      >
+        <span />
       </SettingRow>
+
+      {(storage.data?.locations ?? []).map((location) => (
+        <SettingRow
+          key={location.id}
+          label={`${t.t(`settings.privacy.storageKind.${location.id}` as TranslationKey)} — ${t.bytes(location.bytes)}`}
+          hint={t.t(`settings.privacy.storageKind.${location.id}Hint` as TranslationKey)}
+        >
+          {location.clearable ? (
+            <SecondaryButton
+              onClick={() => {
+                clearLocation(location.id);
+              }}
+              disabled={busy || location.bytes === 0}
+            >
+              {t.t('settings.privacy.storageClear')}
+            </SecondaryButton>
+          ) : location.id === 'downloads' ? (
+            <SecondaryButton
+              onClick={() => {
+                void invoke('open_download_directory', undefined).catch(reportFailure);
+              }}
+              disabled={busy}
+            >
+              {t.t('settings.privacy.storageOpen')}
+            </SecondaryButton>
+          ) : (
+            // The library is the other non-clearable row, and it has no button: it is the user's
+            // own data, cleared by the specific controls below rather than wholesale. It had
+            // briefly inherited the downloads row's button, which would have opened the wrong
+            // folder entirely.
+            <span />
+          )}
+        </SettingRow>
+      ))}
 
       <SettingRow label={t.t('settings.privacy.clearSearches')}>
         <DangerButton onClick={clearSearches} disabled={busy}>

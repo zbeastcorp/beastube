@@ -373,6 +373,30 @@ export const en = {
       telemetry: 'Usage reporting',
       telemetryValue: 'Off — BEASTUBE collects no analytics',
       storedData: 'Stored data',
+      storageBreakdown: 'Where the space goes',
+      storageHint:
+        'Every folder BEASTUBE writes to, largest first. Clearing a cache costs nothing but a slower first load afterwards.',
+      storageClear: 'Clear',
+      storageCleared: 'Cleared {name}',
+      storageOpen: 'Open folder',
+      storageKind: {
+        library: 'Library',
+        libraryHint:
+          'History, playlists, bookmarks and watch positions. Cleared with the controls below.',
+        webview: 'Browser cache',
+        webviewHint:
+          'The embedded browser’s page, script and shader caches. Usually the largest item by far, and rebuilt as you watch.',
+        provider_cache: 'Metadata cache',
+        provider_cacheHint:
+          'Video and channel details already fetched, so a revisit does not ask again.',
+        downloader_cache: 'Downloader cache',
+        downloader_cacheHint: 'Working files kept by yt-dlp between runs.',
+        logs: 'Logs',
+        logsHint: 'Diagnostic output. Safe to remove; the next launch starts a new one.',
+        downloads: 'Downloads',
+        downloadsHint:
+          'Videos you saved. BEASTUBE will not delete these — it is a folder you chose and may share with other things.',
+      },
       cacheLocation: 'Cache location',
       databaseLocation: 'Database location',
       clearCache: 'Clear cache',

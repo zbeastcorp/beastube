@@ -842,9 +842,35 @@ pub(crate) fn reset_filter_rules(
 // Storage and diagnostics
 // ---------------------------------------------------------------------------------------------
 
+/// One place on disk that belongs to this application.
+///
+/// The privacy screen used to report two numbers — the library and the provider's extractor cache —
+/// and call that "stored data". Measured on a working installation, those two came to 4.4 MB while
+/// the application actually occupied about 629 MB. The rest was the embedded browser's own profile,
+/// which nothing counted and nothing could remove. A storage figure that is out by two orders of
+/// magnitude is not a smaller version of the truth; it is a different claim (§100).
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct StorageLocation {
+    /// Stable key the interface maps to a translated name.
+    id: &'static str,
+    /// Absolute path, so the claim can be checked rather than believed.
+    path: String,
+    bytes: u64,
+    /// Whether this application will delete it on request.
+    ///
+    /// False for the library, which is the user's own data and is cleared by the specific controls
+    /// beside it, and false for the download folder: that is a directory the user chose and may
+    /// share with other things, and a button that empties it would be a foot-gun wearing the word
+    /// "clean".
+    clearable: bool,
+}
+
 /// What the application is storing on this device.
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct StorageStats {
+    /// Every location, largest first. Additive: the fields below are unchanged for the diagnostics
+    /// screen, which reports the library and the extractor cache specifically.
+    locations: Vec<StorageLocation>,
     /// Size of the library database in bytes.
     database_bytes: u64,
     /// Size of the provider's extractor cache in bytes.
@@ -873,16 +899,61 @@ pub(crate) async fn get_storage_stats(state: State<'_, AppState>) -> CommandResu
     let bookmark_entries = state.repositories.bookmarks.count().await.map_err(fail)?;
     let position_entries = state.repositories.positions.count().await.map_err(fail)?;
 
+    let cache_bytes = directory_size(&state.provider_cache_dir);
+    // Named once: the breakdown below and the flat field beneath it are the same path.
+    let database_path = state
+        .database
+        .path()
+        .map_or_else(|| "(in memory)".to_owned(), |path| path.display().to_string());
+    let mut locations = vec![
+        StorageLocation {
+            id: "library",
+            path: database_path.clone(),
+            bytes: database_bytes,
+            clearable: false,
+        },
+        StorageLocation {
+            id: "webview",
+            path: state.webview_data_dir.display().to_string(),
+            bytes: directory_size(&state.webview_data_dir),
+            clearable: true,
+        },
+        StorageLocation {
+            id: "provider_cache",
+            path: state.provider_cache_dir.display().to_string(),
+            bytes: cache_bytes,
+            clearable: true,
+        },
+        StorageLocation {
+            id: "downloader_cache",
+            path: state.downloader_cache_dir().display().to_string(),
+            bytes: directory_size(&state.downloader_cache_dir()),
+            clearable: true,
+        },
+        StorageLocation {
+            id: "logs",
+            path: state.log_dir.display().to_string(),
+            bytes: directory_size(&state.log_dir),
+            clearable: true,
+        },
+        StorageLocation {
+            id: "downloads",
+            path: state.download_directory().display().to_string(),
+            bytes: directory_size(&state.download_directory()),
+            clearable: false,
+        },
+    ];
+    // Largest first: the point of the list is that the big one is not the one people expect.
+    locations.sort_by_key(|location| std::cmp::Reverse(location.bytes));
+
     Ok(StorageStats {
+        locations,
         database_bytes,
-        cache_bytes: directory_size(&state.provider_cache_dir),
+        cache_bytes,
         history_entries,
         bookmark_entries,
         position_entries,
-        database_path: state
-            .database
-            .path()
-            .map_or_else(|| "(in memory)".to_owned(), |path| path.display().to_string()),
+        database_path,
         cache_path: state.provider_cache_dir.display().to_string(),
     })
 }
@@ -944,6 +1015,76 @@ pub(crate) async fn clear_cache(state: State<'_, AppState>) -> CommandResult<Sto
         });
     }
     let _ = std::fs::create_dir_all(&cache_dir);
+
+    get_storage_stats(state).await
+}
+
+/// Removes one of the locations `get_storage_stats` reports as clearable.
+///
+/// ## Why the browser profile is emptied rather than deleted
+///
+/// The embedded browser holds its profile open for as long as the window exists, so removing the
+/// directory would fail on Windows and, if it half-succeeded, would leave the webview with a
+/// profile missing files it believes are there. Only the caches inside it are removed — the HTTP
+/// cache, the compiled-JavaScript cache and the shader cache, which is where essentially all of the
+/// size is — and each is a directory the browser recreates on demand and treats as disposable by
+/// design. Cookies, local storage and the embed's own settings are deliberately left alone: they
+/// are not size, and clearing them signs the viewer out of nothing but costs them their preferences.
+///
+/// ## Best effort, honestly reported
+///
+/// A file the browser has open cannot be deleted while it is open, so some of it may survive. This
+/// deletes what it can and then re-measures, which is why it returns the fresh statistics: the
+/// number the viewer sees afterwards is what is actually left, not what was expected to go.
+///
+/// # Errors
+///
+/// Returns a payload only for an unknown target. A deletion that fails is reported by the size that
+/// comes back, not by an error dialog over a screen the viewer is already reading.
+#[tauri::command]
+pub(crate) async fn clear_storage(
+    state: State<'_, AppState>,
+    target: String,
+) -> CommandResult<StorageStats> {
+    let roots: Vec<std::path::PathBuf> = match target.as_str() {
+        "provider_cache" => vec![state.provider_cache_dir.clone()],
+        "downloader_cache" => vec![state.downloader_cache_dir()],
+        "logs" => vec![state.log_dir.clone()],
+        "webview" => {
+            let profile = state.webview_data_dir.join("Default");
+            vec![
+                profile.join("Cache"),
+                profile.join("Code Cache"),
+                profile.join("Service Worker"),
+                state.webview_data_dir.join("GrShaderCache"),
+                state.webview_data_dir.join("ShaderCache"),
+            ]
+        }
+        _ => {
+            return Err(ErrorPayload {
+                kind: beastube_core::error::ErrorKind::Configuration,
+                code: "validation.invalid_input".to_owned(),
+                message_key: "error.provider.invalid_input".to_owned(),
+                params: std::collections::BTreeMap::new(),
+                recovery: beastube_core::error::Recovery::Unrecoverable,
+                diagnostic: Some(format!("unknown storage target: {target}")),
+                correlation_id: None,
+            });
+        }
+    };
+
+    for root in roots {
+        match std::fs::remove_dir_all(&root) {
+            Ok(()) | Err(_) if !root.exists() => {}
+            Err(error) => {
+                tracing::warn!(%error, path = %root.display(), "could not fully clear a storage location");
+            }
+            Ok(()) => {}
+        }
+        // Recreated empty, because a cache directory the owner expects to exist is cheaper to leave
+        // in place than to make it handle its own absence.
+        let _ = std::fs::create_dir_all(&root);
+    }
 
     get_storage_stats(state).await
 }

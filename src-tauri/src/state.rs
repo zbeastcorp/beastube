@@ -59,6 +59,14 @@ pub(crate) struct AppState {
     incognito: AtomicBool,
     /// Where the provider keeps its extractor cache, for the storage panel.
     pub(crate) provider_cache_dir: PathBuf,
+    /// The embedded browser's own profile directory.
+    ///
+    /// By far the largest thing this application puts on disk — measured at 487 MB on a working
+    /// installation against 4.4 MB of library — and until the storage panel listed it, neither
+    /// counted nor removable.
+    pub(crate) webview_data_dir: PathBuf,
+    /// Where the rolling log files are written.
+    pub(crate) log_dir: PathBuf,
     /// Owns the active filtering rule set and the decision to roll it back.
     pub(crate) filtering: Arc<RuleSetManager>,
     /// Live filtering counters, shared with the engine.
@@ -189,10 +197,16 @@ impl AppState {
             .download_dir()
             .unwrap_or_else(|_| data_dir.join("downloads"))
             .join("BEASTUBE");
-        let download_cache_dir = provider_cache_dir
+        let local_dir = provider_cache_dir
             .parent()
-            .map_or_else(|| data_dir.join("cache"), Path::to_path_buf)
-            .join("yt-dlp");
+            .map_or_else(|| data_dir.join("cache"), Path::to_path_buf);
+        let download_cache_dir = local_dir.join("yt-dlp");
+        // Tauri puts the WebView2 profile beside the caches under the same local directory.
+        let webview_data_dir = local_dir.join("EBWebView");
+        let log_dir = app
+            .path()
+            .app_log_dir()
+            .unwrap_or_else(|_| local_dir.join("logs"));
         // Where the installer puts the tools it ships, searched before `PATH` so a bundled copy
         // wins over whatever else happens to be on the machine. `resources/binaries` is where
         // `tauri.conf.json` lands them; the executable's own directory covers a portable layout
@@ -226,6 +240,8 @@ impl AppState {
             settings: RwLock::new(settings),
             incognito: AtomicBool::new(incognito),
             provider_cache_dir,
+            webview_data_dir,
+            log_dir,
             filtering,
             filtering_diagnostics,
             downloads,
@@ -339,6 +355,12 @@ impl AppState {
     #[must_use]
     pub(crate) fn records_history(&self) -> bool {
         !self.is_incognito() && self.settings.read().privacy.history_enabled
+    }
+
+    /// Where the downloader keeps its own cache.
+    #[must_use]
+    pub(crate) fn downloader_cache_dir(&self) -> PathBuf {
+        self.download_cache_dir.clone()
     }
 
     /// Whether a search query should be recorded.

@@ -51,7 +51,26 @@ import { isErrorPayload } from '@/types/domain';
  * Mirrors `commands::StorageStats`. Paths are included so the privacy panel can name the exact
  * files rather than describing them, which is what makes the local-only claim checkable (§100).
  */
+/**
+ * One place on disk that belongs to BEASTUBE.
+ *
+ * The privacy screen used to report the library and the extractor cache and call that "stored
+ * data" — 4.4 MB against an actual footprint of about 629 MB, because nothing counted the embedded
+ * browser's profile. A number that wrong is not a rounding error, it is a different claim.
+ */
+export interface StorageLocation {
+  /** Stable key; the interface maps it to a translated name. */
+  id: 'library' | 'webview' | 'provider_cache' | 'downloader_cache' | 'logs' | 'downloads';
+  /** Absolute path, so the claim can be checked rather than believed. */
+  path: string;
+  bytes: number;
+  /** Whether BEASTUBE will delete it on request. */
+  clearable: boolean;
+}
+
 export interface StorageStats {
+  /** Every location, largest first. */
+  locations: StorageLocation[];
   database_bytes: number;
   cache_bytes: number;
   history_entries: number;
@@ -212,6 +231,8 @@ export interface CommandMap {
   get_storage_stats: { args: undefined; result: StorageStats };
   /** Deletes the extractor cache only; history, bookmarks and settings are untouched. */
   clear_cache: { args: undefined; result: StorageStats };
+  /** Empties one clearable location and returns what is actually left afterwards. */
+  clear_storage: { args: { target: StorageLocation['id'] }; result: StorageStats };
   get_app_info: { args: undefined; result: AppInfo };
 
   // --- library ---

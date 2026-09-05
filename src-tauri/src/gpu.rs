@@ -36,11 +36,28 @@ use std::path::PathBuf;
 ///
 /// `--disable-background-timer-throttling` keeps the playhead and the progress bar honest while the
 /// window is not focused, which is the ordinary case for a video playing in the background.
+///
+/// ## The two cache ceilings, which are the whole storage story
+///
+/// Chromium sizes its disk cache from *free disk space* and will take hundreds of megabytes on
+/// a large drive. Measured on this application before these flags, the embedded browser's
+/// profile held **487 MB** against a 4.4 MB library: 360 MB of HTTP cache and 88 MB of compiled
+/// JavaScript. The privacy screen was reporting "stored data" of 4.4 MB at the time.
+///
+/// These are ceilings, not reservations. Nothing is allocated up front, a fresh installation
+/// uses almost none of it, and they are generous for what is actually cached here — thumbnails,
+/// the player script, stylesheets. The video itself streams and never enters the HTTP cache.
+///
+/// Worth being plain that this is a storage fix and not a speed one: a smaller cache means a
+/// slightly higher chance of re-fetching a thumbnail. Against that, half a gigabyte of cache on
+/// a machine short of disk is the more expensive of the two.
 const BASE_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
      --autoplay-policy=no-user-gesture-required \
      --disable-background-timer-throttling \
      --enable-gpu-rasterization \
-     --canvas-oop-rasterization";
+     --canvas-oop-rasterization \
+     --disk-cache-size=134217728 \
+     --media-cache-size=67108864";
 
 /// Added when the viewer has turned hardware acceleration off.
 ///

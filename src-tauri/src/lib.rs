@@ -217,6 +217,7 @@ pub fn run() {
             commands::reset_filter_rules,
             commands::get_storage_stats,
             commands::clear_cache,
+            commands::clear_storage,
             commands::get_app_info,
             commands::get_recommended,
             commands::get_shorts_feed,
