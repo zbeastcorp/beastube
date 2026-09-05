@@ -67,6 +67,21 @@ function MenuItem({
         event.stopPropagation();
         onSelect();
       }}
+      // ...but a keyboard never sends a pointer event, so with only the handler above these items
+      // were focusable, looked focused, and did nothing at all when activated. Verified in the
+      // built application: a real Enter on a focused item fired `click` and no `pointerdown`, so
+      // `onSelect` was never reached.
+      //
+      // `detail === 0` is what separates the two. A click synthesised by Enter or Space carries a
+      // detail of 0; one produced by an actual button press carries its click count. So this runs
+      // for the keyboard and stays out of the way of the pointer, which has already been handled
+      // above and must not be handled twice.
+      onClick={(event) => {
+        if (event.detail !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect();
+      }}
       className="hover:bg-surface-hover text-text flex w-full items-center gap-3 px-4 py-2 text-left text-sm"
     >
       <span className="text-text-muted shrink-0">{icon}</span>

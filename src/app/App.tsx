@@ -160,6 +160,10 @@ function useShellEvents(): void {
 /** The chrome plus the routed view. */
 function Shell(): ReactNode {
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
+  const narrow = useUiStore((state) => state.shellNarrow);
+  const drawerOpen = useUiStore((state) => state.drawerOpen);
+  const closeDrawer = useUiStore((state) => state.closeDrawer);
+  const t = useTranslation();
   const route = useRoute();
   const [scroller, setScroller] = useState<HTMLElement | null>(null);
 
@@ -174,6 +178,9 @@ function Shell(): ReactNode {
   const routeIdentity = routeToHash(route);
   useEffect(() => {
     scroller?.scrollTo({ top: 0, behavior: 'auto' });
+    // Choosing a destination is the end of what the drawer was opened for. Left open it would
+    // stand over the screen it had just navigated to.
+    useUiStore.getState().closeDrawer();
   }, [routeIdentity, scroller]);
 
   /**
@@ -216,8 +223,27 @@ function Shell(): ReactNode {
           to say so, and a notice mounted inside a screen dies with that screen. */}
       <ToastHost />
       <TopBar />
-      <div className="flex min-h-0 flex-1">
-        <Sidebar collapsed={collapsed} />
+      {/* `relative`, so the narrow-window drawer and its scrim have something to cover. */}
+      <div className="relative flex min-h-0 flex-1">
+        {/* Narrow windows always get the rail in the layout: at 800px the expanded sidebar left
+            room for a single column of cards, and at 480px it took half the window and cut them
+            off. The expanded form is still one press away — it arrives over the content below. */}
+        <Sidebar collapsed={narrow || collapsed} />
+        {narrow && drawerOpen && (
+          <>
+            {/* Dismisses on a press anywhere else, which is what a drawer is expected to do. A
+                button rather than a div so it is reachable and operable without a pointer. */}
+            <button
+              type="button"
+              aria-label={t.t('app.close')}
+              onClick={closeDrawer}
+              className="absolute inset-0 z-40 bg-black/60"
+            />
+            <div className="bg-bg absolute inset-y-0 left-0 z-50 flex shadow-lg">
+              <Sidebar collapsed={false} />
+            </div>
+          </>
+        )}
         <main
           id="main-content"
           ref={setScroller}
@@ -225,11 +251,15 @@ function Shell(): ReactNode {
           // keyed on the route. The key used to live here, which meant every navigation rebuilt the
           // whole subtree — including the player, and therefore its `<iframe>`. Scroll is reset
           // explicitly instead, which is all the key was really buying.
-          className="scroll-region relative min-w-0 flex-1"
+          // `@container` so screens inside can size themselves against the column they actually
+          // occupy rather than against the window. The watch page's two-column split used `lg:`
+          // — a window media query — while living in a box 288px narrower, which is how it came
+          // to give the player less width than the rail of thumbnails beside it.
+          className="scroll-region @container relative min-w-0 flex-1"
         >
           <div
             key={route.name}
-            className="animate-route-in mx-auto max-w-[var(--layout-content-max)] px-6 pt-2 pb-16"
+            className="animate-route-in mx-auto max-w-[var(--layout-content-max)] px-3 pt-2 pb-16 @[700px]:px-6"
           >
             {/* Scoped to the view, so a screen that throws is something you can walk away from:
                 the sidebar and the top bar are outside this and keep working. Reset on the route

@@ -49,7 +49,9 @@ function Wordmark(): ReactNode {
         />
         <path d="M11.2 14.29 18.49 10 11.2 5.71v8.58Z" fill="#fff" />
       </svg>
-      <span className="text-md font-semibold tracking-tight">BEASTUBE</span>
+      {/* The logo carries the identity on its own below 640px, where those 90px are the difference
+          between a search field that shows its placeholder and one that cuts it off mid-word. */}
+      <span className="text-md font-semibold tracking-tight max-sm:hidden">BEASTUBE</span>
     </button>
   );
 }
@@ -296,6 +298,15 @@ export function TopBar(): ReactNode {
   const route = useRoute();
   const toggleSidebar = useUiStore((state) => state.toggleSidebar);
   const collapsed = useUiStore((state) => state.sidebarCollapsed);
+  const narrow = useUiStore((state) => state.shellNarrow);
+  const drawerOpen = useUiStore((state) => state.drawerOpen);
+
+  // What this button does depends on the width, so what it announces has to as well. Narrow, it
+  // opens the sidebar over the content and `drawerOpen` is the state that is expanded or not;
+  // wide, it switches the sidebar between its rail and its column. Reporting `collapsed` in both
+  // cases told a screen reader the sidebar was expanded while the drawer it had just opened was
+  // shut, and the reverse.
+  const sidebarShown = narrow ? drawerOpen : !collapsed;
 
   return (
     <header className="drag-region bg-bg flex h-[var(--layout-topbar-height)] shrink-0 items-center gap-4 px-4">
@@ -303,8 +314,8 @@ export function TopBar(): ReactNode {
         <button
           type="button"
           onClick={toggleSidebar}
-          aria-label={t.t(collapsed ? 'nav.expandSidebar' : 'nav.collapseSidebar')}
-          aria-expanded={!collapsed}
+          aria-label={t.t(sidebarShown ? 'nav.collapseSidebar' : 'nav.expandSidebar')}
+          aria-expanded={sidebarShown}
           className="transition-surface hover:bg-surface-hover no-drag grid size-10 place-items-center rounded-full"
         >
           <Menu size={24} strokeWidth={1.8} />

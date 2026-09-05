@@ -92,26 +92,53 @@ pub(crate) enum StartupError {
 }
 
 impl AppState {
+    /// Opens the library and satisfies itself that it is intact.
+    ///
+    /// The integrity check belongs here rather than at the call site because "opened" and "usable"
+    /// are the same question to every caller: an unclean previous shutdown can leave a file that
+    /// opens perfectly and is damaged inside, and finding that before anything writes more into it
+    /// is the whole point (§127).
+    async fn open_library(path: &Path) -> Result<Database, StartupError> {
+        let database = Database::open(path).await?;
+        database.integrity_check().await.map_err(|error| {
+            tracing::error!(%error, "the local library failed its integrity check");
+            StartupError::Database(error)
+        })?;
+        Ok(database)
+    }
+
     /// Builds the state, opening the database and running migrations.
     ///
     /// # Errors
     ///
-    /// Returns [`StartupError`] if the data directory cannot be resolved, the database cannot be
-    /// opened or migrated, or the provider cannot be constructed.
+    /// Returns [`StartupError`] if the data directory cannot be resolved, the replacement database
+    /// cannot be opened or migrated either, or the provider cannot be constructed.
     pub(crate) async fn initialize(app: &AppHandle) -> Result<Self, StartupError> {
         let data_dir = app
             .path()
             .app_data_dir()
             .map_err(StartupError::DataDirectory)?;
 
-        let database = Database::open(data_dir.join("library.db")).await?;
-
-        // An unclean previous shutdown means the file may have been damaged mid-write. Checking
-        // once at startup finds that before anything writes more into it (§127).
-        if let Err(error) = database.integrity_check().await {
-            tracing::error!(%error, "the local library failed its integrity check");
-            return Err(StartupError::Database(error));
-        }
+        let library = data_dir.join("library.db");
+        let database = match Self::open_library(&library).await {
+            Ok(database) => database,
+            Err(error) => {
+                // A damaged library used to end startup here, and ending startup here is what put
+                // a fully-drawn window on screen in which every command failed — the shell has no
+                // state to talk to, so search, history, settings and downloads all answered with
+                // Tauri's own "state not managed for field `state`". A developer's sentence, in
+                // front of someone whose only mistake was an unclean shutdown.
+                //
+                // The file is set aside rather than deleted, keeping any chance of recovering it,
+                // and a fresh one is opened in its place. Losing the history is a real cost and
+                // this does not pretend otherwise; it is simply much smaller than losing the
+                // application. If even the replacement cannot be opened, that is a disk that
+                // cannot be written to, and the error still propagates.
+                tracing::error!(%error, "the local library could not be opened; setting it aside");
+                quarantine(&library);
+                Self::open_library(&library).await?
+            }
+        };
 
         let repositories = Repositories::new(&database);
 
@@ -318,6 +345,40 @@ impl AppState {
     #[must_use]
     pub(crate) fn records_searches(&self) -> bool {
         !self.is_incognito() && self.settings.read().privacy.search_history_enabled
+    }
+}
+
+/// Moves a library that cannot be opened out of the way, so a fresh one can take its place.
+///
+/// Renamed, never deleted: the file is the only copy of someone's history, playlists and
+/// bookmarks, and a damaged SQLite file is often still readable by a tool that knows how. The
+/// timestamp keeps repeated failures from overwriting the first — and most likely most complete —
+/// copy.
+///
+/// The `-wal` and `-shm` sidecars go with it. Leaving them behind is not harmless: SQLite would
+/// find a write-ahead log belonging to a database that no longer exists and replay it into the
+/// new one, which is the corruption arriving again by another route.
+///
+/// Every failure here is logged and swallowed. This runs on a path that is already recovering from
+/// one problem; a file that cannot be renamed is reported and then left to the open that follows,
+/// which will fail properly if it must.
+fn quarantine(library: &Path) {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+
+    for suffix in ["", "-wal", "-shm"] {
+        let from = PathBuf::from(format!("{}{suffix}", library.display()));
+        if !from.exists() {
+            continue;
+        }
+        let to = PathBuf::from(format!("{}.corrupt-{stamp}{suffix}", library.display()));
+        match std::fs::rename(&from, &to) {
+            Ok(()) => tracing::warn!(from = %from.display(), to = %to.display(), "library set aside"),
+            Err(error) => {
+                tracing::error!(%error, path = %from.display(), "could not set the library aside");
+            }
+        }
     }
 }
 

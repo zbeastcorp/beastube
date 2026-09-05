@@ -240,7 +240,11 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   const ambientSource = details?.thumbnails?.at(-1)?.url;
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row">
+    // 1066px of *content*, not of window: 640 for the narrowest width worth calling a player, 24
+    // for the gap, 402 for the rail. Keyed on the container because `lg:` measured the window and
+    // the columns never had the window — at 1024px it split into two and handed the player 310px
+    // next to 402px of recommendations, so the video was narrower than the thumbnails beside it.
+    <div className="@[1066px]:flex-row flex flex-col gap-6">
       <div className="min-w-0 flex-1">
         <div className="relative">
           {/* Ambient glow. A scaled, heavily blurred copy of the poster frame behind the player,
@@ -388,7 +392,7 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
         </div>
       </div>
 
-      <aside className="w-full shrink-0 lg:w-[402px]">
+      <aside className="@[1066px]:w-[402px] w-full shrink-0">
         <h2 className="text-text mb-3 text-base font-medium">{t.t('video.related')}</h2>
         {relatedItems.length > 0 ? (
           <VideoGrid>

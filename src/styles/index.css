@@ -592,7 +592,27 @@
      time that guess was wrong the row resized as it scrolled into view — which is exactly the
      "loading and settling" this was supposed to prevent. The lazy image in `LazyImage` cuts the
      real cost (requests and decodes) without ever guessing at a size. */
-    contain: layout paint;
+
+    /*
+     * `layout`, not `layout paint`.
+     *
+     * Layout containment is all this ever wanted: one card's layout must not reach the rest of the
+     * grid. Paint containment is a different promise — it clips every descendant to the padding
+     * edge, absolutely positioned ones included, because a contained box also becomes their
+     * containing block. Two things in this card are *designed* to escape it, and both were being
+     * cut off:
+     *
+     * - The `⋮` menu opens below a button near the bottom of the card. Measured in the built
+     *   application: a 174px menu against a card whose bottom edge was 133px higher, so four of
+     *   its five items were painted away. Only "Bookmark" was visible, and the rest could not be
+     *   seen or clicked on any machine, at any window size.
+     * - `.card-glow::before` below sets `inset: -12% -6% -18%` precisely so the colour spills past
+     *   the thumbnail. Paint containment silently deleted the spill, which is the whole effect.
+     *
+     * Dropping `paint` costs nothing measurable here: the cards are already cheap to paint, and it
+     * is `layout` that stops a reflow crossing the grid.
+     */
+    contain: layout;
   }
 
   .card-glow::before {

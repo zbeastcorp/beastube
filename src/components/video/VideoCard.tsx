@@ -291,7 +291,11 @@ export function VideoCardSkeleton(): ReactNode {
 /** The responsive grid YouTube uses for video cards. */
 export function VideoGrid({ children }: { children: ReactNode }): ReactNode {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-4 gap-y-8">
+    // `min(280px,100%)` rather than a bare 280px. `auto-fill` cannot make a track narrower than
+    // its minimum, so in a column under 280px the grid overflowed its own box and the cards were
+    // clipped by the shell. Identical wherever there is 280px to give, which is everywhere above
+    // a very small window.
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-x-4 gap-y-8">
       {children}
     </div>
   );
