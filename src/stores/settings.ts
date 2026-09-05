@@ -229,7 +229,7 @@ export function resolveTheme(theme: Theme): ResolvedTheme {
  * Module scope rather than component state: there is one webview, the value is not rendered from,
  * and the check has to survive the shell remounting.
  */
-let pushedScheme: 'light' | 'dark' | null = null;
+let pushedScheme: 'light' | 'dark' | 'system' | null = null;
 
 /**
  * Tells the webview which colour scheme the application is painted in.
@@ -244,13 +244,24 @@ let pushedScheme: 'light' | 'dark' | null = null;
  * paint on the dark token set.
  */
 export function applyWebviewScheme(settings: Settings): void {
-  const scheme = resolveTheme(settings.appearance.theme) === 'light' ? 'light' : 'dark';
+  // "Match system" is handed back to the system rather than resolved here, and that distinction is
+  // the whole of the fix. Pinning the window pins the webview's `prefers-color-scheme` with it, so
+  // resolving `system` to a concrete value and pushing it made the next `resolveTheme` read back
+  // the value we had just pinned. The setting could follow the OS exactly once and never again.
+  const scheme: 'light' | 'dark' | 'system' =
+    settings.appearance.theme === 'system'
+      ? 'system'
+      : resolveTheme(settings.appearance.theme) === 'light'
+        ? 'light'
+        : 'dark';
   if (scheme === pushedScheme) return;
   pushedScheme = scheme;
-  void invoke('set_window_theme', { dark: scheme === 'dark' }).catch(() => {
-    // Outside the desktop shell there is no window to theme, and inside it a refusal costs only
-    // the colour of a panel we do not own.
-  });
+  void invoke('set_window_theme', { dark: scheme === 'system' ? null : scheme === 'dark' }).catch(
+    () => {
+      // Outside the desktop shell there is no window to theme, and inside it a refusal costs only
+      // the colour of a panel we do not own.
+    },
+  );
 }
 
 /**

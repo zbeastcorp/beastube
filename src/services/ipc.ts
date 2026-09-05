@@ -296,7 +296,8 @@ export interface CommandMap {
    * `prefers-color-scheme`, which answers from the webview's preference rather than from ours.
    * Without this it renders light over a dark player on a machine whose OS is set to light.
    */
-  set_window_theme: { args: { dark: boolean }; result: null };
+  /** `null` hands the window back to the operating system, which is what "Match system" means. */
+  set_window_theme: { args: { dark: boolean | null }; result: null };
   frontend_ready: { args: undefined; result: null };
 }
 

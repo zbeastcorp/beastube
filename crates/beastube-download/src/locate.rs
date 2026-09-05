@@ -214,6 +214,49 @@ pub(crate) fn hide_console(command: &mut Command) {
     }
 }
 
+/// Ends a process *and everything it started*.
+///
+/// `Child::start_kill` ends only the process this crate spawned. `yt-dlp` is not the whole job: for
+/// anything above roughly 360p it starts `ffmpeg` to join the separate video and audio streams, and
+/// killing the parent leaves that child running. What the user saw was a download that said
+/// "Cancelled" while a core stayed pinned and the fans stayed up, with `Title [id].f137.mp4` and
+/// its siblings left in the download folder — files that are never cleaned up afterwards, because
+/// the record they would have been cleaned up against is already gone.
+///
+/// `taskkill /T` walks the tree; `/F` does not ask. It is a process launch on a path that is
+/// already ending one, and it is chosen over a Windows job object deliberately: a job object is the
+/// more elegant mechanism, but assigning to one fails when the application itself is already inside
+/// a job that forbids nesting — which is what several launchers, and some sandboxes, do. This works
+/// everywhere and is legible from the cancel path that calls it.
+///
+/// Best effort by construction. The caller kills and waits regardless, so a failure here costs the
+/// orphan it was trying to prevent and nothing else.
+#[cfg(windows)]
+pub(crate) async fn kill_process_tree(pid: u32) {
+    let mut command = Command::new("taskkill");
+    command
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    hide_console(&mut command);
+
+    // `taskkill` exits non-zero when the process has already gone, which is a race this path can
+    // legitimately lose — the download may have finished between the cancel and this call.
+    match command.status().await {
+        Ok(status) if status.success() => tracing::debug!(pid, "process tree ended"),
+        Ok(status) => tracing::debug!(pid, ?status, "taskkill found nothing to end"),
+        Err(error) => tracing::warn!(%error, pid, "could not run taskkill; a child may survive"),
+    }
+}
+
+/// Nothing to do where the platform has no such problem: elsewhere the crate is not shipped.
+#[cfg(not(windows))]
+pub(crate) async fn kill_process_tree(pid: u32) {
+    let _ = pid;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

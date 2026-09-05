@@ -175,6 +175,19 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   const [captionsAvailable, setCaptionsAvailable] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
   /**
+   * Whether anything inside the player currently holds keyboard focus.
+   *
+   * The control bar fades to `opacity: 0` while it stays in the tab ring, which is right — the
+   * controls have to be reachable without a pointer. What was missing was the other half: waking
+   * was bound to `onPointerMove` alone, so tabbing to play, mute, captions, settings or fullscreen
+   * focused a control that could not be seen, with the focus ring drawn on nothing. Anyone
+   * navigating by keyboard was operating the player blind.
+   *
+   * A separate condition rather than another call to `wake`, because focus is not a timeout: the
+   * bar stays up for as long as focus is inside it, and the idle timer resumes when focus leaves.
+   */
+  const [chromeFocused, setChromeFocused] = useState(false);
+  /**
    * Which video the settings menu was opened for, or `null` for closed.
    *
    * Derived rather than reset in an effect: an open menu belongs to the video it was opened over,
@@ -356,7 +369,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   // Held open while the menu is: controls that faded out from under an open panel would leave it
   // floating over the picture attached to nothing.
   const settingsOpen = menuFor === videoId;
-  const chromeUp = chromeVisible || !playing || settingsOpen;
+  const chromeUp = chromeVisible || !playing || settingsOpen || chromeFocused;
 
   return (
     <div
@@ -374,6 +387,14 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
         pointerEvents: hidden ? 'none' : 'auto',
       }}
       onPointerMove={wake}
+      onFocusCapture={() => {
+        setChromeFocused(true);
+      }}
+      onBlurCapture={(event) => {
+        // Only when focus has actually left the player, not on every hop between its buttons:
+        // `relatedTarget` is where focus is going, and `null` means it left the document.
+        if (!event.currentTarget.contains(event.relatedTarget)) setChromeFocused(false);
+      }}
       onPointerLeave={() => {
         setChromeVisible(false);
         setMenuFor(null);

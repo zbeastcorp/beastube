@@ -68,6 +68,17 @@ function titleKeyFor(overlay: Overlay): TranslationKey {
   }
 }
 
+/**
+ * What Tab is allowed to land on inside a dialog.
+ *
+ * Deliberately not `*` with a `tabIndex` check: this is the set the browser itself would visit, and
+ * anything with `tabindex="-1"` — the panel included — is reachable programmatically but is not a
+ * stop on the ring.
+ */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), ' +
+  'select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /** The backdrop and panel every overlay sits in. */
 function Dialog({
   overlay,
@@ -86,6 +97,43 @@ function Dialog({
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();
+        return;
+      }
+
+      // Tab is kept inside the panel, which is the half of `aria-modal="true"` the attribute does
+      // not actually do. It tells assistive technology that everything behind is inert; it does
+      // nothing to the tab ring. So a few presses of Tab walked out of the dialog and into the
+      // sidebar and the feed underneath — still reachable, still clickable, with a modal drawn
+      // over them and no way back except the pointer this is meant to be an alternative to.
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const focusable = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        // `offsetParent` is null for anything `display: none`, which is how a hidden control in a
+        // dialog that swaps its contents would otherwise capture the focus ring.
+        (element) => element.offsetParent !== null || element === document.activeElement,
+      );
+      if (focusable.length === 0) {
+        // Nothing to move between; keep focus on the panel rather than letting it escape.
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      const active = document.activeElement;
+
+      // Wrapping in both directions, and from the panel itself, which is where focus sits when the
+      // dialog has no field to open into.
+      if (event.shiftKey && (active === first || active === panel)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || active === panel)) {
+        event.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -106,9 +154,25 @@ function Dialog({
   // keystroke meant as text.
   useEffect(() => {
     const panel = panelRef.current;
-    if (!panel) return;
+    if (!panel) return undefined;
+
+    // Remembered before focus moves, restored when the dialog goes.
+    //
+    // Without this, closing a dialog dropped focus on `<body>`: the next Tab started from the top
+    // of the document, so someone who opened "Add to playlist" from a card halfway down the feed
+    // was returned to the skip link and had to walk all the way back. The control that opened the
+    // dialog is where they were, and it is where they belong afterwards.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
     const field = panel.querySelector<HTMLElement>('input, textarea, select');
     (field ?? panel).focus();
+
+    return () => {
+      // Only if it is still there. A dialog that deletes the playlist row that opened it leaves an
+      // opener that is no longer in the document, and focusing a detached node silently does
+      // nothing — which is the `<body>` case again, by another route.
+      if (opener?.isConnected) opener.focus();
+    };
     // Re-run when the dialog changes what it is showing. The host keeps one `Dialog` mounted and
     // swaps its contents, so with an empty list this ran once ever: moving from one overlay to
     // another left focus on the element the previous one had, or on `<body>` once that element was
@@ -132,7 +196,11 @@ function Dialog({
         aria-modal="true"
         aria-label={t.t(titleKeyFor(overlay))}
         tabIndex={-1}
-        className="animate-dialog-in bg-surface border-border w-full max-w-md rounded-xl border p-5 shadow-2xl outline-none"
+        // Capped and scrollable. The panel grew to whatever its contents needed and the grid
+        // centred it, so on a short window — a 768px laptop, or any window dragged small — a long
+        // playlist list pushed the Cancel and Save buttons off the bottom of the screen with no way
+        // to reach them.
+        className="animate-dialog-in bg-surface border-border max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border p-5 shadow-2xl outline-none"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <h2 className="text-text text-base font-medium">{t.t(titleKeyFor(overlay))}</h2>

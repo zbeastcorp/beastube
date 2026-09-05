@@ -182,9 +182,16 @@ export function CardMenu({
         // Hidden until the card is hovered or the button itself is focused, which is how YouTube
         // does it — forty always-visible dots on a grid is noise. `group-hover` comes from the
         // card, and `focus-visible` is what keeps it reachable by keyboard.
+        //
+        // `pointer-coarse` is the third way in, and without it there was none. A touch screen or a
+        // pen never produces a hover, so on a 2-in-1 held as a tablet these dots were invisible and
+        // there was no gesture that would reveal them: bookmarking, downloading, adding to a
+        // playlist and removing from history were all unreachable. Where the pointer cannot hover,
+        // the button is simply always there.
         className={[
           'text-text-muted hover:bg-surface-hover hover:text-text grid size-8 place-items-center rounded-full',
           'opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100',
+          'pointer-coarse:opacity-100',
           open ? 'bg-surface-hover text-text opacity-100' : '',
         ].join(' ')}
       >

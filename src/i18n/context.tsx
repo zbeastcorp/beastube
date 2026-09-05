@@ -7,7 +7,7 @@
  * changes.
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
 
 import { createTranslator, type Locale, type Translator } from './index';
 
@@ -22,6 +22,21 @@ export function TranslationProvider({
   children: ReactNode;
 }): ReactNode {
   const translator = useMemo(() => createTranslator(locale), [locale]);
+
+  // The document's own language, set where the language is actually decided.
+  //
+  // `index.html` ships `lang="en"` and nothing ever changed it, so a Hindi or Spanish interface
+  // was still announced to a screen reader as English: the wrong voice, the wrong pronunciation
+  // rules, and for Hindi a Devanagari string read through an English phoneme set. It is also what
+  // `:lang()` selectors and the browser's own hyphenation and quotation rules key on.
+  //
+  // In an effect rather than during render because it is a write to something React does not own.
+  // Unlike the theme, nothing about this is visible, so arriving a frame late costs nothing: a
+  // screen reader reads the document after it exists, not during its first paint.
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
   return <TranslationContext value={translator}>{children}</TranslationContext>;
 }
 

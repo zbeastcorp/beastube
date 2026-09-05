@@ -200,6 +200,24 @@ function PlaybackPanel(): ReactNode {
         />
       </SettingRow>
 
+      {/* The remedy for a black picture, and until now the one control the catalogue described and
+          the screen did not have: `settings.playback.hardwareAcceleration` and its hint have been
+          translated into three languages while nothing rendered them and nothing read the value.
+          A setting that exists everywhere except where it can be used is the same defect as a
+          label with no feature behind it (§131). */}
+      <SettingRow
+        label={t.t('settings.playback.hardwareAcceleration')}
+        hint={`${t.t('settings.playback.hardwareAccelerationHint')} ${t.t('settings.playback.hardwareAccelerationRestart')}`}
+      >
+        <Switch
+          label={t.t('settings.playback.hardwareAcceleration')}
+          checked={playback.hardware_acceleration}
+          onChange={(hardware_acceleration) => {
+            update({ playback: { hardware_acceleration } });
+          }}
+        />
+      </SettingRow>
+
       <SettingRow label={t.t('settings.playback.seekStep')} htmlFor={seekId}>
         <Slider
           id={seekId}

@@ -13,6 +13,7 @@
 
 mod commands;
 mod downloads;
+mod gpu;
 mod logging;
 // Request interception is a WebView2 facility; there is no cross-platform equivalent, and the
 // module is absent rather than stubbed on other targets so a missing capability is a compile error
@@ -65,6 +66,98 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 /// How often the wait above re-checks. Cheap: a lock and a count.
 const SHUTDOWN_POLL: Duration = Duration::from_millis(50);
 
+/// Shrinks the window to fit the display it opened on, if the configured size does not.
+///
+/// The window is configured 1280x800 and centred, which is a good size on the machines it was
+/// written on and too tall for a 1366x768 laptop — the commonest cheap Windows screen there is.
+/// Centring 800 logical pixels in 768 puts the top of the window, and therefore its title bar and
+/// its close button, sixteen pixels above the top of the screen. There is no way to drag a window
+/// down by a title bar that is off-screen.
+///
+/// The margins are for the taskbar and the window frame rather than taste: `size()` is the whole
+/// display, and a window that exactly fills it sits under the taskbar.
+///
+/// Only ever shrinks. A large display keeps the configured size rather than being stretched to
+/// fill it, which is not what centring a window is for.
+fn fit_window_to_monitor(window: &tauri::WebviewWindow) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let scale = monitor.scale_factor();
+    let display = monitor.size().to_logical::<f64>(scale);
+    let Ok(outer) = window.outer_size() else {
+        return;
+    };
+    let outer = outer.to_logical::<f64>(scale);
+
+    let widest = display.width * 0.95;
+    let tallest = display.height * 0.90;
+    if outer.width <= widest && outer.height <= tallest {
+        return;
+    }
+
+    let fitted = tauri::LogicalSize::new(outer.width.min(widest), outer.height.min(tallest));
+    tracing::info!(
+        from = format!("{}x{}", outer.width, outer.height),
+        to = format!("{}x{}", fitted.width, fitted.height),
+        "window shrunk to fit the display"
+    );
+    if let Err(error) = window.set_size(fitted) {
+        tracing::warn!(%error, "could not resize the window to fit the display");
+        return;
+    }
+    // Centring again because the old, larger size is what the original centring was based on.
+    if let Err(error) = window.center() {
+        tracing::warn!(%error, "could not re-centre the window");
+    }
+}
+
+/// Tells the user, with no application, that the application could not start.
+///
+/// Everything this could normally use is gone at the point it runs: there is no window, no
+/// webview, no translation catalogue, and no console. A Win32 message box depends on none of them,
+/// which is exactly why it is the right tool here and the wrong one everywhere else.
+///
+/// The text names WebView2 because that is overwhelmingly the cause — it is the only external
+/// runtime this application requires — and gives the viewer the one action that fixes it. The
+/// underlying error is appended rather than shown alone: on its own it is a wry sentence about COM
+/// initialisation that means nothing to the person reading it, but it is what a support log needs.
+// Scoped to this one function rather than the file, which is the shape the workspace lint asks for
+// (`unsafe_code = "deny"`, opted out of explicitly and locally). `MessageBoxW` is a Win32 call and
+// there is no safe wrapper for it that does not require the application this is reporting the
+// absence of.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn report_fatal_startup(detail: &str) {
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+    use windows::core::HSTRING;
+
+    let body = format!(
+        "BEASTUBE could not start.\n\n\
+         This is almost always a missing Microsoft Edge WebView2 Runtime, which BEASTUBE uses to \
+         draw its interface. Installing it from\n\n    \
+         https://developer.microsoft.com/microsoft-edge/webview2/\n\n\
+         and starting BEASTUBE again should fix it.\n\n\
+         Technical detail: {detail}"
+    );
+
+    // SAFETY: both strings outlive the call, and a null owner is valid for an ownerless dialog.
+    unsafe {
+        MessageBoxW(
+            None,
+            &HSTRING::from(body),
+            &HSTRING::from("BEASTUBE"),
+            MB_OK | MB_ICONERROR,
+        );
+    }
+}
+
+/// Elsewhere there is no message box to reach for, so the log is the whole report.
+#[cfg(not(windows))]
+fn report_fatal_startup(detail: &str) {
+    tracing::error!(%detail, "could not start the application shell");
+}
+
 /// Builds and runs the desktop application.
 ///
 /// # Panics
@@ -72,6 +165,11 @@ const SHUTDOWN_POLL: Duration = Duration::from_millis(50);
 /// Panics if the Tauri context cannot be constructed, which indicates a malformed
 /// `tauri.conf.json` — a build-time defect rather than a runtime condition worth recovering from.
 pub fn run() {
+    // Before the builder, and therefore before the window: the webview is created from the
+    // configuration during `build`, so this is the last moment at which its command line can still
+    // be decided by a preference rather than fixed in a file.
+    gpu::apply_browser_arguments();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -161,6 +259,11 @@ pub fn run() {
                 }
             });
 
+            // Before the window is ever shown, and while it still cannot be seen to move.
+            if let Some(window) = handle.get_webview_window(MAIN_WINDOW) {
+                fit_window_to_monitor(&window);
+            }
+
             // The request filter is attached once the state exists, because it borrows the rule
             // set manager from it. Without this the filtering subsystem is a library nothing calls
             // — which the diagnostics screen would honestly report as zero evaluated requests.
@@ -197,7 +300,18 @@ pub fn run() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("failed to start the BEASTUBE application shell")
+        .unwrap_or_else(|error| {
+            // The one failure a viewer can actually do something about, and the one that used to
+            // be completely silent. `build` is where wry asks Windows for a WebView2 environment,
+            // and on a machine without the runtime it fails here — before any window exists, so
+            // there is nothing to draw an error in, and under the `windows` subsystem there is no
+            // console for a panic message either. The process simply vanished: no window, no
+            // dialog, nothing in the event log.
+            //
+            // A native message box needs none of the machinery that has just failed to exist.
+            report_fatal_startup(&error.to_string());
+            std::process::exit(1);
+        })
         .run(|app, event| {
             // Downloads are separate processes, and nothing was stopping them. Closing the window
             // left `yt-dlp` — and the `ffmpeg` it spawns to join the streams — running with no

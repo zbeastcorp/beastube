@@ -123,6 +123,10 @@ pub(crate) async fn save_settings(
         .save(&sanitized, Timestamp::now())
         .await
         .map_err(fail)?;
+    // Mirrored beside the database, because the next launch has to know this before the database
+    // can be opened: the webview's command line is fixed when the window is created, which is
+    // before any of this exists. See `gpu`.
+    crate::gpu::remember_preference(sanitized.playback.hardware_acceleration);
     Ok(sanitized)
 }
 
@@ -1834,7 +1838,7 @@ pub(crate) async fn get_more_shorts(
 /// Returns a payload if the window is gone or the platform refuses the change. Neither is
 /// recoverable in the UI, and neither breaks anything: the panel is merely the wrong colour.
 #[tauri::command]
-pub(crate) fn set_window_theme(app: tauri::AppHandle, dark: bool) -> CommandResult<()> {
+pub(crate) fn set_window_theme(app: tauri::AppHandle, dark: Option<bool>) -> CommandResult<()> {
     use tauri::{Manager as _, Theme};
 
     let Some(window) = app.get_webview_window("main") else {
@@ -1849,8 +1853,13 @@ pub(crate) fn set_window_theme(app: tauri::AppHandle, dark: bool) -> CommandResu
         });
     };
 
+    // `None` is not "leave it alone" — it is "follow the operating system", and it is what makes
+    // the "Match system" setting mean anything. Pinning the window pins the webview's
+    // `prefers-color-scheme` with it, so a window pinned dark reported dark to `matchMedia` for
+    // ever after, and the one setting whose whole job is to track the OS could never see it
+    // change.
     window
-        .set_theme(Some(if dark { Theme::Dark } else { Theme::Light }))
+        .set_theme(dark.map(|dark| if dark { Theme::Dark } else { Theme::Light }))
         .map_err(|error| ErrorPayload {
             kind: beastube_core::error::ErrorKind::Configuration,
             code: "configuration.invalid".to_owned(),

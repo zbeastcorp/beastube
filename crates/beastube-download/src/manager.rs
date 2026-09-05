@@ -431,6 +431,14 @@ async fn run(
             () = cancel.cancelled() => {
                 // Kill, wait, then clean up: waiting first is what guarantees the process has
                 // released its file handles before the partial files are removed.
+                //
+                // The tree, not just the child. `yt-dlp` starts `ffmpeg` to join the separate
+                // video and audio streams, and ending only the parent left that muxer running with
+                // no download to belong to — still holding the very partial files the next line
+                // tries to delete. Cancelling looked instant and left a process behind.
+                if let Some(pid) = child.id() {
+                    crate::locate::kill_process_tree(pid).await;
+                }
                 let _ = child.start_kill();
                 let _ = child.wait().await;
                 remove_partials(&plan.directory, &video_id);
@@ -587,7 +595,10 @@ fn remove_partials(directory: &Path, video_id: &VideoId) {
             && is_cancel_leftover(&name)
             && let Err(error) = std::fs::remove_file(entry.path())
         {
-            tracing::debug!(%error, file = %name, "could not remove a partial download");
+            // `warn`, not `debug`. A release build logs at `warn` and above, so at `debug` the one
+            // symptom of a muxer still holding the file — a sharing violation — was invisible in
+            // exactly the builds where it happens, and the leftovers were blamed on nothing.
+            tracing::warn!(%error, file = %name, "could not remove a partial download");
         }
     }
 }

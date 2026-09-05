@@ -181,6 +181,24 @@ function Shell(): ReactNode {
     // Choosing a destination is the end of what the drawer was opened for. Left open it would
     // stand over the screen it had just navigated to.
     useUiStore.getState().closeDrawer();
+
+    // And focus follows the eye, which for a keyboard or a screen reader is the whole navigation.
+    //
+    // Nothing moved focus before this. The URL changed, the screen changed, and focus stayed on
+    // whatever had been clicked — so a screen reader announced nothing at all, and the next Tab
+    // continued from the link belonging to the page that had just gone. Focusing the content
+    // region is the ordinary remedy: it is a landmark, so it is announced, and it puts the tab
+    // ring at the top of what is now on screen.
+    //
+    // Skipped while a field has focus, because a navigation can happen *because* someone is
+    // typing — the search box drives the search route as it goes — and pulling focus out of the
+    // box mid-word would make the feature unusable.
+    const active = document.activeElement;
+    const typing =
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement ||
+      (active instanceof HTMLElement && active.isContentEditable);
+    if (!typing) scroller?.focus({ preventScroll: true });
   }, [routeIdentity, scroller]);
 
   /**
@@ -247,6 +265,9 @@ function Shell(): ReactNode {
         <main
           id="main-content"
           ref={setScroller}
+          // Focusable programmatically, not on the tab ring. It is what the route effect moves
+          // focus to after a navigation, and what the skip link above already points at.
+          tabIndex={-1}
           // `relative` so the player host below can position itself against this box, and no longer
           // keyed on the route. The key used to live here, which meant every navigation rebuilt the
           // whole subtree — including the player, and therefore its `<iframe>`. Scroll is reset

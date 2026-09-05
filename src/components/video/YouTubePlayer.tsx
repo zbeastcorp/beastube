@@ -52,6 +52,21 @@ const IFRAME_API_SRC = 'https://www.youtube.com/iframe_api';
 /** How long after a failed construction before trying again. */
 const API_RETRY_DELAY_MS = 2_000;
 
+/**
+ * How many times one video may rebuild the player before the retrying stops.
+ *
+ * There was no limit, and the loop was not obvious: every failure stored a *new* `failure` object,
+ * the retry effect listed `failure` among its dependencies, and so each failed rebuild scheduled
+ * the next one. A video the embed will never play — a copyright block, an age gate — therefore
+ * rebuilt the player every two seconds for as long as its page was open, and each pass also
+ * re-asked `yt-dlp` for a reason that could not have changed.
+ *
+ * Two is enough to cover what retrying is actually for: a script fetch that lost a race at launch,
+ * or a transient network fault. A third failure means the answer is no, and the error already on
+ * screen is the truthful thing to leave there.
+ */
+const MAX_CONSTRUCTION_RETRIES = 2;
+
 /** How long to wait for the API script before reporting failure. */
 const API_LOAD_TIMEOUT_MS = 15_000;
 
@@ -1165,22 +1180,40 @@ export function YouTubePlayer({
   }, [controls, loop, attempt]);
 
   /**
-   * Retries a failed construction when a different video is asked for.
+   * How many rebuilds the video currently on screen has already been given.
+   *
+   * A ref rather than state because changing it must not itself cause a render — it is read and
+   * written inside the effect below, whose own re-runs are what it exists to bound.
+   */
+  const retriesRef = useRef<{ id: VideoId | null; used: number }>({ id: null, used: 0 });
+
+  /**
+   * Retries a failed construction, a bounded number of times.
    *
    * The natural moment to try again: the viewer has just clicked something, so the wait is one
    * they already expect. Guarded on there being no player at all, so this never disturbs a working
-   * one.
+   * one, and on {@link MAX_CONSTRUCTION_RETRIES}, so a video that will never play stops asking.
+   *
+   * The tally resets when a different video arrives, because the previous video's refusal says
+   * nothing about this one — a fresh video gets its full allowance.
    */
   useEffect(() => {
-    if (playerRef.current === null && failure !== null) {
-      const timer = setTimeout(() => {
-        setAttempt((count) => count + 1);
-      }, API_RETRY_DELAY_MS);
-      return () => {
-        clearTimeout(timer);
-      };
+    if (playerRef.current !== null || failure === null) return undefined;
+
+    const tally = retriesRef.current;
+    if (tally.id !== videoId) {
+      tally.id = videoId;
+      tally.used = 0;
     }
-    return undefined;
+    if (tally.used >= MAX_CONSTRUCTION_RETRIES) return undefined;
+    tally.used += 1;
+
+    const timer = setTimeout(() => {
+      setAttempt((count) => count + 1);
+    }, API_RETRY_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [videoId, failure]);
 
   // Effect 2 — swap. This is the whole point: a new video costs one API call, not a new iframe.
@@ -1229,8 +1262,32 @@ export function YouTubePlayer({
     });
     observer.observe(frame);
 
+    // Dragging the window to a monitor with a different scale factor is a resize the observer
+    // cannot see. Its CSS box is unchanged — 640 logical pixels is 640 logical pixels — while the
+    // *device* pixels behind it are not: at 100% that box is 640 real pixels and at 200% it is
+    // 1280. The tier chosen for the old display was then served to the new one, so moving from a
+    // laptop panel to a 4K monitor kept the laptop's rendition, upscaled and soft, until something
+    // else happened to resize the frame.
+    //
+    // `resolution` is the query that changes when the ratio does. It is re-armed each time because
+    // the media query is bound to the value that was current when it was created, and that value
+    // has just stopped being current.
+    let media: MediaQueryList | null = null;
+    const onRatioChange = (): void => {
+      applyLayout();
+      watchRatio();
+    };
+    const watchRatio = (): void => {
+      media?.removeEventListener('change', onRatioChange);
+      if (typeof window.matchMedia !== 'function') return;
+      media = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      media.addEventListener('change', onRatioChange);
+    };
+    watchRatio();
+
     return () => {
       observer.disconnect();
+      media?.removeEventListener('change', onRatioChange);
       if (scheduled !== 0) cancelAnimationFrame(scheduled);
     };
   }, []);
@@ -1430,13 +1487,19 @@ export function YouTubePlayer({
    * only when the viewer is already looking at an error and a better explanation is worth a couple
    * of seconds. A refusal to answer leaves the caller's own wording in place.
    */
+  // Keyed on the failing video, not on the failure object. Every failure stored a fresh object, so
+  // listing `failure` here re-ran this on each one — and paired with a retry loop that produced a
+  // failure every two seconds, it launched `yt-dlp` again every two seconds, three client probes
+  // at a time, for an answer about the same video that could not have changed. The id is what the
+  // question is actually about.
+  const failedId = failure?.id ?? null;
   useEffect(() => {
-    if (failure === null) return undefined;
+    if (failedId === null) return undefined;
     let cancelled = false;
-    void invoke('diagnose_playback', { videoId: failure.id })
+    void invoke('diagnose_playback', { videoId: failedId })
       .then((text) => {
         if (!cancelled && text !== null && text.length > 0) {
-          setReason({ id: failure.id, text });
+          setReason({ id: failedId, text });
         }
       })
       .catch(() => {
@@ -1445,7 +1508,7 @@ export function YouTubePlayer({
     return () => {
       cancelled = true;
     };
-  }, [failure]);
+  }, [failedId]);
 
   // A failure belongs to the video that produced it. Once a different video is loaded the frame is
   // live again, so the error must not outlive its subject.

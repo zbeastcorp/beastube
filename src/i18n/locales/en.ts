@@ -352,6 +352,9 @@ export const en = {
       hardwareAcceleration: 'Hardware acceleration',
       hardwareAccelerationHint:
         'Turn this off if video stutters or the picture is black — some graphics drivers decode incorrectly.',
+      // The webview's command line is fixed when its window is created, which is before any of
+      // this can be read. Saying so is better than a switch that appears to do nothing.
+      hardwareAccelerationRestart: 'Takes effect when BEASTUBE is restarted.',
       seekStep: 'Seek step',
       seekStepLarge: 'Long seek step',
       speed: 'Default speed',
