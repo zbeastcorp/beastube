@@ -121,10 +121,6 @@ actually made in.
 
 ### Your library
 
-<div align="center">
-  <img src="docs/screenshots/library.png" width="90%" alt="The library screen">
-</div>
-
 History, playlists, bookmarks and watch positions, all local. History can be searched, and entries
 removed one at a time from the card menu. Incognito leaves no trace at all.
 
