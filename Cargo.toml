@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.94"
 license = "GPL-3.0-or-later"
 authors = ["BEASTUBE contributors"]
-repository = "https://github.com/beastube/beastube"
+repository = "https://github.com/zbeastcorp/beastube"
 publish = false
 
 [workspace.dependencies]

@@ -6,7 +6,7 @@ name: Release
 # ## What has to line up for an update to install
 #
 # `src-tauri/tauri.conf.json` names two things: an endpoint,
-# `https://github.com/BEASTUBE/beastube/releases/latest/download/latest.json`, and the public half
+# `https://github.com/zbeastcorp/beastube/releases/latest/download/latest.json`, and the public half
 # of the updater key. An installed copy fetches that JSON, compares versions, downloads the
 # installer it names, and checks its signature against the compiled-in public key before running
 # any of it.

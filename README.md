@@ -6,11 +6,11 @@
 
 **A desktop YouTube client for Windows that keeps what you watch on your own machine.**
 
-[![CI](https://github.com/BEASTUBE/beastube/actions/workflows/ci.yml/badge.svg)](https://github.com/BEASTUBE/beastube/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/BEASTUBE/beastube?sort=semver&color=ff7a59)](https://github.com/BEASTUBE/beastube/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/BEASTUBE/beastube/total?color=ff7a59)](https://github.com/BEASTUBE/beastube/releases)
+[![CI](https://github.com/zbeastcorp/beastube/actions/workflows/ci.yml/badge.svg)](https://github.com/zbeastcorp/beastube/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/zbeastcorp/beastube?sort=semver&color=ff7a59)](https://github.com/zbeastcorp/beastube/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/zbeastcorp/beastube/total?color=ff7a59)](https://github.com/zbeastcorp/beastube/releases)
 [![Licence](https://img.shields.io/badge/licence-GPLv3-blue)](LICENSE)
-[![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?logo=windows&logoColor=white)](https://github.com/BEASTUBE/beastube/releases/latest)
+[![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?logo=windows&logoColor=white)](https://github.com/zbeastcorp/beastube/releases/latest)
 
 No account. No sync. Nothing sent anywhere.
 
@@ -60,7 +60,7 @@ native binary. It is not Electron; the installed application is around 24 MB of 
 ## Installation
 
 Download **`BEASTUBE_<version>_x64-setup.exe`** from the
-[latest release](https://github.com/BEASTUBE/beastube/releases/latest) and run it.
+[latest release](https://github.com/zbeastcorp/beastube/releases/latest) and run it.
 
 That is the whole of it. The installer carries `yt-dlp` and `ffmpeg`, so downloads work on a machine
 you have not prepared, and it installs the WebView2 runtime if Windows does not already have it

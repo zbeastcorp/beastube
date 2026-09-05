@@ -73,4 +73,4 @@ breaking changes.
   framework they pulled into the build, six unused npm packages, three Tauri plugins that were
   compiled in and never registered, and eleven exported functions with no caller anywhere.
 
-[Unreleased]: https://github.com/BEASTUBE/beastube/commits/main
+[Unreleased]: https://github.com/zbeastcorp/beastube/commits/main
