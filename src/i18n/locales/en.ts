@@ -569,6 +569,10 @@ export const en = {
   error: {
     generic: 'Something went wrong',
     genericHint: 'The action could not be completed.',
+    // A page that does not exist is not a failure, and saying so invites a bug report about a
+    // typo. The old wording paired "Something went wrong" with the raw path underneath it.
+    notFound: 'This page does not exist',
+    notFoundHint: 'The link may be out of date, or the address mistyped.',
     network: {
       offline: 'You appear to be offline',
       offlineHint: 'Your library, playlists and bookmarks are still available.',

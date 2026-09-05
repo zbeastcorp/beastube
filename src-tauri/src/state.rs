@@ -374,7 +374,9 @@ fn quarantine(library: &Path) {
         }
         let to = PathBuf::from(format!("{}.corrupt-{stamp}{suffix}", library.display()));
         match std::fs::rename(&from, &to) {
-            Ok(()) => tracing::warn!(from = %from.display(), to = %to.display(), "library set aside"),
+            Ok(()) => {
+                tracing::warn!(from = %from.display(), to = %to.display(), "library set aside");
+            }
             Err(error) => {
                 tracing::error!(%error, path = %from.display(), "could not set the library aside");
             }

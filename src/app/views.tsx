@@ -56,7 +56,7 @@ import {
 } from '@/types/domain';
 
 import { Link, useNavigate } from './router';
-import type { Route } from './routes';
+import { HOME, type Route } from './routes';
 
 /** Placeholder cards for a first load. Roughly one screenful at 1080p. */
 const SKELETON_COUNT = 12;
@@ -1035,9 +1035,31 @@ function LocalPlaylistView({ id }: { id: LocalPlaylistId }): ReactNode {
   );
 }
 
-function NotFoundView({ path }: { path: string }): ReactNode {
+/**
+ * An address that matches no screen.
+ *
+ * Deliberately not the generic error. This is reached by a stale link, a mistyped hash, or a
+ * bookmark from an older build — none of which is anything going wrong, and calling it that
+ * invites a bug report about a typo. The raw path is gone with it: it was rendered in a monospace
+ * block under the message, which is the shape of a diagnostic, and it told the viewer nothing they
+ * did not already have in the address bar.
+ *
+ * The way out matters more than the explanation, so the button is the point of the screen.
+ */
+function NotFoundView(): ReactNode {
+  const navigate = useNavigate();
   return (
-    <EmptyState titleKey="error.generic" bodyKey="error.genericHint" icon="error" detail={path} />
+    <EmptyState
+      titleKey="error.notFound"
+      bodyKey="error.notFoundHint"
+      icon="error"
+      action={{
+        labelKey: 'nav.home',
+        onClick: () => {
+          navigate(HOME);
+        },
+      }}
+    />
   );
 }
 
@@ -1064,7 +1086,7 @@ export function renderRoute(route: Route): ReactNode {
     case 'channel':
       return <ChannelView channelId={route.channelId} tab={route.tab ?? 'videos'} />;
     case 'playlist':
-      return <NotFoundView path={route.playlistId} />;
+      return <NotFoundView />;
     case 'localPlaylist':
       return <LocalPlaylistView id={route.id} />;
     case 'library':
@@ -1078,6 +1100,6 @@ export function renderRoute(route: Route): ReactNode {
     case 'diagnostics':
       return <DiagnosticsView />;
     case 'notFound':
-      return <NotFoundView path={route.path} />;
+      return <NotFoundView />;
   }
 }

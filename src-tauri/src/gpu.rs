@@ -47,7 +47,8 @@ const BASE_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenPro
 /// The remedy of last resort for a broken driver, and the reason the setting exists: a machine that
 /// paints a black rectangle where the video should be will usually paint the video once the GPU is
 /// out of the path. Slower, and working, which is the right way round.
-const SOFTWARE_ARGS: &str = "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer=0";
+const SOFTWARE_ARGS: &str =
+    "--disable-gpu --disable-gpu-compositing --disable-software-rasterizer=0";
 
 /// The environment variable WebView2 reads its extra command line from.
 const WEBVIEW_ARGS_ENV: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
@@ -59,7 +60,11 @@ const WEBVIEW_ARGS_ENV: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
 /// SQLite twice per launch to answer one boolean.
 fn preference_path() -> Option<PathBuf> {
     let base = std::env::var_os("APPDATA")?;
-    Some(PathBuf::from(base).join("app.beastube.desktop").join("software-rendering"))
+    Some(
+        PathBuf::from(base)
+            .join("app.beastube.desktop")
+            .join("software-rendering"),
+    )
 }
 
 /// Whether the viewer has asked for hardware acceleration to be left on.
