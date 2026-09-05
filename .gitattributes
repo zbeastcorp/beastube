@@ -1,0 +1,31 @@
+# Line endings are normalised in the repository, whatever the machine that committed them.
+#
+# Without this, eighteen Rust and TOML files carried CRLF while the other 173 files carried LF —
+# drift from edits made by tools that rewrite a whole file. It is invisible until someone on
+# another platform clones the repository and sees a diff they did not make, or until a single
+# changed line arrives as a changed file.
+#
+# `text=auto eol=lf` stores LF for everything git decides is text, and checks it out as LF. Windows
+# handles LF fine in every tool this project uses — Rust, Node, PowerShell 7, and Git Bash.
+* text=auto eol=lf
+
+# Files where the ending is not cosmetic. A `.bat` or `.cmd` with LF endings can fail on older
+# Windows shells, and a `.ps1` signed by Authenticode is signed over its exact bytes.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary, so git neither diffs nor normalises them.
+*.png binary
+*.ico binary
+*.bmp binary
+*.woff2 binary
+*.exe binary
+
+# Generated. Marking them keeps a lockfile change out of a diff someone has to read, while still
+# tracking the file itself.
+pnpm-lock.yaml -diff linguist-generated
+Cargo.lock -diff linguist-generated
+
+# What GitHub counts as the language of this repository. Without this the vendored font subsets and
+# the lockfiles skew the bar at the top of the page.
+docs/screenshots/* linguist-documentation
