@@ -6,9 +6,15 @@
  * that change rarely and are read constantly. Hand-writing them keeps the wire contract legible on
  * both sides.
  *
- * Drift is caught rather than trusted: `tests/fixtures/contract/*.json` holds one sample of each
- * shape, serialized by a Rust test and parsed by a TypeScript test. If either side changes a field
- * name, a `serde` rename or an enum variant, one of those tests fails.
+ * Drift is *not* currently caught by a test, and this comment used to claim it was — it described
+ * `tests/fixtures/contract/*.json`, a Rust test serializing each shape and a TypeScript test
+ * parsing it. No such fixture or test has ever existed here. A comment promising a safety net that
+ * is not there is worse than no comment, because it is read as a reason to relax.
+ *
+ * What actually holds the two sides together today is this file being written by hand against
+ * `beastube-core`, and a rename on either side producing a compile error at the first call site
+ * that touches the field. That is real but partial: it will not catch a `serde` rename or a new
+ * enum variant. A contract fixture remains worth building.
  *
  * Conventions carried over from Rust:
  * - Timestamps are Unix milliseconds (`number`), directly usable as `new Date(value)`.

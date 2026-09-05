@@ -823,6 +823,16 @@ function AboutPanel(): ReactNode {
       <SettingRow label={t.t('settings.about.licenses')} hint={t.t('settings.about.licensesHint')}>
         <ReadOnlyValue value="binaries/licenses" mono />
       </SettingRow>
+
+      {/* The affiliation disclaimer lived only in the README, which is a file on a website that
+          someone installing from a release never opens. A trade-mark disclaimer that the user of
+          the application cannot see is not doing the job it exists for. */}
+      <SettingRow
+        label={t.t('settings.about.disclaimer')}
+        hint={t.t('settings.about.disclaimerHint')}
+      >
+        <ReadOnlyValue value="" />
+      </SettingRow>
     </SettingsSection>
   );
 }

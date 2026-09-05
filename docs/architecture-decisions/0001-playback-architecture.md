@@ -9,7 +9,11 @@ BEASTUBE must play YouTube video in a Tauri 2 desktop shell on Windows. The spec
 for a capability-driven quality ladder, buffer control, frame metrics and an ad-free experience —
 all of which presuppose that the application controls the media pipeline.
 
-Research (`docs/research/youtube-platform.md`, `docs/research/rustypipe.md`) established four facts
+Research established four facts
+<!-- The notes behind this are working material and are not published: they quote absolute paths
+     from the machine they were written on. The conclusions they reached are stated below in
+     full, which is what a reader of this record actually needs. -->
+
 that make that presupposition unsafe as a sole foundation:
 
 1. **SABR has landed.** YouTube's `web` client no longer returns playable `adaptiveFormats` URLs;
@@ -107,7 +111,7 @@ maps that code to its own message key precisely so it names itself rather than s
 frame.
 
 **Metadata is a separate decision.** This ADR governs playback only. Search, channel and playlist
-metadata are addressed by ADR 0002; the `PlaybackProvider` split means a metadata backend can be
+metadata are not yet the subject of their own record; the `PlaybackProvider` split means a metadata backend can be
 replaced without touching playback, and vice versa.
 
 **Reversibility.** Should SABR-free plain URLs disappear entirely, `DirectStreamAdapter` becomes

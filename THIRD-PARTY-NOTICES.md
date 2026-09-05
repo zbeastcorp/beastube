@@ -16,9 +16,23 @@ Their licence texts are installed alongside them, under `binaries/licenses/`.
 - **Licence:** GPL v3. Full text: `binaries/licenses/ffmpeg-LICENSE.txt`, installed with the
   application.
 - **Source code:** ffmpeg's corresponding source is published by the FFmpeg project at
-  <https://ffmpeg.org/download.html>, and the exact build configuration used by this binary is
-  documented at <https://www.gyan.dev/ffmpeg/builds/>. Running `ffmpeg -version` prints the
-  configuration and version of the copy actually installed.
+  <https://ffmpeg.org/download.html>, and the build configuration is documented at
+  <https://www.gyan.dev/ffmpeg/builds/>.
+
+  **Which version you have, and why that matters.** `scripts/fetch-tools.ps1` downloads the
+  publisher's current release build at the time the installer was made, so different installers
+  carry different ffmpeg versions and this file cannot name one. GPL v3 §6 requires the offer of
+  source to correspond to _the binary you received_ — so the version is the thing you need, and it
+  is on your own machine rather than in this document: run
+
+  ```powershell
+  & "$env:LOCALAPPDATA\Programs\BEASTUBE\binaries\ffmpeg.exe" -version
+  ```
+
+  The first line names the version and the full `--enable`/`--disable` configuration that build was
+  made with, which is what to ask the FFmpeg project or the build publisher for. If you cannot
+  obtain it from either, open an issue and we will provide the corresponding source for your
+  build.
 
 ### Why this does not make BEASTUBE GPL
 

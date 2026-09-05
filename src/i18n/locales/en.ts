@@ -482,6 +482,12 @@ export const en = {
     },
     about: {
       title: 'About',
+      // Printed in the application, not only in a README nobody installing from a release ever
+      // opens. Naming the trade marks and disclaiming affiliation is the part that has to reach
+      // the person actually using it.
+      disclaimer: 'Not affiliated with YouTube',
+      disclaimerHint:
+        'BEASTUBE is an independent client. It is not affiliated with, endorsed by, or sponsored by YouTube or Google. YouTube is a trademark of Google LLC.',
       version: 'Version {version}',
       /** The row label, with the number in the value column beside it. */
       versionLabel: 'Version',

@@ -33,7 +33,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          # Pinned, not `node-version-file`. That reads `engines.node`, which is a *range*
+          # (`>=22.12.0`), and a range resolves to whatever is newest — so CI would follow every
+          # Node major on its own and break on one of them with no commit to blame.
+          node-version: '22.12.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -64,6 +67,24 @@ jobs:
       # Keyed on the lockfile: a dependency change invalidates it, a source change does not.
       - uses: Swatinem/rust-cache@v2
 
+      # Not optional here either, and this is not obvious. `beastube-app`'s build script runs
+      # `tauri_build::build()`, which resolves the `resources` globs in `tauri.conf.json` — so a
+      # workspace with no `src-tauri/binaries/*.exe` fails to *compile*, not merely to bundle:
+      #
+      #   glob pattern binaries/*.exe path not found or didn't match any files
+      #
+      # Verified by hiding the directory and running `cargo check -p beastube-app`. Without this
+      # step both clippy and the tests fail on a fresh checkout, which is every first run.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: pnpm
+
+      - name: Fetch bundled tools
+        run: pnpm tools:fetch
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -80,7 +101,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          # Pinned, not `node-version-file`. That reads `engines.node`, which is a *range*
+          # (`>=22.12.0`), and a range resolves to whatever is newest — so CI would follow every
+          # Node major on its own and break on one of them with no commit to blame.
+          node-version: '22.12.0'
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable

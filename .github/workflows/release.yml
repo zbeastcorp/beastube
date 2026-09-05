@@ -57,11 +57,17 @@ jobs:
         shell: bash
         run: |
           tag="${{ inputs.tag || github.ref_name }}"
-          version=$(node -p "require('./package.json').version")
-          if [ "$tag" != "v$version" ]; then
-            echo "::error::Tag $tag does not match package.json version $version."
-            echo "A release whose tag and version disagree confuses the updater, which compares"
-            echo "the version inside the binary rather than the name of the tag."
+          # `tauri.conf.json` is the one that decides what the built binary reports, and therefore
+          # what the updater compares against. Checking only package.json would pass a release
+          # whose actual version is stale. All three are checked so they cannot drift apart.
+          conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          pkg=$(node -p "require('./package.json').version")
+          crate=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          echo "tag=$tag  tauri.conf.json=$conf  package.json=$pkg  Cargo.toml=$crate"
+          if [ "$tag" != "v$conf" ] || [ "$conf" != "$pkg" ] || [ "$conf" != "$crate" ]; then
+            echo "::error::Version mismatch. The tag, tauri.conf.json, package.json and Cargo.toml must all agree."
+            echo "The updater compares the version compiled into the binary — which comes from"
+            echo "tauri.conf.json — not the name of the tag."
             exit 1
           fi
 
@@ -69,7 +75,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          # Pinned rather than read from `engines.node`, which is a range and would resolve to
+          # whatever Node is newest on the day the release is cut.
+          node-version: '22.12.0'
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable

@@ -42,12 +42,42 @@ function Wordmark(): ReactNode {
       aria-label={t.t('nav.home')}
       className="no-drag flex items-center gap-1.5 rounded-sm px-1"
     >
-      <svg viewBox="0 0 28 20" width="30" height="21" aria-hidden="true" focusable="false">
-        <path
-          d="M27.4 3.1a3.5 3.5 0 0 0-2.46-2.48C22.77 0 14 0 14 0S5.23 0 3.06.62A3.5 3.5 0 0 0 .6 3.1 36.5 36.5 0 0 0 0 10a36.5 36.5 0 0 0 .6 6.9 3.5 3.5 0 0 0 2.46 2.48C5.23 20 14 20 14 20s8.77 0 10.94-.62a3.5 3.5 0 0 0 2.46-2.48A36.5 36.5 0 0 0 28 10a36.5 36.5 0 0 0-.6-6.9Z"
-          fill="var(--color-brand)"
+      {/*
+        BEASTUBE's own mark, and it has to be its own.
+
+        What was here was YouTube's play-button logo — the 28x20 rounded screen with the inset white
+        triangle, filled `--color-brand`, which is #ff0000. Not a generic play glyph: the specific
+        registered mark, used unaltered as this application's identity beside its own name, in the
+        top-left of every screen. That is a trademark claim, it is the opposite of the affiliation
+        disclaimer this project prints in its README, and on a public repository it survives in every
+        fork after any correction.
+
+        This is the same artwork as the application and installer icon (`src-tauri/icons/source.svg`)
+        — a real mark that already existed — scaled from its 1024 grid onto a 28 one. The gradient id
+        is namespaced because this is inlined into a document that may hold other gradients.
+      */}
+      <svg viewBox="0 0 28 28" width="24" height="24" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="beastube-mark-beam" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ff5c5c" />
+            <stop offset="1" stopColor="#ff9a3c" />
+          </linearGradient>
+          <linearGradient id="beastube-mark-ground" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#1b1030" />
+            <stop offset="1" stopColor="#0b0716" />
+          </linearGradient>
+        </defs>
+        <rect
+          x="1.75"
+          y="1.75"
+          width="24.5"
+          height="24.5"
+          rx="6.125"
+          fill="url(#beastube-mark-ground)"
+          stroke="#3b2a5c"
+          strokeWidth="0.9"
         />
-        <path d="M11.2 14.29 18.49 10 11.2 5.71v8.58Z" fill="#fff" />
+        <path d="M10.72 8.2 10.72 19.8 20.34 14Z" fill="url(#beastube-mark-beam)" />
       </svg>
       {/* The logo carries the identity on its own below 640px, where those 90px are the difference
           between a search field that shows its placeholder and one that cuts it off mid-word. */}

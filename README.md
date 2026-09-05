@@ -100,15 +100,22 @@ left in place; see [What is stored, and where](#what-is-stored-and-where) if you
   <img src="docs/screenshots/watch.png" width="90%" alt="The watch page, with the player's own dark controls">
 </div>
 
-The player wears the application's controls rather than YouTube's, and the quality selector is real:
-**360p through 2160p, at 60fps where the video has it.** The embed picks its rendition from the size
-of its own viewport, so a tier is requested by laying the frame out at that tier's true pixel width
-and scaling the result back down — live, without a reload, in either direction. The reasoning and
-the measurements are in
+**Two control bars, and the choice is a real trade-off** — Settings → Playback → Player controls.
+
+- **YouTube's own bar (the default).** Its gear drives the embed's internal quality API directly:
+  every tier from 144p up, applied the instant it is picked. Quality is what people actually reach
+  for, so it wins the default. The screenshot above shows this.
+- **BEASTUBE's dark bar.** Matches the theme and crops YouTube's chrome away. Quality is 360p to
+  2160p, at 60fps where the video has it — the embed picks its rendition from the size of its own
+  viewport, so a tier is requested by laying the frame out at that tier's true pixel width and
+  scaling the result back down, live and without a reload. YouTube's settings panel is white and
+  cannot be themed, which is the other half of why this is a choice rather than a default.
+
+The mechanism, and the several approaches that look correct and are not, are in
 [ADR-0004](docs/architecture-decisions/0004-player-quality.md).
 
-Also here: real subtitles with language selection, playback speed, chapters, resume-where-you-left-
-off, and a related rail that gets out of the way when the window is too narrow to earn it.
+Also here: subtitles, playback speed, resume-where-you-left-off, downloads, and a related rail that
+gets out of the way when the window is too narrow to earn it.
 
 ### Shorts
 
@@ -121,8 +128,12 @@ actually made in.
 
 ### Your library
 
-History, playlists, bookmarks and watch positions, all local. History can be searched, and entries
-removed one at a time from the card menu. Incognito leaves no trace at all.
+History, playlists, bookmarks and watch positions, all local. Entries can be removed one at a time
+from a card's menu.
+
+Incognito stops watches and searches being recorded. It does not stop the things you ask for
+explicitly: bookmarking a video or adding it to a playlist still writes, because you pressed a
+button that means "keep this".
 
 ### Downloads
 
@@ -136,28 +147,39 @@ at build time, each verified against a vendor checksum.
   <img src="docs/screenshots/settings.png" width="90%" alt="The settings screen">
 </div>
 
-Theme (dark, light, AMOLED, or follow Windows), interface scale, density, reduced motion, default
-and maximum quality, seek steps, subtitle language, download location, and a hardware-acceleration
-switch for machines whose graphics driver renders video incorrectly.
+Theme (dark, light, AMOLED, or follow Windows), interface scale, density, reduced motion, maximum
+quality, playback speed, seek steps, autoplay, subtitles on by default, download location, and a
+hardware-acceleration switch for machines whose graphics driver renders video incorrectly.
 
 There is a **Diagnostics** screen too: version, runtime, storage sizes and filtering counters, read
 from your own machine, with a copy button. Nothing on it is transmitted anywhere.
 
 ## What is stored, and where
 
-Everything is in one folder:
+Two folders, and it is worth knowing which is which:
 
 ```
-%APPDATA%\app.beastube.desktop\library.db
+%APPDATA%\app.beastube.desktop\library.db     your library — a few MB
+%LOCALAPPDATA%\app.beastube.desktop\          caches and logs — can reach several hundred MB
 ```
 
-That SQLite file holds your history, playlists, bookmarks and watch positions. Delete it and
-BEASTUBE starts as though freshly installed. Nothing else about you exists anywhere — there is no
-account, no identifier, and no request that carries who you are.
+The SQLite file is the part that is _you_: history, playlists, bookmarks and watch positions.
+
+The second folder is machinery. It holds the embedded browser's own profile, the metadata cache,
+`yt-dlp`'s cache, and the application log. It grows — on a well-used installation it passes 500 MB,
+most of that the browser profile — and it is safe to delete while BEASTUBE is closed.
+
+To reset completely, delete both. Deleting only `library.db` clears your library and leaves the
+caches, which is usually what you want but is not the same as starting fresh.
+
+Neither folder leaves your machine. There is no account and nothing is uploaded. The one identifier
+in play is the anonymous visitor token YouTube's own endpoints require; it is fetched per session,
+is not a login, and does not identify you.
 
 ## Building from source
 
-Requires [Rust](https://rustup.rs), [Node](https://nodejs.org) 22.12+ with [pnpm](https://pnpm.io),
+Requires [Rust](https://rustup.rs) 1.94+, [Node](https://nodejs.org) 22.12+ with
+[pnpm](https://pnpm.io), [PowerShell 7](https://aka.ms/powershell) (the setup scripts are `pwsh`),
 and the WebView2 runtime.
 
 ```powershell
