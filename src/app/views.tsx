@@ -11,7 +11,7 @@
  */
 
 import { Clapperboard, ListVideo } from 'lucide-react';
-import { Fragment, useCallback, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useRef, useState, type ReactNode, useEffect } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
 import { LazyImage } from '@/components/common/LazyImage';
@@ -795,11 +795,17 @@ function PlaylistsView(): ReactNode {
   const openOverlay = useUiStore((state) => state.openOverlay);
   const revision = useUiStore((state) => state.playlistRevision);
 
-  const playlists = useAsyncResource(
-    `playlists:${String(revision)}`,
-    () => invoke('get_playlists', undefined),
-    { navigation: true },
-  );
+  // The revision forces a refetch, but it must not be part of the *identity*. A key change means
+  // a different question, so the previous answer is discarded and the screen blanks to a skeleton —
+  // which is what renaming or deleting a playlist started doing to the whole list. `reload()` goes
+  // through the nonce instead: same question, asked again, with what is on screen left alone.
+  const playlists = useAsyncResource('playlists', () => invoke('get_playlists', undefined), {
+    navigation: true,
+  });
+  const reloadPlaylists = playlists.reload;
+  useEffect(() => {
+    reloadPlaylists();
+  }, [revision, reloadPlaylists]);
   const lists = playlists.data ?? [];
 
   return (
@@ -882,8 +888,9 @@ function LocalPlaylistView({ id }: { id: LocalPlaylistId }): ReactNode {
   const bump = useUiStore((state) => state.notePlaylistsChanged);
   const revision = useUiStore((state) => state.playlistRevision);
 
+  // As above: a local edit is a refetch of this playlist, not a different playlist.
   const loaded = useAsyncResource(
-    `playlist:${String(id)}:${String(revision)}`,
+    `playlist:${String(id)}`,
     async () => {
       const [lists, items] = await Promise.all([
         invoke('get_playlists', undefined),
@@ -893,6 +900,10 @@ function LocalPlaylistView({ id }: { id: LocalPlaylistId }): ReactNode {
     },
     { navigation: true },
   );
+  const reloadPlaylist = loaded.reload;
+  useEffect(() => {
+    reloadPlaylist();
+  }, [revision, reloadPlaylist]);
 
   const list = loaded.data?.list;
   const items = loaded.data?.items ?? [];

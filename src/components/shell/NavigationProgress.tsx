@@ -147,6 +147,18 @@ export function NavigationProgress(): ReactNode {
         // Past it: close a fixed share of the remaining gap per second. Frame-rate independent —
         // the same motion at 60 Hz and 144 Hz — and asymptotic, so it slows but never stops and
         // never arrives before the data does.
+        // A navigation beginning while the previous bar is still at full restarts it. The
+        // monotonic clamp below is what stops a bar running backwards, but on its own it also
+        // pinned an overtaking navigation at 100% for its whole duration — motionless, and
+        // finished-looking, while work was still going on.
+        if (reached.current >= 1) {
+          fill.style.transition = 'none';
+          fill.style.transform = 'scaleX(0)';
+          reached.current = 0;
+          // Flush the removal so the restart does not itself animate. The read is the point.
+          fill.getBoundingClientRect();
+          fill.style.transition = '';
+        }
         const current = Math.max(reached.current, HOLD_AT);
         // Clamped to where the bar already is, and the gap floored at zero. A run started while a
         // previous one was still finishing found `reached` at 1 and pulled it back toward the 0.94
