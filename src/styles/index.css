@@ -723,3 +723,34 @@
     -webkit-app-region: no-drag;
   }
 }
+
+/*
+ * Windows High Contrast.
+ *
+ * When the OS turns on a high-contrast theme the browser stops honouring author colours and paints
+ * from the system palette instead. Every link in the application therefore came out in the system
+ * link colour — bright yellow on the default black theme — so the sidebar, every channel name and
+ * the search placeholder were yellow and green against an otherwise white-on-black interface.
+ *
+ * These map them back to the ordinary text colour. `CanvasText` rather than `#fff` on purpose: it
+ * is the system's own foreground, so this follows whichever high-contrast theme the user picked —
+ * white on the black themes, black on the white ones — instead of forcing one and making the text
+ * invisible on the other. A literal colour, or `forced-color-adjust: none`, would do exactly that.
+ *
+ * The trade-off is real and worth stating: the yellow is how Windows signals "this is a link", and
+ * removing the hue removes that signal. What remains is the hover and focus treatment every one of
+ * these already has — the sidebar rows fill, the channel names brighten, and focus draws its ring —
+ * so a link is still discoverable by pointing at it or tabbing to it, just not by colour alone.
+ */
+@media (forced-colors: active) {
+  a,
+  a:visited,
+  a:hover,
+  a:focus-visible {
+    color: CanvasText;
+  }
+
+  ::placeholder {
+    color: CanvasText;
+  }
+}
