@@ -69,6 +69,22 @@ try {
 
     $copied = 0
     $skipped = New-Object System.Collections.Generic.List[string]
+    $private = New-Object System.Collections.Generic.List[string]
+
+    # Paths that are part of the work but not part of the product.
+    #
+    # `docs/research/` is the reading that went into the design — provider internals, WebView2
+    # behaviour, crate comparisons. It is genuinely useful and it is also a working notebook:
+    # it quotes absolute paths from the machine it was written on, so publishing it would publish
+    # a developer's username and directory layout for no benefit to anyone reading the project.
+    # The decisions those notes led to are in `docs/architecture-decisions/`, which does ship.
+    $privatePaths = @(
+        'docs/research/'
+    )
+
+    # The name to scan file contents for, so a stray local path cannot slip through in a file
+    # nobody thought to check. Compared case-insensitively.
+    $localUser = $env:USERNAME
 
     foreach ($relative in $files) {
         if ([string]::IsNullOrWhiteSpace($relative)) { continue }
@@ -77,6 +93,11 @@ try {
         # loosens .gitignore. A signing key leaking is not a recoverable mistake.
         if ($relative -match '\.(key|pem)$' -or $relative -match '(^|/)\.env') {
             $skipped.Add($relative)
+            continue
+        }
+
+        if ($privatePaths | Where-Object { $relative.StartsWith($_) }) {
+            $private.Add($relative)
             continue
         }
 
@@ -92,6 +113,24 @@ try {
         $copied++
     }
 
+    # One last read over what is about to be published, looking for the local account name.
+    #
+    # Everything above works on paths; this works on contents, which is where a leak actually hides
+    # — a pasted stack trace, a quoted file path in a comment, a note that says where something was
+    # measured. Text files only, and bounded, so this stays a few seconds rather than a scan.
+    $leaked = New-Object System.Collections.Generic.List[string]
+    if ($localUser) {
+        $textLike = '\.(md|txt|json|jsonc|toml|ya?ml|ts|tsx|js|mjs|cjs|rs|css|html|ps1|sql)$'
+        Get-ChildItem -LiteralPath $Destination -Recurse -File |
+            Where-Object { $_.Name -match $textLike } |
+            ForEach-Object {
+                $content = Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue
+                if ($content -and $content -match [regex]::Escape($localUser)) {
+                    $leaked.Add($_.FullName.Substring($Destination.Length + 1))
+                }
+            }
+    }
+
     $bytes = (Get-ChildItem -LiteralPath $Destination -Recurse -File | Measure-Object Length -Sum).Sum
 
     Write-Host ''
@@ -100,6 +139,16 @@ try {
     if ($skipped.Count -gt 0) {
         Write-Host "  refused to copy (secrets):" -ForegroundColor Yellow
         $skipped | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
+    }
+    if ($private.Count -gt 0) {
+        Write-Host ("  held back as working material: {0} file(s)" -f $private.Count) -ForegroundColor DarkGray
+        $privatePaths | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    }
+    if ($leaked.Count -gt 0) {
+        Write-Host ''
+        Write-Host "  WARNING: '$localUser' appears in the exported files below." -ForegroundColor Red
+        $leaked | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        Write-Host '  Check these before pushing: a local path in a public repository names you.' -ForegroundColor Red
     }
     Write-Host ''
     Write-Host 'It contains source only: no binaries, no build output, no keys.'

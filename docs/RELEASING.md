@@ -41,7 +41,42 @@ To generate a fresh pair (only when starting over):
 pnpm tauri signer generate -w "$env:USERPROFILE\.beastube-keys\beastube-updater.key"
 ```
 
-## Cutting a release
+## Cutting a release: the short way
+
+`.github/workflows/release.yml` does all of it. Once, before the first release, put the key into
+the repository's secrets (Settings → Secrets and variables → Actions):
+
+| Secret                               | Value                                                    |
+| ------------------------------------ | -------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`          | the **contents** of `beastube-updater.key`, not a path   |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | the password used when generating it, or an empty string |
+
+Then, for each release:
+
+```powershell
+# 1. Bump the version in all three files so they agree, and commit.
+# 2. Tag it and push the tag.
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow builds on a Windows runner, fetches the bundled tools, signs, and opens a **draft**
+release with the installer, its `.sig`, and `latest.json` attached. Read the notes, then press
+publish — the updater endpoint resolves `releases/latest/`, which ignores drafts, so nothing is
+offered to anyone until you do.
+
+Two guards run before anything is built, because both failures are otherwise discovered late and
+look like something else:
+
+- **No signing key** stops the run. Without it the bundler still produces an installer, just no
+  `.sig` — a release that looks complete and that every installed copy refuses.
+- **A tag that disagrees with `package.json`** stops the run. The updater compares the version
+  compiled into the binary, not the name of the tag, so `v0.2.0` built from a tree that still says
+  `0.1.0` produces a release nobody is ever offered.
+
+## Cutting a release: by hand
+
+Still worth knowing, and the fallback when the workflow cannot run.
 
 1. **Bump the version** in `src-tauri/tauri.conf.json`, `package.json` and the workspace
    `Cargo.toml`. They must agree — the updater compares the running version against the feed, so a

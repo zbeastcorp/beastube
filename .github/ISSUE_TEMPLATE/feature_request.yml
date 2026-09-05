@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest something BEASTUBE should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        BEASTUBE keeps a deliberately small surface: no account, no sync, nothing sent anywhere.
+        Suggestions that fit inside that are the easiest to say yes to.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >-
+        The situation, rather than the solution. Knowing what you are trying to achieve often
+        turns up a better answer than the one either of us started with.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do instead today?
+    validations:
+      required: false

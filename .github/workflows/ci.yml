@@ -1,0 +1,103 @@
+name: CI
+
+# Every check the project documents, run on the platform it ships for.
+#
+# BEASTUBE is a Windows desktop application, so `windows-latest` is not a preference — the shell
+# links against WebView2 and the download subsystem drives Windows-specific process APIs. A Linux
+# runner would be cheaper and would not compile.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push to a branch makes the previous run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Cargo's own network retries, so a flaky registry is not a red build.
+  CARGO_NET_RETRY: 3
+
+jobs:
+  frontend:
+    name: Front end
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Test
+        run: pnpm test
+
+  rust:
+    name: Rust
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # Keyed on the lockfile: a dependency change invalidates it, a source change does not.
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+  build:
+    name: Installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Not optional. `yt-dlp` and `ffmpeg` are bundled as installer resources, and the bundler
+      # fails if they are absent — so a build that skipped this would only fail later, and less
+      # clearly. Each download is checked against a vendor checksum by the script itself.
+      - name: Fetch bundled tools
+        run: pnpm tools:fetch
+
+      # Unsigned on purpose. This proves the tree still builds; it does not produce anything
+      # installable, because an artefact this workflow signed would be signed by a key that lives
+      # in a pull request's environment. Releases are signed in `release.yml`, from a tag.
+      - name: Build
+        run: pnpm tauri build --no-bundle

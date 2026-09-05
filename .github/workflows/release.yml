@@ -1,0 +1,120 @@
+name: Release
+
+# Builds the installer from a tag, signs it, and publishes it along with the file the running
+# application reads to discover updates.
+#
+# ## What has to line up for an update to install
+#
+# `src-tauri/tauri.conf.json` names two things: an endpoint,
+# `https://github.com/BEASTUBE/beastube/releases/latest/download/latest.json`, and the public half
+# of the updater key. An installed copy fetches that JSON, compares versions, downloads the
+# installer it names, and checks its signature against the compiled-in public key before running
+# any of it.
+#
+# So a release is only usable if all three arrive together: the installer, its `.sig`, and a
+# `latest.json` pointing at both. `tauri-action` writes all three when `TAURI_SIGNING_PRIVATE_KEY`
+# is present, and silently omits the signature when it is not — which produces a release that looks
+# complete and that no existing installation will accept. The guard below fails loudly instead.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build, e.g. v0.1.0. It must already exist.'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: windows-latest
+    permissions:
+      # Creating the release and uploading assets to it.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Refuse to build without a signing key
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set."
+            echo "Without it the bundler still produces an installer, but no .sig — and every"
+            echo "installed copy refuses an update it cannot verify. See docs/RELEASING.md."
+            exit 1
+          fi
+
+      - name: Check the tag matches the version being built
+        shell: bash
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          version=$(node -p "require('./package.json').version")
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::Tag $tag does not match package.json version $version."
+            echo "A release whose tag and version disagree confuses the updater, which compares"
+            echo "the version inside the binary rather than the name of the tag."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch bundled tools
+        run: pnpm tools:fetch
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The contents of the key, not a path to it. `TAURI_SIGNING_PRIVATE_KEY_PATH` is
+          # documented but does not work: a build given the path fails with "public key found but
+          # no private key", which is a confusing way to say it never read the file.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: 'BEASTUBE __VERSION__'
+          releaseBody: |
+            Windows installer below. It carries `yt-dlp` and `ffmpeg`, so downloads work on a
+            machine with nothing else installed.
+
+            Existing installations update themselves: BEASTUBE checks this release, verifies the
+            signature against the key compiled into it, and installs without a wizard.
+
+            See the full notes in [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).
+          # A draft, so the person releasing reads the notes and presses publish. The updater
+          # endpoint resolves `/releases/latest/`, which ignores drafts — so nothing is offered to
+          # anyone until that press.
+          releaseDraft: true
+          prerelease: false
+
+      - name: Confirm the update manifest was produced
+        shell: bash
+        run: |
+          # `latest.json` is the file the updater actually reads. Its absence is the one failure
+          # that leaves a release looking perfectly fine and updating nobody.
+          if ! ls target/release/bundle/nsis/*.sig >/dev/null 2>&1; then
+            echo "::error::No .sig beside the installer; the release would be unusable for updates."
+            exit 1
+          fi
+          echo "Signed artefacts:"
+          ls -la target/release/bundle/nsis/

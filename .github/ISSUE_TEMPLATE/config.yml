@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/BEASTUBE/beastube/security/advisories/new
+    about: Report privately instead. Please do not open a public issue.
+  - name: A video will not play
+    url: https://github.com/BEASTUBE/beastube/blob/main/docs/architecture-decisions/0001-playback-architecture.md
+    about: Some videos are refused by YouTube itself outside its own site. Read this first.

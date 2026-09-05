@@ -1,9 +1,24 @@
 # BEASTUBE
 
+[![CI](https://github.com/BEASTUBE/beastube/actions/workflows/ci.yml/badge.svg)](https://github.com/BEASTUBE/beastube/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/BEASTUBE/beastube?sort=semver)](https://github.com/BEASTUBE/beastube/releases/latest)
+[![Licence: GPL v3](https://img.shields.io/badge/licence-GPLv3-blue.svg)](LICENSE)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4.svg)](https://github.com/BEASTUBE/beastube/releases/latest)
+
 A desktop YouTube client for Windows. What you watch stays on your machine: history, playlists and
 bookmarks live in a local SQLite database, there is no account, and nothing is synced anywhere.
 
 Built with Tauri 2 — a Rust core with a React front end, compiled into a single native binary.
+
+## Install
+
+Download the installer from the [latest release](https://github.com/BEASTUBE/beastube/releases/latest)
+and run it. It carries `yt-dlp` and `ffmpeg`, so downloads work on a machine with nothing else
+installed, and it will install the WebView2 runtime if Windows does not already have it.
+
+After that BEASTUBE updates itself: Settings → About → _Check for updates_ fetches the next
+installer, verifies its signature against the key compiled into your copy, and installs it without
+a wizard.
 
 ## What it does
 
@@ -59,11 +74,21 @@ cargo clippy --workspace --all-targets
 The architecture decision records are worth reading before changing playback or downloads; both
 have non-obvious constraints that were measured rather than assumed.
 
+## Contributing
+
+Bug reports and pull requests are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the setup,
+the checks, and the few things this codebase is strict about — chiefly that a control which does
+nothing is treated as a bug, and that a claim about performance comes with the measurement behind
+it.
+
+For anything security-shaped, please read [`SECURITY.md`](SECURITY.md) and report it privately
+rather than in an issue.
+
 ## Releasing an update
 
-Updates are delivered in place: the application checks a release feed, downloads the next installer,
-verifies its signature and installs it without a wizard. See
-[`docs/RELEASING.md`](docs/RELEASING.md) for the signing key and the release steps.
+Push a `v*` tag and the release workflow builds, signs and drafts the release. See
+[`docs/RELEASING.md`](docs/RELEASING.md) for the signing key, the repository secrets it needs, and
+the manual fallback. What changed in each version is in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Third-party software
 

@@ -1,0 +1,22 @@
+# Generated, and rewriting it would produce a diff no human wrote.
+pnpm-lock.yaml
+Cargo.lock
+
+# Build output and dependencies.
+dist/
+target/
+node_modules/
+src-tauri/gen/
+src-tauri/target/
+src-tauri/binaries/
+coverage/
+playwright-report/
+test-results/
+
+# The reading that went into the design, kept as it was written.
+#
+# These are quoted transcripts and captured output as much as prose, and reflowing them silently
+# edits the record — a wrapped command line is no longer a command line you can copy. They are held
+# back from the public export for the same reason they are held back from the formatter: they are
+# working material, not product. See scripts/export-github.ps1.
+docs/research/

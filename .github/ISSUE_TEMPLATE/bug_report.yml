@@ -1,0 +1,66 @@
+name: Bug report
+description: Something behaves differently from how it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The two fields that most often decide whether a bug can be
+        fixed are the exact steps and the diagnostics report — everything in that report is read
+        from your own machine, and nothing leaves it until you paste it here.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+      placeholder: |
+        I opened a video from the home feed and the picture stayed black, though the sound played.
+        I expected the video to appear.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, from a freshly opened application. If it only happens sometimes, say how often.
+      placeholder: |
+        1. Open BEASTUBE
+        2. Click the third video on Home
+        3. Wait about five seconds
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics report
+      description: >-
+        Settings → Diagnostics → Copy report, then paste it here. It contains your BEASTUBE
+        version, your Windows version, and counters — no history, no video titles, no addresses.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: video
+    attributes:
+      label: Video link, if it is about one video
+      description: >-
+        Some videos are refused by YouTube outside its own site, and knowing which one lets us tell
+        the two cases apart.
+      placeholder: https://www.youtube.com/watch?v=...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: display
+    attributes:
+      label: Does it involve the window size or the display?
+      description: Layout bugs are often specific to a resolution or a Windows scaling setting.
+      options:
+        - 'No'
+        - 'Yes — and my screen resolution and scaling are in the description above'
+    validations:
+      required: true
