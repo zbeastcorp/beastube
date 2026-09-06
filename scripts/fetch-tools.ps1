@@ -79,7 +79,13 @@ function Save-Verified {
     # interrupted or corrupted transfer can never leave a half-file that looks installed.
     $temp = "$Destination.partial"
     Write-Host "  downloading $Label..."
-    Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing
+    # Retried, because this is the one step in CI that depends on somebody else's server being
+    # reachable at the moment it is asked. A single blip fetching ffmpeg reddened a build whose
+    # code was fine, and a red build for a reason unrelated to the change is worse than a slow one:
+    # it teaches everyone to ignore the light. The checksum below is what makes retrying safe —
+    # a partial or substituted transfer still fails, it just fails for a real reason.
+    Invoke-WebRequest -Uri $Url -OutFile $temp -UseBasicParsing `
+        -MaximumRetryCount 5 -RetryIntervalSec 5
 
     $actual = Get-Sha256 $temp
     if ($actual -ne $ExpectedHash) {
@@ -97,7 +103,8 @@ function Save-Verified {
 # then checking the artifact against it, is what makes this a verification rather than a download.
 Write-Host "yt-dlp $ytDlpVersion"
 $sumsPath = Join-Path $env:TEMP "yt-dlp-$ytDlpVersion-SHA2-256SUMS"
-Invoke-WebRequest -Uri "$ytDlpBase/SHA2-256SUMS" -OutFile $sumsPath -UseBasicParsing
+Invoke-WebRequest -Uri "$ytDlpBase/SHA2-256SUMS" -OutFile $sumsPath -UseBasicParsing `
+    -MaximumRetryCount 5 -RetryIntervalSec 5
 
 $ytDlpLine = Get-Content $sumsPath | Where-Object { $_ -match '\s+yt-dlp\.exe$' } | Select-Object -First 1
 if (-not $ytDlpLine) { throw 'the yt-dlp release does not list a checksum for yt-dlp.exe' }
@@ -108,7 +115,8 @@ Save-Verified -Url "$ytDlpBase/yt-dlp.exe" `
     -ExpectedHash $ytDlpHash -Label 'yt-dlp.exe'
 
 Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/LICENSE' `
-    -OutFile (Join-Path $licenseDir 'yt-dlp-LICENSE.txt') -UseBasicParsing
+    -OutFile (Join-Path $licenseDir 'yt-dlp-LICENSE.txt') -UseBasicParsing `
+    -MaximumRetryCount 5 -RetryIntervalSec 5
 
 # --- ffmpeg -----------------------------------------------------------------------------------
 if ($SkipFfmpeg) {
@@ -118,7 +126,7 @@ if ($SkipFfmpeg) {
 
 Write-Host 'ffmpeg (release essentials)'
 # The sidecar is `<hash> *<filename>`; only the hash is wanted.
-$ffmpegHash = ((Invoke-WebRequest -Uri $ffmpegSumUrl -UseBasicParsing).Content -split '\s+')[0].ToLowerInvariant()
+$ffmpegHash = ((Invoke-WebRequest -Uri $ffmpegSumUrl -UseBasicParsing -MaximumRetryCount 5 -RetryIntervalSec 5).Content -split '\s+')[0].ToLowerInvariant()
 $zipPath = Join-Path $env:TEMP 'ffmpeg-release-essentials.zip'
 Save-Verified -Url $ffmpegUrl -Destination $zipPath -ExpectedHash $ffmpegHash -Label 'ffmpeg archive'
 
