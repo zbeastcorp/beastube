@@ -6,6 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 the minor number carries
 breaking changes.
 
+## [0.1.1] — 2026-09-06
+
+### Fixed
+
+- **Search returns what the site returns.** Results were coming back long-form only, so a casual
+  query looked nearly empty and search appeared to want the exact title of a video. Every
+  short-form result in the response was being discarded before it reached the page: the extractor
+  parses shorts as a shelf variant it does not recognise and drops the shelf whole. Measured across
+  five live searches it lost 25 to 30 per query, and on `funny cat` the response carried 8 ordinary
+  videos against 30 shorts — the search returned 5 results where the site had 38. They are now read
+  out of the same response the Shorts feed already reads, and the same query returns 16.
+- **A thin first page keeps looking.** Some queries are answered with a page of nothing but shorts,
+  and send the ordinary videos further down the chain: `roblox trends` returns 25 shorts and no
+  long-form result at all on page one, then two videos on page two. The feed asked once and stopped,
+  so those queries showed nothing whatever. A first page that comes back short of long-form results
+  now follows the continuation up to three pages until it has enough to be worth reading, advancing
+  the scroll cursor with it so nothing is repeated. `roblox trends` went from 0 results to 15.
+- **"BEASTUBE could not read the response" when opening a video.** The watch-page parser treats one
+  absent optional section as fatal — it reports `could not find secondary_info` and returns nothing
+  — so a video that plays perfectly well opened on a full-page error instead. It is a property of
+  the video rather than a transient failure, and because the Shorts feed asks for these details
+  once per card as it scrolls, a single unreadable id repeated the error for as long as playback
+  continued. Details are now rebuilt from the player payload when the watch page cannot be read: a
+  flat object of strings rather than a tree of renderers, and one that answers for ids the watch
+  page refuses.
+
 ## [0.1.0] — 2026-09-06
 
 First release.

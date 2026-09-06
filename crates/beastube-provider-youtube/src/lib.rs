@@ -61,6 +61,31 @@ use tokio_util::sync::CancellationToken;
 /// Stable adapter name, used in diagnostics and error payloads.
 pub const PROVIDER_NAME: &str = "youtube";
 
+/// How many recovered shorts one search page may contribute.
+///
+/// A live response carries 25 to 30 of them; admitting the lot would bury the long-form results
+/// the same query matched, which is the opposite of the problem being fixed.
+const SHORTS_PER_SEARCH: usize = 12;
+
+/// Where recovered shorts are spliced into the page.
+///
+/// The search view lifts shorts into their own shelf regardless of where they sit, so this is for
+/// the benefit of anything reading the flat list: appending them would leave a page that reads as
+/// long-form results with an unrelated tail, and prepending would bury what was actually asked
+/// for. After the first few ordinary results is where the site itself puts the shelf.
+const SHORTS_INSERT_AT: usize = 4;
+
+/// How many long-form results a first page should carry before it stops asking for more.
+///
+/// Below this a page reads as "nothing found" even when the chain has plenty a click away.
+const MIN_LONG_FORM_ON_FIRST_PAGE: usize = 6;
+
+/// How many extra pages a thin first page may pull in.
+///
+/// Each one is a request the user is waiting on, so this trades a little latency on the queries
+/// that need it for a page that is worth reading, and never runs on the ones that do not.
+const MAX_FILL_PAGES: usize = 3;
+
 /// The YouTube metadata adapter.
 ///
 /// `Debug` is written by hand because the extractor client does not implement it, and printing its
@@ -125,6 +150,31 @@ impl YouTubeProvider {
         self.client
             .query()
             .visitor_data_opt(self.visitor.current().await)
+    }
+
+    /// Watch-page details rebuilt from the player payload.
+    ///
+    /// The fallback for [`VideoProvider::video`] when the typed watch-page parse fails. Returns
+    /// `None` if the request or the parse also fails, so the caller reports the original error
+    /// rather than a second, less recognisable one.
+    async fn details_via_player(
+        &self,
+        id: &VideoId,
+        cancel: &CancellationToken,
+    ) -> Option<VideoDetails> {
+        let client = self.query().await;
+        let body = serde_json::json!({ "videoId": id.as_str() });
+
+        let json = Self::with_cancellation(cancel, async move {
+            client
+                .raw(rustypipe::client::ClientType::Desktop, "player", &body)
+                .await
+                .map_err(|error| classify(&error, "video_details_player"))
+        })
+        .await
+        .ok()?;
+
+        map::details_from_player(&json, id)
     }
 
     /// Fetches the visitor ID ahead of the first request.
@@ -289,8 +339,8 @@ impl SearchProvider for YouTubeProvider {
         })
         .await?;
 
-        let cursor = continuation(page.ctoken.clone());
-        let mapped: Vec<SearchItem> = page
+        let mut cursor = continuation(page.ctoken.clone());
+        let mut mapped: Vec<SearchItem> = page
             .items
             .into_iter()
             .filter_map(map::search_item)
@@ -299,6 +349,96 @@ impl SearchProvider for YouTubeProvider {
             // cannot break.
             .filter(|item| matches_kind(item, filters.kind))
             .collect();
+
+        // The typed extractor drops every short in the response, for the reason
+        // `map::shorts_from_search` documents. Measured across five live searches it discarded 25
+        // to 30 per query, and on a casual one — "funny cat" — the response held 8 ordinary videos
+        // against 30 shorts, so a search whose results were mostly short-form came back looking
+        // almost empty and appeared to demand the exact title of a video. They are recovered here
+        // out of the same response the Shorts feed reads.
+        //
+        // Only on a first page: the shorts shelf appears once, and a continuation carries none, so
+        // asking again while scrolling would spend a request to merge nothing.
+        if continuation_token.is_none()
+            && matches!(
+                filters.kind,
+                SearchResultKind::All | SearchResultKind::Shorts
+            )
+        {
+            // A failure here leaves the long-form results standing rather than failing a search
+            // the user watched work; shorts are an addition to the page, not the page.
+            let recovered = match self.search_shorts(trimmed, cancel).await {
+                Ok(shorts) => shorts,
+                Err(error) => {
+                    tracing::warn!(%error, "shorts could not be recovered for this search");
+                    Vec::new()
+                }
+            };
+
+            splice_shorts(&mut mapped, recovered, filters.kind);
+        }
+
+        // Some queries answer their first page entirely with a shorts shelf and send the ordinary
+        // videos later — "roblox trends" returns 25 shorts and no long-form result at all on page
+        // one, and two videos on page two. A feed that asked once and stopped showed nothing for
+        // those queries, so a first page that came back thin keeps pulling until it has enough to
+        // be worth reading or the chain runs out.
+        //
+        // The cursor advances with it, so scrolling resumes after the last page consumed rather
+        // than repeating what was already shown.
+        if continuation_token.is_none() && filters.kind != SearchResultKind::Shorts {
+            let mut pulled = 0;
+            while long_form(&mapped) < MIN_LONG_FORM_ON_FIRST_PAGE && pulled < MAX_FILL_PAGES {
+                let Some(token) = cursor.clone() else { break };
+                let client = self.query().await;
+                let next = Self::with_cancellation(cancel, async move {
+                    client
+                        .continuation::<YouTubeItem, _>(
+                            token.as_str().to_owned(),
+                            rustypipe::model::paginator::ContinuationEndpoint::Search,
+                            None,
+                        )
+                        .await
+                        .map_err(|error| classify(&error, "search_fill"))
+                })
+                .await;
+
+                let next = match next {
+                    Ok(page) => page,
+                    // A thin page is still a page; failing the whole search because the filler
+                    // request failed would be worse than showing what page one did have.
+                    Err(error) => {
+                        tracing::warn!(%error, "a sparse first page could not be filled");
+                        break;
+                    }
+                };
+
+                cursor = continuation(next.ctoken.clone());
+                let seen: std::collections::HashSet<String> = mapped
+                    .iter()
+                    .filter_map(|item| item.as_video().map(|v| v.id.as_str().to_owned()))
+                    .collect();
+                let more: Vec<SearchItem> = next
+                    .items
+                    .into_iter()
+                    .filter_map(map::search_item)
+                    .filter(|item| matches_kind(item, filters.kind))
+                    .filter(|item| {
+                        item.as_video()
+                            .is_none_or(|video| !seen.contains(video.id.as_str()))
+                    })
+                    .collect();
+
+                let gained = more.len();
+                mapped.extend(more);
+                pulled += 1;
+
+                // A page that added nothing and offers no successor is the end of the chain.
+                if gained == 0 && cursor.is_none() {
+                    break;
+                }
+            }
+        }
 
         Ok(SearchResults {
             query: trimmed.to_owned(),
@@ -377,6 +517,43 @@ impl SearchProvider for YouTubeProvider {
     }
 }
 
+/// How many results on a page are long-form — the ones a thin page is short of.
+fn long_form(items: &[SearchItem]) -> usize {
+    items
+        .iter()
+        .filter(|item| item.as_video().is_none_or(|video| !video.is_short))
+        .count()
+}
+
+/// Merges recovered shorts into a page of search results, in place.
+///
+/// Split out from [`SearchProvider::search`] so the ordering and de-duplication can be tested
+/// without a network round trip. Anything already present by video id is dropped, so a short the
+/// typed parser did happen to return is not shown twice.
+fn splice_shorts(mapped: &mut Vec<SearchItem>, recovered: Vec<VideoSummary>, kind: SearchResultKind) {
+    let seen: std::collections::HashSet<String> = mapped
+        .iter()
+        .filter_map(|item| item.as_video().map(|video| video.id.as_str().to_owned()))
+        .collect();
+
+    let mut extra: Vec<SearchItem> = recovered
+        .into_iter()
+        .filter(|video| !seen.contains(video.id.as_str()))
+        .map(SearchItem::Video)
+        .filter(|item| matches_kind(item, kind))
+        .take(SHORTS_PER_SEARCH)
+        .collect();
+
+    if extra.is_empty() {
+        return;
+    }
+
+    let at = mapped.len().min(SHORTS_INSERT_AT);
+    let tail = mapped.split_off(at);
+    mapped.append(&mut extra);
+    mapped.extend(tail);
+}
+
 /// Whether a result belongs in a feed restricted to `kind`.
 fn matches_kind(item: &SearchItem, kind: SearchResultKind) -> bool {
     match kind {
@@ -403,13 +580,37 @@ impl VideoProvider for YouTubeProvider {
         let client = self.query().await;
         let owned = id.as_str().to_owned();
 
-        let details = Self::with_cancellation(cancel, async move {
+        let details = match Self::with_cancellation(cancel, async move {
             client
                 .video_details(owned)
                 .await
                 .map_err(|error| classify(&error, "video_details"))
         })
-        .await?;
+        .await
+        {
+            Ok(details) => details,
+            // The watch-page parser treats one absent optional section as fatal — it reports
+            // `could not find secondary_info` and yields nothing — so a video that is perfectly
+            // playable opens on an error page instead. Before giving up, ask the player endpoint,
+            // whose payload is a flat object rather than a tree of renderers and which answers for
+            // ids the watch page refuses. See `map::details_from_player`.
+            //
+            // Only for a response we could not read. `Unavailable` is an answer, not a failure:
+            // the player endpoint still returns metadata for videos that are private, withdrawn or
+            // blocked in the region, so retrying those would replace a truthful "this cannot be
+            // played" with an ordinary-looking watch page for a video that will not play.
+            Err(error @ ProviderError::SchemaDrift { .. }) => {
+                let Some(details) = self.details_via_player(id, cancel).await else {
+                    return Err(error);
+                };
+                tracing::debug!(
+                    video = id.as_str(),
+                    "watch-page details were unreadable; used the player payload"
+                );
+                return Ok(details);
+            }
+            Err(error) => return Err(error),
+        };
 
         let channel = details.channel;
         let summary = VideoSummary {
@@ -650,6 +851,95 @@ mod tests {
     fn provider() -> YouTubeProvider {
         let dir = std::env::temp_dir().join("beastube-provider-tests");
         YouTubeProvider::new(&dir).expect("client constructs")
+    }
+
+    /// A minimal summary; only the id and the short flag matter to the splice.
+    fn video(id: &str, is_short: bool) -> VideoSummary {
+        let mut summary = VideoSummary::placeholder(VideoId::new(id).expect("a valid id"), id);
+        summary.is_short = is_short;
+        summary
+    }
+
+    fn ids(items: &[SearchItem]) -> Vec<String> {
+        items
+            .iter()
+            .filter_map(|item| item.as_video().map(|video| video.id.as_str().to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn recovered_shorts_land_after_the_first_few_results() {
+        let mut mapped: Vec<SearchItem> = (0..8)
+            .map(|i| SearchItem::Video(video(&format!("longvideo{i:03}"), false)))
+            .collect();
+
+        splice_shorts(&mut mapped, vec![video("shortaaaaaa", true)], SearchResultKind::All);
+
+        let order = ids(&mapped);
+        assert_eq!(order.len(), 9, "nothing is dropped by the splice");
+        assert_eq!(
+            order[SHORTS_INSERT_AT], "shortaaaaaa",
+            "the short sits where the site puts its shelf"
+        );
+        assert_eq!(order[0], "longvideo000", "the leading results keep their place");
+    }
+
+    #[test]
+    fn a_short_already_in_the_page_is_not_repeated() {
+        let mut mapped = vec![SearchItem::Video(video("shortaaaaaa", true))];
+
+        splice_shorts(
+            &mut mapped,
+            vec![video("shortaaaaaa", true), video("shortbbbbbb", true)],
+            SearchResultKind::All,
+        );
+
+        assert_eq!(ids(&mapped), vec!["shortaaaaaa", "shortbbbbbb"]);
+    }
+
+    #[test]
+    fn the_page_admits_only_a_bounded_number_of_shorts() {
+        let mut mapped = Vec::new();
+        let recovered: Vec<VideoSummary> = (0..30)
+            .map(|i| video(&format!("shortvid{i:03}"), true))
+            .collect();
+
+        splice_shorts(&mut mapped, recovered, SearchResultKind::All);
+
+        assert_eq!(
+            mapped.len(),
+            SHORTS_PER_SEARCH,
+            "a response carrying 30 shorts must not bury the long-form results"
+        );
+    }
+
+    #[test]
+    fn a_long_form_feed_takes_no_shorts() {
+        let mut mapped = vec![SearchItem::Video(video("longvideo000", false))];
+
+        splice_shorts(&mut mapped, vec![video("shortaaaaaa", true)], SearchResultKind::Videos);
+
+        assert_eq!(ids(&mapped), vec!["longvideo000"]);
+    }
+
+    #[test]
+    fn long_form_counts_everything_that_is_not_a_short() {
+        let items = vec![
+            SearchItem::Video(video("longvideo000", false)),
+            SearchItem::Video(video("shortaaaaaa", true)),
+            SearchItem::Video(video("longvideo001", false)),
+        ];
+        assert_eq!(long_form(&items), 2, "a page of shorts is still a thin page");
+        assert_eq!(long_form(&[]), 0);
+    }
+
+    #[test]
+    fn nothing_recovered_leaves_the_page_untouched() {
+        let mut mapped = vec![SearchItem::Video(video("longvideo000", false))];
+
+        splice_shorts(&mut mapped, Vec::new(), SearchResultKind::All);
+
+        assert_eq!(ids(&mapped), vec!["longvideo000"]);
     }
 
     #[tokio::test]

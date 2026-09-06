@@ -18,7 +18,7 @@ use beastube_core::model::SearchItem;
 use beastube_core::model::channel::ChannelSummary;
 use beastube_core::model::playlist::PlaylistSummary;
 use beastube_core::model::thumbnail::{Thumbnail, ThumbnailSet};
-use beastube_core::model::video::{Chapter, LiveStatus, VideoSummary};
+use beastube_core::model::video::{Chapter, LiveStatus, VideoDetails, VideoSummary};
 use beastube_core::time_util::Timestamp;
 use rustypipe::model::{
     ChannelItem, ChannelTag, PlaylistItem, Thumbnail as YtThumbnail, Verification, VideoItem,
@@ -205,6 +205,122 @@ pub(crate) const fn is_verified(verification: Verification) -> bool {
     matches!(verification, Verification::Verified | Verification::Artist)
 }
 
+/// Builds watch-page details out of a raw `player` response.
+///
+/// ## Why this exists
+///
+/// The typed watch-page parser refuses the whole video when YouTube omits one optional section:
+/// it reports `could not find secondary_info` and returns nothing, so the page opens on "BEASTUBE
+/// could not read the response". It is not a transient failure and not a broken video — measured
+/// against the live service, `LlAyUk-NnUw` fails that parse on every attempt while the player
+/// endpoint returns a complete `videoDetails` for the same id, and the Shorts feed asks for one of
+/// these per card as it scrolls, so a single unreadable id repeats the error for as long as the
+/// user keeps watching.
+///
+/// What this reads is a flat object of strings rather than a tree of renderers, which is why it is
+/// worth falling back to: there is far less of it to drift.
+///
+/// Returns `None` when even this cannot be read, so the caller can report the original failure
+/// rather than inventing a video.
+pub(crate) fn details_from_player(json: &str, id: &VideoId) -> Option<VideoDetails> {
+    let root = serde_json::from_str::<serde_json::Value>(json).ok()?;
+    let details = root.get("videoDetails")?;
+
+    // A video with no title is not a video worth showing; everything else may legitimately be
+    // absent and stays absent.
+    let title = details.get("title")?.as_str()?.to_owned();
+
+    let thumbnails: ThumbnailSet = details
+        .pointer("/thumbnail/thumbnails")
+        .and_then(serde_json::Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|entry| {
+                    Some(Thumbnail::sized(
+                        entry.get("url")?.as_str()?.to_owned(),
+                        u32::try_from(entry.get("width")?.as_u64()?).ok()?,
+                        u32::try_from(entry.get("height")?.as_u64()?).ok()?,
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // The player response never says whether a video is a Short. The renditions do: short-form is
+    // published portrait, so the tallest thumbnail being taller than it is wide is a measurement
+    // rather than a guess, and it is the same signal the UI uses to choose a card shape.
+    let is_short = thumbnails
+        .renditions()
+        .iter()
+        .max_by_key(|thumbnail| thumbnail.width)
+        .is_some_and(|thumbnail| thumbnail.height > thumbnail.width);
+
+    let string_number = |key: &str| -> Option<u64> {
+        details
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .and_then(|text| text.parse().ok())
+    };
+
+    let micro = root.pointer("/microformat/playerMicroformatRenderer");
+
+    Some(VideoDetails {
+        summary: VideoSummary {
+            id: id.clone(),
+            title,
+            channel_id: details
+                .get("channelId")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|raw| ChannelId::new(raw.to_owned()).ok()),
+            channel_name: details
+                .get("author")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned),
+            channel_avatar: ThumbnailSet::empty(),
+            // The player response carries no verification badge, and a badge this code invented
+            // would be a claim about someone's identity.
+            channel_verified: false,
+            thumbnails: if thumbnails.is_empty() {
+                derived_thumbnails(id)
+            } else {
+                thumbnails
+            },
+            duration_ms: string_number("lengthSeconds").map(|seconds| seconds * 1000),
+            published_at: None,
+            published_text: None,
+            view_count: string_number("viewCount"),
+            live_status: if details
+                .get("isLiveContent")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+            {
+                LiveStatus::Live
+            } else {
+                LiveStatus::NotLive
+            },
+            is_short,
+        },
+        description: details
+            .get("shortDescription")
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned),
+        channel_avatar: ThumbnailSet::empty(),
+        channel_subscriber_count: None,
+        like_count: None,
+        chapters: Vec::new(),
+        captions: Vec::new(),
+        category: micro
+            .and_then(|m| m.get("category"))
+            .and_then(serde_json::Value::as_str)
+            .map(ToOwned::to_owned),
+        is_unlisted: micro
+            .and_then(|m| m.get("isUnlisted"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        is_age_restricted: false,
+    })
+}
+
 /// Converts a video item, returning `None` if its identifier fails validation.
 pub(crate) fn video_summary(item: VideoItem) -> Option<VideoSummary> {
     let id = VideoId::new(item.id).ok()?;
@@ -312,6 +428,77 @@ pub(crate) fn chapters(source: Vec<rustypipe::model::Chapter>) -> Vec<Chapter> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A player payload shaped like the live one, trimmed to the fields that are read.
+    fn player_payload(title: Option<&str>, portrait: bool) -> String {
+        let (w, h) = if portrait { (720, 1280) } else { (1280, 720) };
+        let mut details = serde_json::json!({
+            "channelId": "UCrBw0aVom9NWx8yF0liPdsQ",
+            "author": "Bunviun",
+            "lengthSeconds": "16",
+            "viewCount": "60581",
+            "shortDescription": "Hello! I am Bunviun!",
+            "isLiveContent": false,
+            "thumbnail": { "thumbnails": [
+                { "url": "https://i.ytimg.com/vi/x/1.jpg", "width": w, "height": h },
+            ]},
+        });
+        if let Some(title) = title {
+            details["title"] = serde_json::json!(title);
+        }
+        serde_json::json!({
+            "videoDetails": details,
+            "microformat": { "playerMicroformatRenderer": {
+                "category": "Gaming",
+                "isUnlisted": false,
+            }},
+        })
+        .to_string()
+    }
+
+    fn an_id() -> VideoId {
+        VideoId::new("LlAyUk-NnUw").expect("a valid id")
+    }
+
+    #[test]
+    fn the_player_payload_supplies_what_the_watch_page_needs() {
+        let details = details_from_player(&player_payload(Some("MM2 roles edit"), true), &an_id())
+            .expect("a payload with a title is usable");
+
+        assert_eq!(details.summary.title, "MM2 roles edit");
+        assert_eq!(details.summary.channel_name.as_deref(), Some("Bunviun"));
+        assert_eq!(details.summary.duration_ms, Some(16_000), "seconds become milliseconds");
+        assert_eq!(details.summary.view_count, Some(60_581));
+        assert_eq!(details.description.as_deref(), Some("Hello! I am Bunviun!"));
+        assert_eq!(details.category.as_deref(), Some("Gaming"));
+        assert_eq!(details.summary.live_status, LiveStatus::NotLive);
+    }
+
+    #[test]
+    fn a_portrait_rendition_marks_the_video_short() {
+        let short = details_from_player(&player_payload(Some("t"), true), &an_id()).expect("usable");
+        assert!(short.summary.is_short, "short-form is published portrait");
+
+        let wide = details_from_player(&player_payload(Some("t"), false), &an_id()).expect("usable");
+        assert!(!wide.summary.is_short);
+    }
+
+    #[test]
+    fn a_payload_without_a_title_is_refused_rather_than_guessed_at() {
+        assert!(details_from_player(&player_payload(None, false), &an_id()).is_none());
+        assert!(details_from_player("{}", &an_id()).is_none());
+        assert!(details_from_player("not json", &an_id()).is_none());
+    }
+
+    #[test]
+    fn missing_renditions_fall_back_to_the_derived_ones() {
+        let json = serde_json::json!({ "videoDetails": { "title": "t" } }).to_string();
+        let details = details_from_player(&json, &an_id()).expect("a title is enough");
+        assert!(
+            !details.summary.thumbnails.is_empty(),
+            "a video must not be recorded into history as a grey rectangle"
+        );
+    }
 
     /// Builds an upstream item by deserializing it.
     ///
