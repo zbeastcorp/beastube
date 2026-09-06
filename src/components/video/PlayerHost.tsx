@@ -60,10 +60,12 @@ import {
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { qualityLabel, YouTubePlayer, type PlayerHandle } from '@/components/video/YouTubePlayer';
+import { useAsyncResource } from '@/hooks/useAsyncResource';
 import { useTranslation } from '@/i18n/context';
+import { invoke } from '@/services/ipc';
 import { playerHandlers, usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
-import type { Quality } from '@/types/domain';
+import type { CaptionTrack, Quality } from '@/types/domain';
 
 /**
  * Where the player waits when nothing wants it: off-screen, alive, and out of the way.
@@ -147,6 +149,11 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   const captionsByDefault = useSettingsStore((state) => state.settings.playback.captions_enabled);
   // Which language to ask the embed for, when the viewer has stated one.
   const captionLanguage = useSettingsStore((state) => state.settings.playback.caption_language);
+  const captionOffset = useSettingsStore((state) => state.settings.playback.caption_offset_percent);
+  const captionScale = useSettingsStore((state) => state.settings.playback.caption_scale_percent);
+  const captionBackground = useSettingsStore(
+    (state) => state.settings.playback.caption_background_percent,
+  );
   /**
    * Whether the viewer has asked for YouTube's own control bar instead of ours.
    *
@@ -495,7 +502,10 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             // Off when we crop the chrome away — a half-visible bar is worse than none — and on
             // when the viewer has asked for YouTube's, which is the whole point of that setting.
             controls={nativeControls}
-            captionsByDefault={captionsByDefault}
+            // Only ever under YouTube's own control bar. With ours, captions are drawn by
+            // `CaptionOverlay` below so they can be positioned — and two sets on screen at once is
+            // the one outcome worse than none.
+            captionsByDefault={nativeControls && captionsByDefault}
             {...(captionLanguage !== null ? { captionLanguage } : {})}
             // Left on `auto` under YouTube's controls: its gear sets the embed's own preference,
             // which overrides frame size entirely, so asking by size as well would be two hands on
@@ -585,6 +595,20 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             }}
           />
         </div>
+
+        {/* Captions, drawn here rather than by the embed so they can be placed. Above the poster
+            and below the control bar, so a caption never covers a control or sits under artwork. */}
+        {!nativeControls && captionsOn && (
+          <CaptionOverlay
+            tracks={session?.captionTracks ?? []}
+            preferredLanguage={captionLanguage}
+            positionMs={at.positionMs}
+            offsetPercent={captionOffset}
+            scalePercent={captionScale}
+            backgroundPercent={captionBackground}
+            raised={chromeVisible}
+          />
+        )}
 
         {/* The video's own thumbnail, over the player until the first frame lands. The embed paints
             black while it buffers, and a black rectangle reads as broken rather than as loading. */}
@@ -732,8 +756,10 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
                   captionsAvailable={captionsAvailable}
                   captionsOn={captionsOn}
                   onCaptions={(next) => {
+                    // This menu exists only under BEASTUBE's own control bar, where captions are
+                    // drawn by the overlay. The embed is not asked: under YouTube's bar its own
+                    // gear owns captions, and this menu is not on screen at all.
                     setCaptionsOn(next);
-                    playerRef.current?.setCaptions(next);
                   }}
                 />
 
@@ -874,6 +900,82 @@ function SettingsMenu({
 }
 
 /** Which panel of the menu is showing. */
+/**
+ * Captions, drawn by the application rather than by the embed.
+ *
+ * ## Why this exists
+ *
+ * The embed renders its captions inside a cross-origin iframe. Nothing outside that frame can move
+ * them, resize them or restyle them — the player API exposes a font size and nothing else. Drawing
+ * them here is what makes a position setting possible at all.
+ *
+ * The cue file is fetched through the native side: it is provider data at a provider address, and
+ * the check that it *is* one lives with the provider rather than here.
+ */
+function CaptionOverlay({
+  tracks,
+  preferredLanguage,
+  positionMs,
+  offsetPercent,
+  scalePercent,
+  backgroundPercent,
+  raised,
+}: {
+  tracks: CaptionTrack[];
+  preferredLanguage: string | null;
+  positionMs: number;
+  offsetPercent: number;
+  scalePercent: number;
+  backgroundPercent: number;
+  /** Whether the control bar is showing, so captions can step over it rather than behind it. */
+  raised: boolean;
+}): ReactNode {
+  // The viewer's language if the video has it, otherwise whatever the provider listed first, which
+  // is the video's own language. A human-written track beats a machine-written one at equal rank.
+  const track =
+    tracks.find((one) => preferredLanguage !== null && one.language_code === preferredLanguage) ??
+    tracks.find((one) => one.is_auto_generated !== true) ??
+    tracks[0];
+
+  const cues = useAsyncResource(track === undefined ? null : `cues:${track.url}`, (signal) =>
+    invoke('get_caption_cues', { url: track?.url ?? '' }, { signal }),
+  );
+
+  // Linear rather than binary: a caption file is a few hundred lines and this runs on the position
+  // poll, not per frame.
+  const active = (cues.data ?? []).find(
+    (cue) => positionMs >= cue.start_ms && positionMs < cue.end_ms,
+  );
+  if (active === undefined) return null;
+
+  return (
+    <div
+      aria-live="off"
+      className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-[8%]"
+      style={{
+        // The control bar is about a tenth of the frame, so captions lift clear of it while it is
+        // on screen and settle back when it fades.
+        bottom: `${String(offsetPercent + (raised ? 8 : 0))}%`,
+      }}
+    >
+      <span
+        className="rounded px-2 py-1 text-center leading-snug font-medium text-white"
+        style={{
+          // Scaled to the window rather than fixed, so captions stay proportionate from a small
+          // window up to fullscreen, and clamped at both ends so neither becomes unreadable.
+          // Deliberately not a container query: nothing above sets a container context, and the
+          // unit would silently resolve to zero.
+          fontSize: `clamp(13px, calc(1.7vw * ${String(scalePercent)} / 100), 44px)`,
+          backgroundColor: `rgb(0 0 0 / ${String(backgroundPercent)}%)`,
+          textShadow: backgroundPercent < 20 ? '0 1px 3px rgb(0 0 0 / 90%)' : undefined,
+        }}
+      >
+        {active.text}
+      </span>
+    </div>
+  );
+}
+
 type Panel = 'root' | 'quality' | 'speed' | 'captions' | 'audio';
 
 /** The panel itself, mounted only while the menu is open. */

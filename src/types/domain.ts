@@ -221,6 +221,19 @@ export interface Chapter {
   thumbnails?: ThumbnailSet;
 }
 
+/**
+ * One line of a subtitle track, with the window it is shown for.
+ *
+ * BEASTUBE draws captions itself: the embedded player draws its own inside a cross-origin frame,
+ * where nothing outside can move, resize or restyle them.
+ */
+export interface Cue {
+  start_ms: number;
+  end_ms: number;
+  /** Untrusted text. Rendered as text, never as HTML. */
+  text: string;
+}
+
 /** A subtitle track. */
 export interface CaptionTrack {
   language_code: string;
@@ -566,6 +579,12 @@ export interface PlaybackSettings {
   autoplay_on_open: boolean;
   resume_playback: boolean;
   captions_enabled: boolean;
+  /** How far captions sit above the bottom of the picture, as a percentage of its height. */
+  caption_offset_percent: number;
+  /** Caption text size, as a percentage of the default. */
+  caption_scale_percent: number;
+  /** Opacity of the band behind caption text, as a percentage. */
+  caption_background_percent: number;
   caption_language: string | null;
   audio_language: string | null;
   hardware_acceleration: boolean;

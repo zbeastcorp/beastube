@@ -592,6 +592,17 @@ fn splice_shorts(mapped: &mut Vec<SearchItem>, recovered: Vec<VideoSummary>, kin
     mapped.extend(tail);
 }
 
+/// Whether a host is one the provider serves caption files from.
+///
+/// Exact matches and subdomains only, compared against the registrable domain — a prefix check
+/// would accept `youtube.com.example.net`.
+fn is_caption_host(host: &str) -> bool {
+    const ALLOWED: &[&str] = &["youtube.com", "www.youtube.com", "video.google.com"];
+    ALLOWED
+        .iter()
+        .any(|allowed| host == *allowed || host.ends_with(&format!(".{allowed}")))
+}
+
 /// Whether a result belongs in a feed restricted to `kind`.
 fn matches_kind(item: &SearchItem, kind: SearchResultKind) -> bool {
     match kind {
@@ -702,6 +713,49 @@ impl VideoProvider for YouTubeProvider {
         };
         video.sort_chapters();
         Ok(video)
+    }
+
+    async fn caption_cues(
+        &self,
+        url: &str,
+        cancel: &CancellationToken,
+    ) -> ProviderResult<Vec<beastube_core::model::Cue>> {
+        // The URL comes from this adapter's own track list, but it crosses the IPC boundary and
+        // comes back, so it is checked rather than trusted: without this the command would fetch
+        // whatever address the front end handed it.
+        let parsed = url::Url::parse(url).map_err(|error| ProviderError::InvalidInput {
+            field: "url",
+            reason: error.to_string(),
+        })?;
+        let host = parsed.host_str().unwrap_or_default();
+        if parsed.scheme() != "https" || !is_caption_host(host) {
+            return Err(ProviderError::InvalidInput {
+                field: "url",
+                reason: "not a caption track address".to_owned(),
+            });
+        }
+
+        // `json3` rather than the default XML: a flat array of start, duration and text, with no
+        // entity decoding to get wrong.
+        let mut target = parsed;
+        target.query_pairs_mut().append_pair("fmt", "json3");
+
+        let request = Box::pin(async move {
+            reqwest::get(target)
+                .await
+                .and_then(reqwest::Response::error_for_status)
+                .map_err(|error| ProviderError::Transport {
+                    detail: error.to_string(),
+                })?
+                .text()
+                .await
+                .map_err(|error| ProviderError::Transport {
+                    detail: error.to_string(),
+                })
+        });
+
+        let body = Self::with_cancellation(cancel, request).await?;
+        Ok(map::cues_from_json3(&body))
     }
 
     async fn related(
@@ -968,6 +1022,34 @@ mod tests {
         splice_shorts(&mut mapped, vec![video("shortaaaaaa", true)], SearchResultKind::Videos);
 
         assert_eq!(ids(&mapped), vec!["longvideo000"]);
+    }
+
+    #[test]
+    fn only_the_providers_own_caption_hosts_are_fetched() {
+        assert!(is_caption_host("www.youtube.com"));
+        assert!(is_caption_host("youtube.com"));
+        assert!(
+            !is_caption_host("youtube.com.example.net"),
+            "a prefix check would accept a lookalike domain"
+        );
+        assert!(!is_caption_host("evil.example"));
+    }
+
+    #[tokio::test]
+    async fn a_caption_url_off_the_allowed_hosts_is_refused_before_any_request() {
+        let provider = provider();
+        let cancel = CancellationToken::new();
+        for url in [
+            "https://evil.example/timedtext",
+            "http://www.youtube.com/api/timedtext",
+            "not a url",
+        ] {
+            let error = provider
+                .caption_cues(url, &cancel)
+                .await
+                .expect_err("only the provider's own https addresses are fetched");
+            assert!(matches!(error, ProviderError::InvalidInput { .. }));
+        }
     }
 
     #[test]

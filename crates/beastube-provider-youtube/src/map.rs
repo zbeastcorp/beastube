@@ -19,7 +19,7 @@ use beastube_core::model::channel::ChannelSummary;
 use beastube_core::model::playlist::PlaylistSummary;
 use beastube_core::model::thumbnail::{Thumbnail, ThumbnailSet};
 use beastube_core::model::video::{
-    AudioTrack, CaptionTrack, Chapter, LiveStatus, VideoDetails, VideoSummary,
+    AudioTrack, CaptionTrack, Chapter, Cue, LiveStatus, VideoDetails, VideoSummary,
 };
 use beastube_core::time_util::Timestamp;
 use rustypipe::model::{
@@ -341,6 +341,52 @@ pub(crate) fn caption_tracks(subtitles: Vec<rustypipe::model::Subtitle>) -> Vec<
         .collect()
 }
 
+/// Parses a `json3` caption payload into cues.
+///
+/// The format is a flat `events` array: a start, a duration, and the line split into segments that
+/// are simply concatenated. Events with no text are the format's own timing padding and are
+/// dropped, as are ones whose text is only whitespace — both would otherwise flash an empty
+/// caption box on screen.
+pub(crate) fn cues_from_json3(json: &str) -> Vec<Cue> {
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let Some(events) = root.get("events").and_then(serde_json::Value::as_array) else {
+        return Vec::new();
+    };
+
+    events
+        .iter()
+        .filter_map(|event| {
+            let start = event.get("tStartMs")?.as_u64()?;
+            let text: String = event
+                .get("segs")?
+                .as_array()?
+                .iter()
+                .filter_map(|segment| segment.get("utf8").and_then(serde_json::Value::as_str))
+                .collect();
+            if text.trim().is_empty() {
+                return None;
+            }
+            // A missing duration means "until the next one"; a short floor keeps such a line on
+            // screen long enough to be read rather than blinking out on the same frame.
+            let duration = event
+                .get("dDurationMs")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(MIN_CUE_MS)
+                .max(MIN_CUE_MS);
+            Some(Cue {
+                start_ms: start,
+                end_ms: start + duration,
+                text,
+            })
+        })
+        .collect()
+}
+
+/// Shortest time a line stays on screen, in milliseconds.
+const MIN_CUE_MS: u64 = 700;
+
 /// The distinct audio tracks across a video's audio streams.
 ///
 /// The extractor reports the track on each *stream*, and a video has several streams per track —
@@ -518,6 +564,52 @@ mod tests {
 
     fn an_id() -> VideoId {
         VideoId::new("LlAyUk-NnUw").expect("a valid id")
+    }
+
+    #[test]
+    fn cues_are_read_with_their_windows() {
+        let json = serde_json::json!({ "events": [
+            { "tStartMs": 1360, "dDurationMs": 1680, "segs": [{ "utf8": "[music]" }] },
+            { "tStartMs": 18640, "dDurationMs": 3240,
+              "segs": [{ "utf8": "We're no " }, { "utf8": "strangers" }] },
+        ]})
+        .to_string();
+
+        let cues = cues_from_json3(&json);
+        assert_eq!(cues.len(), 2);
+        assert_eq!(cues[0].start_ms, 1360);
+        assert_eq!(cues[0].end_ms, 3040, "end is start plus duration");
+        assert_eq!(
+            cues[1].text, "We're no strangers",
+            "segments are one line, not one cue each"
+        );
+    }
+
+    #[test]
+    fn empty_events_do_not_become_blank_captions() {
+        let json = serde_json::json!({ "events": [
+            { "tStartMs": 0, "dDurationMs": 500, "segs": [{ "utf8": "
+" }] },
+            { "tStartMs": 10, "dDurationMs": 500 },
+            { "tStartMs": 20, "dDurationMs": 500, "segs": [{ "utf8": "real" }] },
+        ]})
+        .to_string();
+        assert_eq!(cues_from_json3(&json).len(), 1);
+    }
+
+    #[test]
+    fn a_cue_without_a_duration_still_stays_readable() {
+        let json =
+            serde_json::json!({ "events": [{ "tStartMs": 0, "segs": [{ "utf8": "hi" }] }] })
+                .to_string();
+        let cues = cues_from_json3(&json);
+        assert_eq!(cues[0].end_ms, MIN_CUE_MS);
+    }
+
+    #[test]
+    fn an_unreadable_payload_yields_no_cues_rather_than_failing() {
+        assert!(cues_from_json3("not json").is_empty());
+        assert!(cues_from_json3("{}").is_empty());
     }
 
     #[test]

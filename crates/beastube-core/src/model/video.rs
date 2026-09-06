@@ -155,6 +155,21 @@ pub struct CaptionTrack {
     pub is_auto_generated: bool,
 }
 
+/// One line of a subtitle track, with the window it is shown for.
+///
+/// Held rather than rendered by the provider so the application can draw captions itself. The
+/// embedded player draws its own inside a cross-origin frame, where nothing outside can move,
+/// resize or restyle them — which is the whole reason these exist.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cue {
+    /// When the line appears, in milliseconds from the start of the video.
+    pub start_ms: u64,
+    /// When it disappears.
+    pub end_ms: u64,
+    /// The line itself. Untrusted text: rendered through the UI's text path, never as HTML (§77).
+    pub text: String,
+}
+
 /// One of the audio tracks a video offers.
 ///
 /// Videos are increasingly published with the original audio plus dubs in other languages. A

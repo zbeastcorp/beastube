@@ -175,6 +175,19 @@ pub struct PlaybackSettings {
     pub captions_enabled: bool,
     /// Preferred caption language as a BCP 47 tag, or `None` to follow the interface language.
     pub caption_language: Option<String>,
+    /// How far captions sit above the bottom of the picture, as a percentage of its height.
+    ///
+    /// Exists because the application draws captions itself. The embedded player draws its own
+    /// inside a cross-origin frame, where nothing outside can move them — so this setting is the
+    /// reason that rendering was taken over rather than a preference layered on top of it.
+    pub caption_offset_percent: u8,
+    /// Caption text size, as a percentage of the default.
+    pub caption_scale_percent: u16,
+    /// Opacity of the band behind caption text, as a percentage.
+    ///
+    /// Zero is legible over dark footage and disappears over bright footage, which is why the
+    /// default is not zero.
+    pub caption_background_percent: u8,
     /// Preferred audio track language, or `None` to use the provider's default track.
     pub audio_language: Option<String>,
     /// Allow hardware-accelerated decoding.
@@ -204,6 +217,12 @@ impl Default for PlaybackSettings {
             autoplay_on_open: true,
             resume_playback: true,
             captions_enabled: false,
+            // Just clear of the control bar, which is where the site puts its own and where a
+            // caption is least likely to cover something being pointed at.
+            caption_offset_percent: 10,
+            caption_scale_percent: 100,
+            // Enough to hold the text against a bright frame without becoming a black bar.
+            caption_background_percent: 60,
             caption_language: None,
             audio_language: None,
             hardware_acceleration: true,

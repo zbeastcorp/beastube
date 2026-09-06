@@ -91,6 +91,26 @@ pub trait VideoProvider: Send + Sync {
     async fn video(&self, id: &VideoId, cancel: &CancellationToken)
     -> ProviderResult<VideoDetails>;
 
+    /// The lines of one subtitle track, fetched from the URL the provider gave for it.
+    ///
+    /// Exists so the application can draw captions itself rather than leaving them to the embedded
+    /// player, which renders them inside a frame nothing outside can style or move.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ProviderError::Unsupported`] by default, or another variant if the request
+    /// fails or the track cannot be read.
+    async fn caption_cues(
+        &self,
+        _url: &str,
+        _cancel: &CancellationToken,
+    ) -> ProviderResult<Vec<beastube_core::model::Cue>> {
+        Err(crate::ProviderError::Unsupported {
+            operation: "caption_cues",
+            provider: "unknown",
+        })
+    }
+
     /// Videos related to one video.
     ///
     /// # Errors

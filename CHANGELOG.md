@@ -10,6 +10,13 @@ breaking changes.
 
 ### Added
 
+- **Subtitles can be moved, resized and given a background.** They are now drawn by BEASTUBE rather
+  than by the embedded player, which is what makes any of that possible: the player renders captions
+  inside a cross-origin frame where nothing outside can reach them, and its API exposes a font size
+  and nothing else. The cue file for the chosen track is fetched and rendered as an overlay, so
+  position, size and background opacity are settings — under Settings → Playback, and only under
+  BEASTUBE's own control bar, since YouTube's bar still draws its own. Subtitles lift clear of the
+  control bar while it is on screen rather than sitting behind it.
 - **Pick the language a video is dubbed into.** Videos are increasingly published with the original
   audio plus dubs, and the player offered no way to reach them. The audio row appears in the player
   menu only when a video actually has a choice — measured against the live service, a MrBeast upload

@@ -35,7 +35,7 @@
 
 import { create } from 'zustand';
 
-import type { PlaybackState, VideoId } from '@/types/domain';
+import type { CaptionTrack, PlaybackState, VideoId } from '@/types/domain';
 
 /** What to play, and how to start it. */
 export interface PlayerSession {
@@ -62,6 +62,13 @@ export interface PlayerSession {
    * Absent while the video's metadata is still loading.
    */
   hasCaptions?: boolean;
+  /**
+   * The caption tracks this video offers.
+   *
+   * Carried because BEASTUBE draws captions itself, and drawing them means fetching the cue file
+   * for whichever track the viewer's language points at.
+   */
+  captionTracks?: CaptionTrack[];
 }
 
 /** Events the owning view wants, kept out of the reactive store deliberately. */

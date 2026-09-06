@@ -29,7 +29,7 @@ use beastube_core::ids::{ChannelId, VideoId};
 use beastube_core::model::channel::{ChannelDetails, ChannelTab};
 use beastube_core::model::playlist::{LocalPlaylist, LocalPlaylistId, PlaylistItem};
 use beastube_core::model::search::{SearchItem, SearchResultKind};
-use beastube_core::model::video::{VideoDetails, VideoSummary};
+use beastube_core::model::video::{Cue, VideoDetails, VideoSummary};
 use beastube_core::model::{
     Bookmark, ContinuationToken, HistoryEntry, Page, PlaybackPosition, SearchFilters,
     SearchResults, Suggestion,
@@ -368,6 +368,29 @@ pub(crate) async fn get_related(
     let id = self::video_id(&video_id)?;
     let cancel = CancellationToken::new();
     state.provider.related(&id, &cancel).await.map_err(fail)
+}
+
+/// The lines of one subtitle track.
+///
+/// The application draws captions itself, so it needs the cues rather than leaving them to the
+/// embedded player, which renders them inside a frame nothing outside can move or restyle.
+///
+/// # Errors
+///
+/// Returns a payload if the address is not one the provider serves caption files from, or the
+/// track cannot be fetched or read.
+#[tauri::command]
+pub(crate) async fn get_caption_cues(
+    state: State<'_, AppState>,
+    url: String,
+) -> CommandResult<Vec<Cue>> {
+    bounded_text("url", &url)?;
+    let cancel = CancellationToken::new();
+    state
+        .provider
+        .caption_cues(&url, &cancel)
+        .await
+        .map_err(fail)
 }
 
 /// Channel metadata.

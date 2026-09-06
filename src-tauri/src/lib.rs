@@ -190,6 +190,7 @@ pub fn run() {
             commands::clear_search_history,
             commands::get_video,
             commands::get_related,
+            commands::get_caption_cues,
             commands::get_channel,
             commands::get_channel_content,
             commands::get_provider_capabilities,

@@ -228,10 +228,20 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
       autoplay,
       ...(poster !== undefined ? { posterUrl: poster } : {}),
       ...(captioned !== undefined ? { hasCaptions: captioned } : {}),
+      ...(details?.captions === undefined ? {} : { captionTracks: details.captions }),
     });
     // `stored.loading` is listed because the latch above reads it: the session must be rebuilt
     // when this video's position finishes loading, which is the moment the latch can arm.
-  }, [videoId, resumeAt, autoplay, poster, captioned, setSession, stored.loading]);
+  }, [
+    videoId,
+    resumeAt,
+    autoplay,
+    poster,
+    captioned,
+    details?.captions,
+    setSession,
+    stored.loading,
+  ]);
 
   if (video.error && !details) {
     return <ErrorState error={video.error} onRetry={video.reload} />;

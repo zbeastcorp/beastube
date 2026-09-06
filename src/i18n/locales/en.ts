@@ -353,6 +353,13 @@ export const en = {
       resume: 'Resume where I left off',
       captions: 'Show subtitles by default',
       captionLanguage: 'Preferred subtitle language',
+      captionPosition: 'Subtitle position',
+      captionPositionHint:
+        'How far subtitles sit above the bottom of the picture. They lift clear of the control bar while it is on screen.',
+      captionSize: 'Subtitle size',
+      captionBackground: 'Subtitle background',
+      captionBackgroundHint:
+        'The band behind the text. At zero the text is outlined instead, which is cleaner over dark footage and harder to read over bright.',
       audioLanguage: 'Preferred audio language',
       hardwareAcceleration: 'Hardware acceleration',
       hardwareAccelerationHint:

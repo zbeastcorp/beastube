@@ -23,6 +23,7 @@ import type {
   ChannelId,
   ChannelTab,
   ContinuationToken,
+  Cue,
   DownloadProgress,
   ErrorPayload,
   HistoryEntry,
@@ -210,6 +211,7 @@ export interface CommandMap {
   clear_search_history: { args: undefined; result: number };
   get_video: { args: { videoId: VideoId }; result: VideoDetails };
   get_related: { args: { videoId: VideoId }; result: Page<VideoSummary> };
+  get_caption_cues: { args: { url: string }; result: Cue[] };
   get_channel: { args: { channelId: ChannelId }; result: ChannelDetails };
   get_channel_content: {
     args: { channelId: ChannelId; tab: ChannelTab; continuation?: ContinuationToken };

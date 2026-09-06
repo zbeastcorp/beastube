@@ -165,6 +165,9 @@ function PlaybackPanel(): ReactNode {
   const controlsId = useControlId('player-controls');
   const seekId = useControlId('seek');
   const speedId = useControlId('speed');
+  const captionOffsetId = useControlId('caption-offset');
+  const captionScaleId = useControlId('caption-scale');
+  const captionBackgroundId = useControlId('caption-background');
 
   const capabilities = activePlaybackCapabilities();
 
@@ -257,6 +260,63 @@ function PlaybackPanel(): ReactNode {
             }}
           />
         </SettingRow>
+      )}
+
+      {/* Only meaningful under BEASTUBE's own control bar: YouTube's draws its captions inside its
+          own frame, where none of these can reach. Hidden rather than disabled, because a row that
+          cannot do anything is worse than one that is not there (§131). */}
+      {playback.player_controls === 'beastube' && (
+        <>
+          <SettingRow
+            label={t.t('settings.playback.captionPosition')}
+            hint={t.t('settings.playback.captionPositionHint')}
+            htmlFor={captionOffsetId}
+          >
+            <Slider
+              id={captionOffsetId}
+              value={playback.caption_offset_percent}
+              min={0}
+              max={45}
+              step={1}
+              format={(value) => `${String(value)}%`}
+              onChange={(caption_offset_percent) => {
+                update({ playback: { caption_offset_percent } });
+              }}
+            />
+          </SettingRow>
+
+          <SettingRow label={t.t('settings.playback.captionSize')} htmlFor={captionScaleId}>
+            <Slider
+              id={captionScaleId}
+              value={playback.caption_scale_percent}
+              min={70}
+              max={200}
+              step={5}
+              format={(value) => `${String(value)}%`}
+              onChange={(caption_scale_percent) => {
+                update({ playback: { caption_scale_percent } });
+              }}
+            />
+          </SettingRow>
+
+          <SettingRow
+            label={t.t('settings.playback.captionBackground')}
+            hint={t.t('settings.playback.captionBackgroundHint')}
+            htmlFor={captionBackgroundId}
+          >
+            <Slider
+              id={captionBackgroundId}
+              value={playback.caption_background_percent}
+              min={0}
+              max={100}
+              step={5}
+              format={(value) => `${String(value)}%`}
+              onChange={(caption_background_percent) => {
+                update({ playback: { caption_background_percent } });
+              }}
+            />
+          </SettingRow>
+        </>
       )}
 
       {/* Which control bar the player wears. Both options are real and neither is simply better,
