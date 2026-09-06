@@ -634,6 +634,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
             scalePercent={captionScale}
             backgroundPercent={captionBackground}
             raised={chromeVisible}
+            menuOpen={settingsOpen}
           />
         )}
 
@@ -947,6 +948,7 @@ function CaptionOverlay({
   scalePercent,
   backgroundPercent,
   raised,
+  menuOpen,
 }: {
   tracks: CaptionTrack[];
   preferredLanguage: string | null;
@@ -956,6 +958,8 @@ function CaptionOverlay({
   backgroundPercent: number;
   /** Whether the control bar is showing, so captions can step over it rather than behind it. */
   raised: boolean;
+  /** Whether the settings menu is open, which covers the right of the frame. */
+  menuOpen: boolean;
 }): ReactNode {
   // The viewer's language if the video has it, otherwise whatever the provider listed first, which
   // is the video's own language. A human-written track beats a machine-written one at equal rank.
@@ -978,11 +982,16 @@ function CaptionOverlay({
   return (
     <div
       aria-live="off"
-      className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-[8%]"
+      className="pointer-events-none absolute inset-x-0 z-20 flex justify-center"
       style={{
         // The control bar is about a tenth of the frame, so captions lift clear of it while it is
         // on screen and settle back when it fades.
         bottom: `${String(offsetPercent + (raised ? 8 : 0))}%`,
+        paddingLeft: '8%',
+        // The settings menu is opaque and sits above this, so a caption running under it was simply
+        // cut in half — the text ended at the menu's edge and read as broken rather than covered.
+        // Yielding the width it occupies makes the line wrap into what is left instead.
+        paddingRight: menuOpen ? 'min(18rem, 42%)' : '8%',
       }}
     >
       <span
@@ -1145,11 +1154,9 @@ function SettingsPanel({
           {audioTracks.map((track) => (
             <OptionRow
               key={track.id}
-              label={
-                track.isDefault
-                  ? t.t('player.audioOriginal', { language: track.label })
-                  : track.label
-              }
+              // Not decorated: the provider's own name already says "original" where it is one,
+              // and adding it again read as "English (US) original (original)".
+              label={track.label}
               checked={track.id === (audioTrack ?? audioTracks.find((one) => one.isDefault)?.id)}
               onSelect={() => {
                 onAudioTrack(track.id);
