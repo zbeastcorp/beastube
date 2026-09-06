@@ -8,6 +8,14 @@ breaking changes.
 
 ## [0.1.1] — 2026-09-06
 
+### Changed
+
+- **Checking for an update installs it.** Settings → About → Check for updates took two presses:
+  one to find the update and one to accept it, and the second only ever had one sensible answer.
+  It is now a single press — check, download, verify, install, restart — with progress on the same
+  row and the download size still stated before it is pressed. The notice shown shortly after
+  launch is unchanged and still downloads nothing.
+
 ### Fixed
 
 - **Search returns what the site returns.** Results were coming back long-form only, so a casual

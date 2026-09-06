@@ -536,7 +536,6 @@ export const en = {
       checkUpdates: 'Check for updates',
       upToDate: 'BEASTUBE is up to date',
       updateAvailable: 'Version {version} is available',
-      downloadUpdate: 'Download and install',
       /** Percentage, when the server reports a size. */
       installing: 'Downloading… {percent}%',
       /** No size reported, so there is no honest percentage to show. */

@@ -102,12 +102,14 @@ application, so a build will refuse an update it cannot verify — including one
 ### Updating
 
 BEASTUBE updates itself, and it tells you when there is something to update to: about ten seconds
-after launch it checks, and if a newer version exists a notice appears with a link to it. Nothing is
-downloaded until you say so.
+after launch it checks, and if a newer version exists a notice appears. That notice downloads
+nothing — it is telling you, not asking.
 
-**Settings → About → Check for updates** does the same on demand, and is where the download reports
-its progress. The installer runs without a wizard and the application restarts into the new version
-— there is no uninstall-and-reinstall step.
+**Settings → About → Check for updates** is the one that acts. It checks, and if there is a newer
+version it downloads it, verifies the signature, installs it without a wizard and restarts into it —
+one press, with the progress reported on that row. There is no second confirmation, because the
+press already said what you wanted; the row states the download size beforehand rather than after.
+There is no uninstall-and-reinstall step.
 
 It is a full installer each time rather than a patch, because Windows offers no delta mechanism on
 this path — around 50 MB, most of which is ffmpeg. The settings row says so before you press it.

@@ -861,7 +861,6 @@ type UpdateState =
   | { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'current' }
-  | { kind: 'found'; update: Update }
   | { kind: 'installing'; percent: number | null }
   | { kind: 'restarting' }
   | { kind: 'failed' };
@@ -873,7 +872,10 @@ type UpdateState =
  *
  * BEASTUBE ships as an installer, and an update is the next installer: fetched, signature-checked
  * against the key compiled into this binary, run without a wizard, then the application restarts.
- * From here that is a single button.
+ * From here that is a single button: checking and installing are one press, because a viewer who
+ * asked whether there is an update has already said what they want done about it. The button was
+ * two presses for a while — one to find the update, one to accept it — and the second only ever
+ * had one answer.
  *
  * What it is not is a patch — there is no delta mechanism on this path, so the whole application
  * comes down each time. The row says so before the press rather than after it, because fifty
@@ -902,7 +904,14 @@ function AboutPanel(): ReactNode {
     setState({ kind: 'checking' });
     void checkForUpdate().then(
       (update) => {
-        setState(update === null ? { kind: 'current' } : { kind: 'found', update });
+        if (update === null) {
+          setState({ kind: 'current' });
+          return;
+        }
+        // Straight into the install rather than parking on a second button. The press already
+        // meant "bring me up to date", the row states the download size before it is pressed, and
+        // a confirmation that only ever has one sensible answer is a step, not a safeguard.
+        install(update);
       },
       () => {
         // Offline, or the release feed is unreachable. Ordinary rather than exceptional: the row
@@ -944,8 +953,6 @@ function AboutPanel(): ReactNode {
         return t.t('settings.about.updateSize');
       case 'current':
         return t.t('settings.about.upToDate');
-      case 'found':
-        return t.t('settings.about.updateAvailable', { version: state.update.version });
       case 'installing':
         return state.percent === null
           ? t.t('settings.about.installingUnknown')
@@ -969,19 +976,9 @@ function AboutPanel(): ReactNode {
       </SettingRow>
 
       <SettingRow label={t.t('settings.about.checkUpdates')} hint={hint()}>
-        {state.kind === 'found' ? (
-          <SecondaryButton
-            onClick={() => {
-              install(state.update);
-            }}
-          >
-            {t.t('settings.about.downloadUpdate')}
-          </SecondaryButton>
-        ) : (
-          <SecondaryButton disabled={busy} onClick={check}>
-            {busy ? t.t('app.loading') : t.t('settings.about.checkUpdates')}
-          </SecondaryButton>
-        )}
+        <SecondaryButton disabled={busy} onClick={check}>
+          {busy ? t.t('app.loading') : t.t('settings.about.checkUpdates')}
+        </SecondaryButton>
       </SettingRow>
 
       {/* Stated rather than linked: the licences are files the installer places beside the
