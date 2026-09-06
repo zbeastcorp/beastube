@@ -101,9 +101,13 @@ application, so a build will refuse an update it cannot verify — including one
 
 ### Updating
 
-BEASTUBE updates itself, and it tells you when there is something to update to: about ten seconds
-after launch it checks, and if a newer version exists a notice appears. That notice downloads
-nothing — it is telling you, not asking.
+BEASTUBE keeps itself up to date. Shortly after launch it checks, and if a newer version exists it
+downloads it, verifies the signature, installs it without a wizard and restarts — telling you
+before it does, not after.
+
+It will not do that while something is playing, it will not retry a version that already failed to
+install on your machine, and **Settings → About → Update automatically** turns it off, leaving the
+button below it as the same update on request.
 
 **Settings → About → Check for updates** is the one that acts. It checks, and if there is a newer
 version it downloads it, verifies the signature, installs it without a wizard and restarts into it —

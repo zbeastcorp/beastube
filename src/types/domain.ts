@@ -609,6 +609,25 @@ export interface DownloadSettings {
   ffmpeg_path: string | null;
 }
 
+/**
+ * Automatic updates.
+ *
+ * An update installs software without asking a second time, so both fields exist to keep that from
+ * becoming something the viewer cannot stop or escape.
+ */
+export interface UpdateSettings {
+  /** Install a newer version shortly after launch, without being asked. */
+  automatic: boolean;
+  /**
+   * A version that failed to install automatically and must not be retried on its own.
+   *
+   * Without it, a release that cannot install on a particular machine is downloaded again on every
+   * launch — fifty megabytes each time, for ever. The manual control ignores this, so trying again
+   * deliberately is always possible.
+   */
+  skip_version: string | null;
+}
+
 /** The complete settings document. */
 export interface Settings {
   version: number;
@@ -619,6 +638,7 @@ export interface Settings {
   network: NetworkSettings;
   cache: CacheSettings;
   downloads: DownloadSettings;
+  updates: UpdateSettings;
 }
 
 // ---------------------------------------------------------------------------------------------

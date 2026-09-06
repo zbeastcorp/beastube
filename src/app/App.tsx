@@ -27,10 +27,16 @@ import { detectLocale, resolveLocale } from '@/i18n';
 import { useTranslation } from '@/i18n/context';
 import { TranslationProvider } from '@/i18n/context';
 import { loadCapabilities } from '@/services/capabilities';
-import { checkForUpdate } from '@/services/updates';
+import {
+  checkForUpdate,
+  downloadAndInstallUpdate,
+  isInstallingUpdate,
+  relaunchApp,
+} from '@/services/updates';
 import { preloadFeeds } from '@/services/feedCache';
 import { subscribeToDownloads, useDownloadsStore } from '@/stores/downloads';
 import { useFeedStore } from '@/stores/feed';
+import { usePlayerStore } from '@/stores/player';
 import { invoke, isTauriRuntime, listen } from '@/services/ipc';
 import { applyPresentation, applyWebviewScheme, useSettingsStore } from '@/stores/settings';
 import { useSessionStore } from '@/stores/session';
@@ -180,15 +186,25 @@ function Shell(): ReactNode {
    * changed. Nobody does that, so in practice installations simply never updated — a working
    * update mechanism that goes unused is the same outcome as not having one.
    *
-   * A toast, not a dialog. There is nothing to decide urgently and interrupting playback to say
-   * "there is a newer version" would be worse than the problem. It stays until dismissed
-   * (`durationMs: null`) because a notice that vanishes after four seconds is one most people will
-   * miss, and its action opens About, where the download reports progress and the restart is
-   * explained. Installing 50 MB silently from a toast with no way to see how far it has got is the
-   * one shape this should not take.
+   * By default it now installs what it finds, because a notice still asks someone to act and the
+   * measured outcome of asking was that installations did not update. What makes that acceptable
+   * rather than something done *to* people is that it is bounded on four sides, each of which
+   * sends it back to being a toast:
    *
-   * Silent when there is nothing to report, and silent on failure: being offline is the ordinary
-   * case, not an error worth a notice.
+   *  * the switch in Settings → About turns it off entirely;
+   *  * a version that already failed to install here is not retried, so a release that cannot
+   *    install on a particular machine does not fetch 50 MB on every launch for ever;
+   *  * nothing is installed while something is playing — this runs twelve seconds after launch,
+   *    which is long enough for a video to have started;
+   *  * an install already in flight is left alone.
+   *
+   * It is also not silent. The restart is announced before it happens, because an application that
+   * closes and reopens unannounced reads as a crash, and the notice opens About, where an install
+   * in progress reports its real percentage. Installing 50 MB with no way to see how far it has got
+   * is still the one shape this must not take.
+   *
+   * Silent when there is nothing to report, and silent on failure to *check*: being offline is the
+   * ordinary case, not an error worth a notice.
    */
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
@@ -196,8 +212,49 @@ function Shell(): ReactNode {
       void checkForUpdate()
         .then((update) => {
           if (!update) return;
-          useUiStore.getState().toast({
-            messageKey: 'settings.about.updateAvailable',
+
+          const announce = () => {
+            useUiStore.getState().toast({
+              messageKey: 'settings.about.updateAvailable',
+              params: { version: update.version },
+              tone: 'info',
+              durationMs: null,
+              action: {
+                labelKey: 'settings.about.checkUpdates',
+                run: () => {
+                  navigate({ name: 'settings', section: 'about' });
+                },
+              },
+            });
+          };
+
+          const { updates } = useSettingsStore.getState().settings;
+
+          // Four reasons not to install on our own, and each of them is the difference between an
+          // update that maintains the application and one that takes it away from someone.
+          //
+          //  * The viewer turned automatic updates off. That is the whole point of the switch.
+          //  * This exact version already failed to install here. Retrying it every launch would
+          //    download fifty megabytes for ever and never succeed; the manual control ignores
+          //    this, so trying again deliberately is always possible.
+          //  * Something is playing. Restarting into a new version mid-video is worse than any
+          //    update is good, and the check runs long enough after launch that it can happen.
+          //  * An install is already running, from a previous check or from the About screen.
+          if (
+            !updates.automatic ||
+            updates.skip_version === update.version ||
+            usePlayerStore.getState().session !== null ||
+            isInstallingUpdate()
+          ) {
+            announce();
+            return;
+          }
+
+          // Not silent. The application is about to close and reopen, and a restart nobody was
+          // told about reads as a crash. The action opens About, where the live percentage is
+          // already shown for an install that is running.
+          const notice = useUiStore.getState().toast({
+            messageKey: 'settings.about.installingAutomatically',
             params: { version: update.version },
             tone: 'info',
             durationMs: null,
@@ -208,6 +265,23 @@ function Shell(): ReactNode {
               },
             },
           });
+
+          void downloadAndInstallUpdate(update, () => {
+            // Nothing to draw here: this install has no row of its own. About seeds itself from
+            // `isInstallingUpdate()`, so opening it mid-download shows the real percentage.
+          }).then(
+            (outcome) => {
+              if (outcome === 'already-running') return;
+              void relaunchApp();
+            },
+            () => {
+              // Remember the failure before saying anything, so a version that cannot install on
+              // this machine is not fetched again on every launch from here on.
+              useUiStore.getState().dismissToast(notice);
+              useSettingsStore.getState().update({ updates: { skip_version: update.version } });
+              announce();
+            },
+          );
         })
         .catch(() => {
           // Offline, or no release published yet. Neither is worth telling anyone about.

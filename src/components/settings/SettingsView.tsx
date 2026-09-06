@@ -891,6 +891,8 @@ type UpdateState =
 function AboutPanel(): ReactNode {
   const t = useTranslation();
   const info = useAsyncResource('app-info', () => invoke('get_app_info', undefined));
+  const updates = useSettingsStore((state) => state.settings.updates);
+  const updateSettings = useSettingsStore((state) => state.update);
   // Seeded from the install that may already be running, not from `idle`. This panel unmounts the
   // moment the viewer navigates away and the download does not stop with it, so coming back showed
   // an idle button over a live install — and pressing it was answered with `already-running`
@@ -979,6 +981,23 @@ function AboutPanel(): ReactNode {
         <SecondaryButton disabled={busy} onClick={check}>
           {busy ? t.t('app.loading') : t.t('settings.about.checkUpdates')}
         </SecondaryButton>
+      </SettingRow>
+
+      {/* The switch is what keeps an automatic update from being something done *to* someone.
+          Turning it off leaves the button above, which is the same update on request. */}
+      <SettingRow
+        label={t.t('settings.about.automatic')}
+        hint={t.t('settings.about.automaticHint')}
+      >
+        <Switch
+          label={t.t('settings.about.automatic')}
+          checked={updates.automatic}
+          onChange={(automatic) => {
+            // A version that failed before should be reachable again once the viewer has
+            // deliberately turned this back on, rather than staying skipped for ever.
+            updateSettings({ updates: { automatic, skip_version: null } });
+          }}
+        />
       </SettingRow>
 
       {/* Stated rather than linked: the licences are files the installer places beside the

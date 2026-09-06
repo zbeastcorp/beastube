@@ -10,11 +10,19 @@ breaking changes.
 
 ### Changed
 
+- **BEASTUBE keeps itself up to date.** Shortly after launch it now installs a newer version rather
+  than only mentioning one, because a notice still asks someone to act and the measured outcome of
+  asking was that installations did not update at all. It is bounded on four sides: a switch in
+  Settings → About turns it off; a version that already failed to install on this machine is not
+  retried, so a bad release cannot fetch 50 MB on every launch for ever; nothing installs while
+  something is playing; and an install already running is left alone. The restart is announced
+  before it happens rather than after, and the notice opens About, where a running install reports
+  its real percentage.
 - **Checking for an update installs it.** Settings → About → Check for updates took two presses:
   one to find the update and one to accept it, and the second only ever had one sensible answer.
   It is now a single press — check, download, verify, install, restart — with progress on the same
-  row and the download size still stated before it is pressed. The notice shown shortly after
-  launch is unchanged and still downloads nothing.
+  row and the download size still stated before it is pressed. That control remains the way to
+  update deliberately, including a version automatic updates have skipped.
 
 ### Fixed
 

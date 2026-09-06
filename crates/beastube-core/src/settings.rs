@@ -403,6 +403,36 @@ impl Default for DownloadSettings {
     }
 }
 
+/// Automatic updates.
+///
+/// An update installs software without asking a second time, so the two fields here exist to keep
+/// that from becoming something the viewer cannot stop or escape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpdateSettings {
+    /// Install a newer version shortly after launch, without being asked.
+    pub automatic: bool,
+    /// A version that failed to install automatically and must not be retried on its own.
+    ///
+    /// Without this, a release that cannot install on a particular machine is downloaded again on
+    /// every single launch — fifty megabytes each time, for ever, with nothing to show for it. The
+    /// manual control in Settings ignores this, so a viewer can always try again deliberately.
+    pub skip_version: Option<String>,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            // Security fixes reach people only if they arrive, and the alternative measured here
+            // was that installations never updated at all: the sole route was opening Settings and
+            // pressing a button on the chance something had changed.
+            automatic: true,
+            // Nothing has failed yet.
+            skip_version: None,
+        }
+    }
+}
+
 /// The complete settings document.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -423,6 +453,8 @@ pub struct Settings {
     pub cache: CacheSettings,
     /// Video downloads.
     pub downloads: DownloadSettings,
+    /// Automatic updates.
+    pub updates: UpdateSettings,
 }
 
 impl Default for Settings {
@@ -436,6 +468,7 @@ impl Default for Settings {
             network: NetworkSettings::default(),
             cache: CacheSettings::default(),
             downloads: DownloadSettings::default(),
+            updates: UpdateSettings::default(),
         }
     }
 }

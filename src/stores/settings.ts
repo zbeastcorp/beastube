@@ -99,6 +99,12 @@ export const DEFAULT_SETTINGS: Settings = {
     tool_path: null,
     ffmpeg_path: null,
   },
+  updates: {
+    // Mirrors `UpdateSettings::default()`: security fixes reach people only if they arrive, and
+    // the measured alternative was that installations never updated at all.
+    automatic: true,
+    skip_version: null,
+  },
 };
 
 /** A recursive partial, so callers can patch one nested field without rebuilding the document. */
