@@ -14,6 +14,20 @@
 
 No account. No sync. Nothing sent anywhere.
 
+<br>
+
+[![Download for Windows](https://img.shields.io/badge/⬇%20Download%20for%20Windows-ff5c5c?style=for-the-badge&logoColor=white)](https://github.com/zbeastcorp/beastube/releases/latest)
+
+<sub>Installs per user — no administrator prompt. `yt-dlp` and `ffmpeg` are bundled, so downloads work on a machine with nothing else installed.</sub>
+
+<br>
+
+![Tauri](https://img.shields.io/badge/Tauri_2-24C8DB?logo=tauri&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
+![React](https://img.shields.io/badge/React_19-20232a?logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+
 </div>
 
 <div align="center">
