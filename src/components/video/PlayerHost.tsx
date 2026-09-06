@@ -247,17 +247,31 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    */
   const [rates, setRates] = useState<number[]>([]);
   /**
-   * Audio tracks for this video, and the one playing.
+   * The audio tracks this video offers.
    *
-   * Videos published with dubs carry several; most videos carry none, and the menu row is absent
-   * for those rather than showing a list of one. Read from the player rather than the provider
-   * because the player is what has to act on the choice — the provider's list names the same
-   * tracks but cannot switch between them.
+   * Named and counted by the provider, which read them from the video's own player response. The
+   * embed can switch tracks but the shape of its list is undocumented, so deriving the menu from
+   * it meant a field name changing upstream would make the row quietly disappear. The embed is
+   * still what performs the switch; it is simply not what decides whether there is one to offer.
+   *
+   * Most videos have a single track and get no row at all: one entry is not a choice (§131).
    */
-  const [audioTracks, setAudioTracks] = useState<
-    { id: string; label: string; isDefault: boolean }[]
-  >([]);
-  const [audioTrack, setAudioTrack] = useState<string | null>(null);
+  const audioTracks = (session?.audioTracks ?? []).map((track) => ({
+    id: track.id,
+    label: track.language_name,
+    isDefault: track.is_original === true || track.is_default === true,
+  }));
+  /**
+   * The track chosen by hand, held against the video it was chosen for.
+   *
+   * An id rather than a flag so it resets itself when the video changes — Spanish chosen on one
+   * video must not read as chosen on the next, which offers a different set entirely.
+   */
+  const [chosenAudio, setChosenAudio] = useState<{ videoId: string; id: string } | null>(null);
+  const audioTrack =
+    chosenAudio?.videoId === videoId
+      ? chosenAudio.id
+      : (audioTracks.find((track) => track.isDefault)?.id ?? null);
   /**
    * The tier the viewer asked for, and the tiers this video has.
    *
@@ -539,10 +553,6 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               // Likewise the rates on offer: a new video resets them, and the menu must show what
               // is true rather than what the last video allowed.
               setRates(playerRef.current?.availableRates() ?? []);
-              // Same beat as the rates: a new video resets both, and an audio list from the last
-              // video would offer languages this one does not have.
-              setAudioTracks(playerRef.current?.audioTracks() ?? []);
-              setAudioTrack(playerRef.current?.currentAudioTrack() ?? null);
               // The viewer's chosen speed is applied rather than read back. A new video resets the
               // embed to 1x, so without this the preference was overwritten on every video and the
               // settings slider changed nothing that could be observed.
@@ -584,10 +594,6 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               if (playerRef.current?.hasCaptions() === true) {
                 setEmbedCaptionsFor((was) => (was === videoId ? was : videoId));
               }
-              // The track list arrives a moment after playback starts, the same as the caption
-              // module. Written only when the count changes, so the common case costs no render.
-              const tracks = playerRef.current?.audioTracks() ?? [];
-              setAudioTracks((was) => (was.length === tracks.length ? was : tracks));
               if (playerRef.current?.isHighFrameRate() === true) {
                 setHighFrameRateFor((was) => (was === videoId ? was : videoId));
               }
@@ -740,7 +746,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
                   audioTracks={audioTracks}
                   audioTrack={audioTrack}
                   onAudioTrack={(next) => {
-                    setAudioTrack(next);
+                    setChosenAudio({ videoId, id: next });
                     playerRef.current?.setAudioTrack(next);
                   }}
                   rates={rates}

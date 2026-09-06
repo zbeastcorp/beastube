@@ -164,6 +164,8 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
   const details = video.data;
   // Undefined until this video's metadata lands, which is different from "known to have none".
   const captioned = details === undefined ? undefined : (details.captions?.length ?? 0) > 0;
+  const captionTracks = details?.captions;
+  const dubs = details?.audio_tracks;
   // Only once this video's own metadata has arrived: the resource retains nothing across a key
   // change now, so an undefined `details` means "not known yet" and landscape is the right guess.
   const portrait = details !== undefined && isPortraitVideo(details);
@@ -228,7 +230,8 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
       autoplay,
       ...(poster !== undefined ? { posterUrl: poster } : {}),
       ...(captioned !== undefined ? { hasCaptions: captioned } : {}),
-      ...(details?.captions === undefined ? {} : { captionTracks: details.captions }),
+      ...(captionTracks === undefined ? {} : { captionTracks }),
+      ...(dubs === undefined ? {} : { audioTracks: dubs }),
     });
     // `stored.loading` is listed because the latch above reads it: the session must be rebuilt
     // when this video's position finishes loading, which is the moment the latch can arm.
@@ -238,7 +241,8 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
     autoplay,
     poster,
     captioned,
-    details?.captions,
+    captionTracks,
+    dubs,
     setSession,
     stored.loading,
   ]);

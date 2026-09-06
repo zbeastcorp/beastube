@@ -35,7 +35,7 @@
 
 import { create } from 'zustand';
 
-import type { CaptionTrack, PlaybackState, VideoId } from '@/types/domain';
+import type { AudioTrack, CaptionTrack, PlaybackState, VideoId } from '@/types/domain';
 
 /** What to play, and how to start it. */
 export interface PlayerSession {
@@ -69,6 +69,14 @@ export interface PlayerSession {
    * for whichever track the viewer's language points at.
    */
   captionTracks?: CaptionTrack[];
+  /**
+   * The audio tracks the provider reported, when the video has more than one.
+   *
+   * The embed can switch tracks but its list is undocumented, so the names and the decision to
+   * offer the menu at all come from the provider — which read them from the video's own player
+   * response and is reliable. The embed's list is used only to find the object to hand back to it.
+   */
+  audioTracks?: AudioTrack[];
 }
 
 /** Events the owning view wants, kept out of the reactive store deliberately. */
