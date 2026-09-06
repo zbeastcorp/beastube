@@ -440,7 +440,58 @@ pub(crate) async fn record_watch(
         .history
         .record_watch(&record, Timestamp::now())
         .await
-        .map_err(fail)
+        .map_err(fail)?;
+    enforce_history_retention(&state).await;
+    Ok(())
+}
+
+/// Applies the configured retention window to the watch history.
+///
+/// After the write, in the same shape as the search-history ceiling above: a table can only exceed
+/// its policy immediately after the write that pushed it over, so enforcing here keeps the promise
+/// honest without a timer to run or a task to supervise.
+///
+/// This is the code the setting was missing. `history_retention_days` was declared in the settings
+/// struct, typed in the frontend, offered on the privacy screen as "Delete history older than", and
+/// implemented in the database as [`HistoryRepo::prune`] — and nothing anywhere called it. The
+/// screen made a promise about deletion that no code kept.
+pub(crate) async fn enforce_history_retention(state: &AppState) {
+    let days = state.settings().privacy.history_retention_days;
+    let Some(cutoff) = retention_cutoff(days, Timestamp::now()) else {
+        return;
+    };
+    match state.repositories.history.prune(cutoff).await {
+        Ok(0) => {}
+        Ok(removed) => tracing::info!(removed, "pruned history past its retention window"),
+        Err(error) => tracing::warn!(%error, "history could not be pruned to its retention window"),
+    }
+}
+
+/// The instant before which watch history has outlived its retention window.
+///
+/// `None` means prune nothing, and it covers three separate cases that all have that same answer:
+/// no window configured, a window of zero days, and a window so long the arithmetic leaves the
+/// clock. Zero is refused rather than honoured because "delete everything the moment it is written"
+/// is not a retention window, is not what any offered choice means, and would quietly empty the
+/// library of anyone who reached it.
+///
+/// Days are converted here rather than in the repository, which takes a cutoff and is deliberately
+/// given no opinion about the calendar.
+fn retention_cutoff(days: Option<u32>, now: Timestamp) -> Option<Timestamp> {
+    const MILLIS_PER_DAY: i64 = 24 * 60 * 60 * 1000;
+
+    let days = days?;
+    if days == 0 {
+        return None;
+    }
+    i64::from(days)
+        .checked_mul(MILLIS_PER_DAY)
+        .and_then(|window| now.as_millis().checked_sub(window))
+        // A cutoff before the epoch means the window reaches back past anything that can have been
+        // recorded. Arithmetically it prunes nothing, but returning it would have this function
+        // answer "prune before 1969" where it means "there is nothing to prune".
+        .filter(|millis| *millis >= 0)
+        .map(Timestamp::from_millis)
 }
 
 /// A page of watch history, newest first.
@@ -1160,6 +1211,59 @@ fn webview_cache_roots(data_dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     ]
 }
 
+/// Empties the caches if they have grown past the configured ceiling.
+///
+/// Called once at startup. Measuring and clearing both go through [`clearable_roots`], so this
+/// removes exactly what the "Clear every cache" button removes and counts exactly what the storage
+/// screen counts — the ceiling cannot come to mean something different from the button beside it.
+///
+/// Synchronous and blocking on purpose: it runs before the window is revealed, so there is nothing
+/// yet for it to block, and doing it here is what makes the browser profile reachable at all. Once
+/// the webview starts it holds that profile open.
+pub(crate) fn enforce_cache_limit(state: &AppState) {
+    let Some(limit_mb) = state.settings().privacy.cache_limit_mb else {
+        return;
+    };
+    let limit_bytes = u64::from(limit_mb).saturating_mul(1024 * 1024);
+    let Some(roots) = clearable_roots(state, "all") else {
+        return;
+    };
+    let total: u64 = roots.iter().map(|root| directory_size(root)).sum();
+    if total <= limit_bytes {
+        return;
+    }
+    tracing::info!(
+        total_mb = total / (1024 * 1024),
+        limit_mb,
+        "the caches are over their ceiling; clearing"
+    );
+    for root in roots {
+        remove_contents(&root);
+    }
+}
+
+/// Removes everything inside `root`, leaving the directory itself.
+///
+/// Entry by entry rather than `remove_dir_all` on the root: a single file the process still holds
+/// open makes a whole-tree delete fail and leaves everything else in place, which is the difference
+/// between clearing all but one file and appearing to do nothing.
+fn remove_contents(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let removed = if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        if let Err(error) = removed {
+            tracing::debug!(%error, path = %path.display(), "left a file that could not be removed");
+        }
+    }
+}
+
 /// Removes one of the locations `get_storage_stats` reports as clearable.
 ///
 /// ## Why the browser profile is emptied rather than deleted
@@ -1200,32 +1304,7 @@ pub(crate) async fn clear_storage(
     };
 
     for root in roots {
-        let Ok(entries) = std::fs::read_dir(&root) else {
-            // Absent, or not readable. Either way there is nothing here to remove, and a location
-            // that was never created is not a failure worth reporting.
-            continue;
-        };
-        // Entry by entry, rather than `remove_dir_all` on the root itself. A single file the
-        // process still holds open — the log currently being written is the dependable example —
-        // makes a whole-tree delete fail and leaves *everything else* in place. That is the
-        // difference between a button that clears all but one file and a button that appears to do
-        // nothing at all. The root is left standing, so a cache directory its owner expects to
-        // exist still does.
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let removed = if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-                std::fs::remove_dir_all(&path)
-            } else {
-                std::fs::remove_file(&path)
-            };
-            if let Err(error) = removed {
-                tracing::debug!(
-                    %error,
-                    path = %path.display(),
-                    "left a file that could not be removed"
-                );
-            }
-        }
+        remove_contents(&root);
     }
 
     get_storage_stats(state).await
@@ -1858,6 +1937,39 @@ fn rotating(pool: &[&str], count: usize, variant: u32) -> Vec<String> {
     (0..count.min(pool.len()))
         .map(|offset| pool[(start + offset) % pool.len()].to_owned())
         .collect()
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+
+    const DAY: i64 = 24 * 60 * 60 * 1000;
+
+    #[test]
+    fn a_window_becomes_a_cutoff_that_many_days_back() {
+        let now = Timestamp::from_millis(30 * DAY);
+        assert_eq!(
+            retention_cutoff(Some(7), now),
+            Some(Timestamp::from_millis(23 * DAY))
+        );
+    }
+
+    #[test]
+    fn no_window_prunes_nothing() {
+        assert_eq!(retention_cutoff(None, Timestamp::from_millis(30 * DAY)), None);
+    }
+
+    #[test]
+    fn zero_days_prunes_nothing_rather_than_everything() {
+        // The dangerous reading of "keep for 0 days" is "delete on write". Refusing it is what
+        // stops a library being emptied by a setting nobody meant to reach.
+        assert_eq!(retention_cutoff(Some(0), Timestamp::from_millis(30 * DAY)), None);
+    }
+
+    #[test]
+    fn a_window_longer_than_the_clock_prunes_nothing() {
+        assert_eq!(retention_cutoff(Some(u32::MAX), Timestamp::from_millis(0)), None);
+    }
 }
 
 #[cfg(test)]

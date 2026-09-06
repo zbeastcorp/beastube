@@ -260,6 +260,20 @@ pub fn run() {
                 }
             });
 
+            // Housekeeping the user asked for, applied while the window is still opening.
+            //
+            // Both are ceilings the settings screen offers and that nothing else would enforce: the
+            // retention window only ever ran after a watch, so a machine left idle kept history the
+            // user had asked it to forget, and the cache ceiling has no other moment to act — once
+            // the webview is up it holds its own profile open. Deliberately before the window is
+            // revealed, and deliberately cheap: neither does anything at all unless a limit is set.
+            if let Some(state) = handle.try_state::<AppState>() {
+                tauri::async_runtime::block_on(async {
+                    commands::enforce_history_retention(&state).await;
+                    commands::enforce_cache_limit(&state);
+                });
+            }
+
             // Before the window is ever shown, and while it still cannot be seen to move.
             if let Some(window) = handle.get_webview_window(MAIN_WINDOW) {
                 fit_window_to_monitor(&window);

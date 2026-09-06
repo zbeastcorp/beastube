@@ -368,8 +368,14 @@ export const en = {
       recommendationsHint: 'Ranking happens on this device. Nothing is sent anywhere.',
       incognitoDefault: 'Start every session in incognito',
       retention: 'Delete history older than',
+      retentionHint:
+        'Applied when a video is opened and again at every launch, so a machine left alone still forgets.',
       retentionNever: 'Never delete',
       retentionDays: '{count} days',
+      cacheLimit: 'Clear caches when they exceed',
+      cacheLimitHint:
+        'Checked at launch. Clearing costs nothing but a slower first load; your library, settings and downloads are never touched.',
+      cacheLimitNever: 'Never clear',
       telemetry: 'Usage reporting',
       telemetryValue: 'Off — BEASTUBE collects no analytics',
       storedData: 'Stored data',

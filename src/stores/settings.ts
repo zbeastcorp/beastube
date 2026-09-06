@@ -66,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
     incognito_by_default: false,
     history_retention_days: null,
     max_search_history_entries: 500,
+    cache_limit_mb: null,
   },
   filtering: {
     enabled: true,

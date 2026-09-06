@@ -561,6 +561,8 @@ export interface PrivacySettings {
   incognito_by_default: boolean;
   history_retention_days: number | null;
   max_search_history_entries: number;
+  /** Clear the caches at startup once they exceed this many megabytes. `null` never clears. */
+  cache_limit_mb: number | null;
 }
 
 export interface FilteringSettings {

@@ -544,6 +544,9 @@ function PrivacyPanel(): ReactNode {
   const setIncognito = useSessionStore((state) => state.setIncognito);
   const [busy, setBusy] = useState(false);
 
+  const retentionId = useControlId('history-retention');
+  const cacheLimitId = useControlId('cache-limit');
+
   const storage = useAsyncResource('storage-stats', () => invoke('get_storage_stats', undefined));
 
   const clearHistory = () => {
@@ -667,6 +670,56 @@ function PrivacyPanel(): ReactNode {
           checked={privacy.local_recommendations_enabled}
           onChange={(local_recommendations_enabled) => {
             update({ privacy: { local_recommendations_enabled } });
+          }}
+        />
+      </SettingRow>
+
+      {/* The two housekeeping ceilings. Both are applied at startup, and the history one also
+          after each watch — the moment a table can first exceed its policy.
+
+          `history_retention_days` existed in the settings struct, in the frontend types and in the
+          database as `HistoryRepo::prune`, and had neither a control here nor a caller anywhere:
+          three quarters of a feature and no part the user could reach. */}
+      <SettingRow
+        label={t.t('settings.privacy.retention')}
+        hint={t.t('settings.privacy.retentionHint')}
+        htmlFor={retentionId}
+      >
+        <Select
+          id={retentionId}
+          value={String(privacy.history_retention_days ?? 'never')}
+          options={[
+            { value: 'never', label: t.t('settings.privacy.retentionNever') },
+            ...[7, 30, 90, 365].map((days) => ({
+              value: String(days),
+              label: t.t('settings.privacy.retentionDays', { count: String(days) }),
+            })),
+          ]}
+          onChange={(choice) => {
+            update({
+              privacy: { history_retention_days: choice === 'never' ? null : Number(choice) },
+            });
+          }}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label={t.t('settings.privacy.cacheLimit')}
+        hint={t.t('settings.privacy.cacheLimitHint')}
+        htmlFor={cacheLimitId}
+      >
+        <Select
+          id={cacheLimitId}
+          value={String(privacy.cache_limit_mb ?? 'never')}
+          options={[
+            { value: 'never', label: t.t('settings.privacy.cacheLimitNever') },
+            ...[250, 500, 1024, 2048].map((mb) => ({
+              value: String(mb),
+              label: t.bytes(mb * 1024 * 1024),
+            })),
+          ]}
+          onChange={(choice) => {
+            update({ privacy: { cache_limit_mb: choice === 'never' ? null : Number(choice) } });
           }}
         />
       </SettingRow>

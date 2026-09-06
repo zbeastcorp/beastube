@@ -239,6 +239,14 @@ pub struct PrivacySettings {
     pub history_retention_days: Option<u32>,
     /// Maximum number of stored search queries.
     pub max_search_history_entries: u32,
+    /// Clear the caches at startup once they exceed this many megabytes. `None` never clears them.
+    ///
+    /// Checked at launch rather than continuously, and a ceiling rather than a schedule. Clearing
+    /// on every start would make every first load slow for a saving most people do not need, and
+    /// watching the size continuously would mean a background task measuring the disk for ever.
+    /// A ceiling costs one measurement while the window is still opening and does nothing at all
+    /// until the number is one the user said they minded.
+    pub cache_limit_mb: Option<u32>,
 }
 
 impl Default for PrivacySettings {
@@ -254,6 +262,9 @@ impl Default for PrivacySettings {
             // Bounded so the suggestions index stays small and the table cannot grow without limit
             // on a machine used for years.
             max_search_history_entries: 500,
+            // Off by default. The caches exist to make the application fast, and emptying them
+            // without being asked is a decision about somebody else's disk.
+            cache_limit_mb: None,
         }
     }
 }
