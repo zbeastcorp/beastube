@@ -8,6 +8,18 @@ breaking changes.
 
 ## [0.1.5] — 2026-09-07
 
+### Fixed
+
+- **The installer no longer asks for administrator rights, and no longer installs machine-wide by
+  accident.** It was configured to offer both scopes, which meant a silent install with no existing
+  copy present chose the machine-wide one — landing in Program Files, needing elevation, and
+  contradicting the "installs per user, no administrator prompt" this project states on its own
+  download page. Worse, it broke updating: an update installs quietly precisely because a per-user
+  install needs no elevation, so a machine-wide copy could not update quietly and would fail with
+  nothing shown. Offering both scopes also forced the uninstaller to request the highest available
+  rights, so removing BEASTUBE raised a prompt for something that never needed one. It now installs
+  for the current user only. The `.msi` remains the way to deploy across a fleet.
+
 ### Added
 
 - **Subtitles can be moved, resized and given a background.** They are now drawn by BEASTUBE rather

@@ -65,7 +65,7 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "startMenuFolder": "BEASTUBE",
-        "installMode": "both",
+        "installMode": "currentUser",
         "languages": ["English"],
         "displayLanguageSelector": false,
         "compression": "lzma",
