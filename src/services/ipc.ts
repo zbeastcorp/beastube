@@ -66,6 +66,15 @@ export interface StorageLocation {
   bytes: number;
   /** Whether BEASTUBE will delete it on request. */
   clearable: boolean;
+  /**
+   * How much of `bytes` a clear would actually remove.
+   *
+   * Lower than `bytes` wherever a location holds things BEASTUBE will not delete — the browser
+   * profile is mostly cookies, site storage and certificate material, none of which is size worth
+   * taking. Gating the button on this rather than on `bytes` is what stops it offering to clear
+   * something it cannot.
+   */
+  clearable_bytes: number;
 }
 
 export interface StorageStats {
@@ -232,7 +241,8 @@ export interface CommandMap {
   /** Deletes the extractor cache only; history, bookmarks and settings are untouched. */
   clear_cache: { args: undefined; result: StorageStats };
   /** Empties one clearable location and returns what is actually left afterwards. */
-  clear_storage: { args: { target: StorageLocation['id'] }; result: StorageStats };
+  /** `'all'` clears every cache in one press. It is still only caches. */
+  clear_storage: { args: { target: StorageLocation['id'] | 'all' }; result: StorageStats };
   get_app_info: { args: undefined; result: AppInfo };
 
   // --- library ---

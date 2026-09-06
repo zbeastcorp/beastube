@@ -571,13 +571,14 @@ function PrivacyPanel(): ReactNode {
       });
   };
 
-  const clearLocation = (target: StorageLocation['id']) => {
+  const clearLocation = (target: StorageLocation['id'] | 'all') => {
     setBusy(true);
     void invoke('clear_storage', { target })
       .then(() => {
         // The in-memory caches go with the metadata one, or this session keeps serving feeds and
         // video details fetched before the click and the button does not mean what it says.
-        if (target === 'provider_cache') {
+        // 'all' includes the metadata cache, so it has to do the same.
+        if (target === 'provider_cache' || target === 'all') {
           clearFeedCache();
           clearVideoCache();
         }
@@ -587,6 +588,40 @@ function PrivacyPanel(): ReactNode {
         setBusy(false);
       });
   };
+
+  const chooseDownloadFolder = () => {
+    setBusy(true);
+    void invoke('pick_download_directory', undefined)
+      .then((directory) => {
+        // `null` is the viewer closing the picker, which is not a change and not a failure.
+        if (directory === null) return;
+        update({ downloads: { directory } });
+        storage.reload();
+      }, reportFailure)
+      .finally(() => {
+        setBusy(false);
+      });
+  };
+
+  // The clear controls are disabled while the figures are being re-measured as well as while a
+  // clear is in flight. `busy` alone released as soon as the command resolved, which is before the
+  // new numbers arrive — so for a moment the buttons were live again over the old ones, inviting a
+  // second press against a figure already known to be wrong.
+  const settling = busy || storage.loading;
+
+  // Everything BEASTUBE itself put on the disk. The download folder is deliberately not counted:
+  // it holds the viewer's files, in a directory they chose and may share with anything else, and
+  // adding it made the headline figure a claim about their disk rather than about this
+  // application. On the machine this was written on that default resolved to a source checkout,
+  // and the screen reported 8.1 GB of `node_modules` as data BEASTUBE was storing.
+  const ownFootprint = (storage.data?.locations ?? [])
+    .filter((location) => location.clearable || location.id === 'library')
+    .reduce((sum, location) => sum + location.bytes, 0);
+
+  const removableTotal = (storage.data?.locations ?? []).reduce(
+    (sum, location) => sum + location.clearable_bytes,
+    0,
+  );
 
   return (
     <SettingsSection
@@ -651,13 +686,17 @@ function PrivacyPanel(): ReactNode {
       </SettingRow>
 
       <SettingRow label={t.t('settings.privacy.storedData')}>
+        <ReadOnlyValue value={storage.data ? t.bytes(ownFootprint) : '…'} />
+      </SettingRow>
+
+      {/* Its own row, with the noun said out loud. It used to be appended to the byte figure above
+          as "8.1 GB · 299 videos", which reads as 299 files taking 8.1 GB — a count of downloads,
+          which is not what it is. It counts rows in the history table. */}
+      <SettingRow label={t.t('settings.privacy.historyEntries')}>
         <ReadOnlyValue
           value={
             storage.data
-              ? [
-                  t.bytes(storage.data.locations.reduce((sum, l) => sum + l.bytes, 0)),
-                  t.plural('library.itemCount', storage.data.history_entries),
-                ].join(' · ')
+              ? t.plural('settings.privacy.historyCount', storage.data.history_entries)
               : '…'
           }
         />
@@ -676,6 +715,25 @@ function PrivacyPanel(): ReactNode {
         <span />
       </SettingRow>
 
+      {/* One press for the whole lot, which is what almost everyone opening this screen wants.
+          It clears caches only — the library, the settings and the download folder are not in it —
+          so it is a secondary control rather than a destructive one. */}
+      <SettingRow
+        label={t.t('settings.privacy.clearAll')}
+        hint={t.t('settings.privacy.clearAllHint')}
+      >
+        <SecondaryButton
+          onClick={() => {
+            clearLocation('all');
+          }}
+          disabled={settling || removableTotal === 0}
+        >
+          {storage.data
+            ? t.t('settings.privacy.clearAllAmount', { size: t.bytes(removableTotal) })
+            : t.t('settings.privacy.storageClear')}
+        </SecondaryButton>
+      </SettingRow>
+
       {(storage.data?.locations ?? []).map((location) => (
         <SettingRow
           key={location.id}
@@ -687,19 +745,33 @@ function PrivacyPanel(): ReactNode {
               onClick={() => {
                 clearLocation(location.id);
               }}
-              disabled={busy || location.bytes === 0}
+              // Gated on what the button removes, not on what the row measures. The browser row
+              // reports the whole profile, most of which is the viewer's own data and stays; a
+              // button disabled only at a total that never reaches zero would never disable, and
+              // pressing it would keep appearing to do nothing.
+              disabled={settling || location.clearable_bytes === 0}
+              // Several of these rows read "Clear" and nothing else in a screen reader's list of
+              // controls. The accessible name says which one.
+              aria-label={t.t('settings.privacy.storageClearNamed', {
+                name: t.t(`settings.privacy.storageKind.${location.id}` as TranslationKey),
+              })}
             >
               {t.t('settings.privacy.storageClear')}
             </SecondaryButton>
           ) : location.id === 'downloads' ? (
-            <SecondaryButton
-              onClick={() => {
-                void invoke('open_download_directory', undefined).catch(reportFailure);
-              }}
-              disabled={busy}
-            >
-              {t.t('settings.privacy.storageOpen')}
-            </SecondaryButton>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <SecondaryButton onClick={chooseDownloadFolder} disabled={settling}>
+                {t.t('settings.downloads.changeFolder')}
+              </SecondaryButton>
+              <SecondaryButton
+                onClick={() => {
+                  void invoke('open_download_directory', undefined).catch(reportFailure);
+                }}
+                disabled={settling}
+              >
+                {t.t('settings.privacy.storageOpen')}
+              </SecondaryButton>
+            </div>
           ) : (
             // The library is the other non-clearable row, and it has no button: it is the user's
             // own data, cleared by the specific controls below rather than wholesale. It had

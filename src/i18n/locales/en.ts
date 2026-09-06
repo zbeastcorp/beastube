@@ -377,8 +377,20 @@ export const en = {
       storageHint:
         'Every folder BEASTUBE writes to, largest first. Clearing a cache costs nothing but a slower first load afterwards.',
       storageClear: 'Clear',
+      // Several rows carry a button reading only "Clear". This is the accessible name, so a screen
+      // reader listing the controls says which one each is.
+      storageClearNamed: 'Clear {name}',
       storageCleared: 'Cleared {name}',
       storageOpen: 'Open folder',
+      clearAll: 'Clear every cache',
+      clearAllHint:
+        'Empties all of the caches below in one press. Your library, your settings and your downloaded files are not touched.',
+      clearAllAmount: 'Free {size}',
+      historyEntries: 'History',
+      historyCount: {
+        one: '{count} video in history',
+        other: '{count} videos in history',
+      },
       storageKind: {
         library: 'Library',
         libraryHint:

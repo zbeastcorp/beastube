@@ -34,9 +34,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # Pinned, not `node-version-file`. That reads `engines.node`, which is a *range*
-          # (`>=22.12.0`), and a range resolves to whatever is newest — so CI would follow every
+          # (`>=22.13.0`), and a range resolves to whatever is newest — so CI would follow every
           # Node major on its own and break on one of them with no commit to blame.
-          node-version: '22.12.0'
+          # The pin tracks the version development happens on. The floor in `engines` is set by
+          # pnpm 11, which refuses to start on anything below Node 22.13 — 22.12 was below it.
+          node-version: '24.18.0'
           cache: pnpm
 
       - name: Install dependencies
@@ -79,7 +81,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.12.0'
+          node-version: '24.18.0'
           cache: pnpm
 
       - name: Fetch bundled tools
@@ -102,9 +104,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # Pinned, not `node-version-file`. That reads `engines.node`, which is a *range*
-          # (`>=22.12.0`), and a range resolves to whatever is newest — so CI would follow every
+          # (`>=22.13.0`), and a range resolves to whatever is newest — so CI would follow every
           # Node major on its own and break on one of them with no commit to blame.
-          node-version: '22.12.0'
+          # The pin tracks the version development happens on. The floor in `engines` is set by
+          # pnpm 11, which refuses to start on anything below Node 22.13 — 22.12 was below it.
+          node-version: '24.18.0'
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable

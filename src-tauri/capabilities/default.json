@@ -3,11 +3,18 @@
   "identifier": "default",
   "description": "Baseline capability for the main window",
   "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "opener:default",
-    "dialog:default",
-    "process:default",
-    "updater:default"
-  ]
+  "comment": [
+    "What the *renderer* may reach, which is not the same as what this application may do.",
+    "Tauri's access-control list gates the webview-to-core boundary; a plugin used from Rust is a",
+    "direct call and needs nothing here. That distinction is what lets this list be short:",
+    "`opener:default` and `dialog:default` were both granted and neither was ever used from the",
+    "frontend. Opening a link goes through the `open_external` command, which validates the URL",
+    "first, and the folder pickers are `pick_download_directory` and `pick_downloader_executable`.",
+    "Granting the plugins to the renderer as well handed it an unvalidated way to do the same",
+    "things, which is the whole of what the validation was for.",
+    "",
+    "`process:default` also allows `exit`. The frontend restarts the application after an update",
+    "and never needs to end it, so only `restart` is granted."
+  ],
+  "permissions": ["core:default", "process:allow-restart", "updater:default"]
 }

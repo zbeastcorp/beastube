@@ -145,11 +145,46 @@ pub(crate) async fn reset_settings(state: State<'_, AppState>) -> CommandResult<
 // Search and metadata
 // ---------------------------------------------------------------------------------------------
 
+/// The longest free-text string any command will accept.
+///
+/// Generous for a search box and small enough that no caller can make the native side allocate on
+/// demand. The interface would never send more, which is exactly the reason to check here: the
+/// renderer is not the only thing that can call a command, and a bound the frontend enforces is a
+/// bound nothing enforces.
+const MAX_QUERY_LEN: usize = 512;
+
+/// The most rows any command will return from the library in one call.
+const MAX_PAGE_SIZE: u32 = 500;
+
+/// Rejects free text that is longer than this application ever has reason to handle.
+///
+/// # Errors
+///
+/// Returns a payload naming the field when the text is over-long.
+fn bounded_text(field: &str, text: &str) -> Result<(), ErrorPayload> {
+    if text.len() > MAX_QUERY_LEN {
+        return Err(ErrorPayload {
+            kind: beastube_core::error::ErrorKind::Configuration,
+            code: "validation.invalid_input".to_owned(),
+            message_key: "error.provider.invalid_input".to_owned(),
+            params: std::collections::BTreeMap::new(),
+            recovery: beastube_core::error::Recovery::Unrecoverable,
+            diagnostic: Some(format!(
+                "{field} was {} bytes; the limit is {MAX_QUERY_LEN}",
+                text.len()
+            )),
+            correlation_id: None,
+        });
+    }
+    Ok(())
+}
+
 /// Searches the active provider.
 ///
 /// # Errors
 ///
-/// Returns a payload if the query is empty, the provider fails, or the response cannot be read.
+/// Returns a payload if the query is empty or over-long, the provider fails, or the response cannot
+/// be read.
 #[tauri::command]
 pub(crate) async fn search(
     state: State<'_, AppState>,
@@ -157,6 +192,7 @@ pub(crate) async fn search(
     filters: SearchFilters,
     continuation: Option<ContinuationToken>,
 ) -> CommandResult<SearchResults> {
+    bounded_text("query", &query)?;
     // Cancellation is per-call here; superseding an in-flight search is the frontend's decision,
     // and it abandons the promise rather than needing the native side to know.
     let cancel = CancellationToken::new();
@@ -437,10 +473,13 @@ pub(crate) async fn search_history(
     query: String,
     limit: u32,
 ) -> CommandResult<Vec<HistoryEntry>> {
+    bounded_text("query", &query)?;
     state
         .repositories
         .history
-        .search(&query, limit)
+        // Bounded here rather than trusted: `limit` reaches SQL as a row count, and the interface
+        // asking for twenty is not a reason the native side should answer a request for millions.
+        .search(&query, limit.min(MAX_PAGE_SIZE))
         .await
         .map_err(fail)
 }
@@ -863,6 +902,13 @@ pub(crate) struct StorageLocation {
     /// share with other things, and a button that empties it would be a foot-gun wearing the word
     /// "clean".
     clearable: bool,
+    /// How much of `bytes` a clear would actually remove.
+    ///
+    /// Not the same number as `bytes`, and the difference is the point. The browser profile is
+    /// mostly the viewer's own data and security material this application will not touch, so a row
+    /// that offered `bytes` beside a button removing a fraction of it was making a promise the
+    /// button did not keep. This is measured from the very list the button deletes.
+    clearable_bytes: u64,
 }
 
 /// What the application is storing on this device.
@@ -905,42 +951,55 @@ pub(crate) async fn get_storage_stats(state: State<'_, AppState>) -> CommandResu
         .database
         .path()
         .map_or_else(|| "(in memory)".to_owned(), |path| path.display().to_string());
+    // Measured from the same list the button deletes, so the two cannot disagree.
+    let removable = |id: &str| -> u64 {
+        clearable_roots(&state, id).map_or(0, |roots| {
+            roots.iter().map(|root| directory_size(root)).sum()
+        })
+    };
+
     let mut locations = vec![
         StorageLocation {
             id: "library",
             path: database_path.clone(),
             bytes: database_bytes,
             clearable: false,
+            clearable_bytes: 0,
         },
         StorageLocation {
             id: "webview",
             path: state.webview_data_dir.display().to_string(),
             bytes: directory_size(&state.webview_data_dir),
             clearable: true,
+            clearable_bytes: removable("webview"),
         },
         StorageLocation {
             id: "provider_cache",
             path: state.provider_cache_dir.display().to_string(),
             bytes: cache_bytes,
             clearable: true,
+            clearable_bytes: cache_bytes,
         },
         StorageLocation {
             id: "downloader_cache",
             path: state.downloader_cache_dir().display().to_string(),
             bytes: directory_size(&state.downloader_cache_dir()),
             clearable: true,
+            clearable_bytes: removable("downloader_cache"),
         },
         StorageLocation {
             id: "logs",
             path: state.log_dir.display().to_string(),
             bytes: directory_size(&state.log_dir),
             clearable: true,
+            clearable_bytes: removable("logs"),
         },
         StorageLocation {
             id: "downloads",
             path: state.download_directory().display().to_string(),
             bytes: directory_size(&state.download_directory()),
             clearable: false,
+            clearable_bytes: 0,
         },
     ];
     // Largest first: the point of the list is that the big one is not the one people expect.
@@ -962,21 +1021,36 @@ pub(crate) async fn get_storage_stats(state: State<'_, AppState>) -> CommandResu
 ///
 /// A directory the process cannot traverse contributes zero rather than failing the whole
 /// measurement: an approximate size is more useful on a storage screen than an error.
+///
+/// Bounded by a visit budget as well as by depth. Every directory measured here is one this
+/// application owns except the download folder, which is whatever the user pointed at — and on the
+/// machine this was written on that default resolved to a source checkout, so drawing one row meant
+/// walking a `node_modules` and a Rust `target/`. The budget is far above any plausible folder of
+/// videos, so the figure stays exact in the ordinary case and becomes a floor rather than a stall
+/// in the pathological one.
 fn directory_size(root: &std::path::Path) -> u64 {
-    fn walk(path: &std::path::Path, total: &mut u64, depth: usize) {
+    /// Entries visited before the walk gives up. Chosen to be unreachable for a media folder and
+    /// reachable within a second or so for a source tree.
+    const VISIT_BUDGET: u32 = 60_000;
+
+    fn walk(path: &std::path::Path, total: &mut u64, depth: usize, budget: &mut u32) {
         // Bounded so a symlink loop or a pathological tree cannot spin here.
-        if depth > 8 {
+        if depth > 8 || *budget == 0 {
             return;
         }
         let Ok(entries) = std::fs::read_dir(path) else {
             return;
         };
         for entry in entries.flatten() {
+            if *budget == 0 {
+                return;
+            }
+            *budget -= 1;
             let Ok(metadata) = entry.metadata() else {
                 continue;
             };
             if metadata.is_dir() {
-                walk(&entry.path(), total, depth + 1);
+                walk(&entry.path(), total, depth + 1, budget);
             } else {
                 *total = total.saturating_add(metadata.len());
             }
@@ -984,7 +1058,8 @@ fn directory_size(root: &std::path::Path) -> u64 {
     }
 
     let mut total = 0;
-    walk(root, &mut total, 0);
+    let mut budget = VISIT_BUDGET;
+    walk(root, &mut total, 0, &mut budget);
     total
 }
 
@@ -1019,6 +1094,72 @@ pub(crate) async fn clear_cache(state: State<'_, AppState>) -> CommandResult<Sto
     get_storage_stats(state).await
 }
 
+/// The directories a "clear" removes for a given target, or `None` if the target is not one this
+/// application will delete.
+///
+/// Shared with `get_storage_stats` deliberately. The screen used to measure one set of paths and
+/// delete a different, much smaller one: the browser row reported the whole 29 MB profile while the
+/// button removed five subdirectories worth about 2 MB. So the figure barely moved, the button
+/// never disabled, and clearing looked broken — because in every way the viewer could observe, it
+/// was. Measuring and deleting now read the same list and cannot drift apart.
+fn clearable_roots(state: &AppState, target: &str) -> Option<Vec<std::path::PathBuf>> {
+    match target {
+        "provider_cache" => Some(vec![state.provider_cache_dir.clone()]),
+        "downloader_cache" => Some(vec![state.downloader_cache_dir()]),
+        "logs" => Some(vec![state.log_dir.clone()]),
+        "webview" => Some(webview_cache_roots(&state.webview_data_dir)),
+        // Every cache above in one press, which is the only thing most people want from this
+        // screen. It is still only caches: the library, the settings and the download folder are
+        // not in any of these lists.
+        "all" => Some(
+            ["webview", "provider_cache", "downloader_cache", "logs"]
+                .into_iter()
+                .filter_map(|id| clearable_roots(state, id))
+                .flatten()
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+/// The disposable parts of the embedded browser's profile.
+///
+/// Chromium keeps two very different kinds of thing under one directory. Some of it is the viewer's
+/// — cookies, local storage, the embed's own preferences — and none of that is listed here: it is
+/// not where the size is, and removing it costs them something for nothing. The rest is either a
+/// cache the browser rebuilds locally or a component payload it re-downloads on its own schedule,
+/// and that is what this returns.
+///
+/// Deliberately absent: `PKIMetadata`, `Trust Protection Lists`, `TrustTokenKeyCommitments` and
+/// `CertificateRevocation`. They are component payloads and would come back, but they are the data
+/// certificate revocation is checked against, and trading a working revocation check for one
+/// megabyte is not a trade a "free up space" button should make on someone's behalf.
+fn webview_cache_roots(data_dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let profile = data_dir.join("Default");
+    vec![
+        // Rebuilt locally, for free, as the viewer watches.
+        profile.join("Cache"),
+        profile.join("Code Cache"),
+        profile.join("Service Worker"),
+        profile.join("GPUCache"),
+        data_dir.join("GrShaderCache"),
+        data_dir.join("ShaderCache"),
+        data_dir.join("GPUPersistentCache"),
+        // Component payloads. Re-downloaded when the browser next updates them, which costs
+        // bandwidth once and nothing else. These are where the profile's size actually is: the
+        // subresource filter ruleset alone was 12 MB of the 29 MB measured here.
+        data_dir.join("Subresource Filter"),
+        data_dir.join("component_crx_cache"),
+        data_dir.join("extensions_crx_cache"),
+        data_dir.join("Speech Recognition"),
+        data_dir.join("hyphen-data"),
+        data_dir.join("MEIPreload"),
+        data_dir.join("OriginTrials"),
+        // Crash reports for a process that is no longer running.
+        data_dir.join("Crashpad"),
+    ]
+}
+
 /// Removes one of the locations `get_storage_stats` reports as clearable.
 ///
 /// ## Why the browser profile is emptied rather than deleted
@@ -1046,44 +1187,45 @@ pub(crate) async fn clear_storage(
     state: State<'_, AppState>,
     target: String,
 ) -> CommandResult<StorageStats> {
-    let roots: Vec<std::path::PathBuf> = match target.as_str() {
-        "provider_cache" => vec![state.provider_cache_dir.clone()],
-        "downloader_cache" => vec![state.downloader_cache_dir()],
-        "logs" => vec![state.log_dir.clone()],
-        "webview" => {
-            let profile = state.webview_data_dir.join("Default");
-            vec![
-                profile.join("Cache"),
-                profile.join("Code Cache"),
-                profile.join("Service Worker"),
-                state.webview_data_dir.join("GrShaderCache"),
-                state.webview_data_dir.join("ShaderCache"),
-            ]
-        }
-        _ => {
-            return Err(ErrorPayload {
-                kind: beastube_core::error::ErrorKind::Configuration,
-                code: "validation.invalid_input".to_owned(),
-                message_key: "error.provider.invalid_input".to_owned(),
-                params: std::collections::BTreeMap::new(),
-                recovery: beastube_core::error::Recovery::Unrecoverable,
-                diagnostic: Some(format!("unknown storage target: {target}")),
-                correlation_id: None,
-            });
-        }
+    let Some(roots) = clearable_roots(&state, target.as_str()) else {
+        return Err(ErrorPayload {
+            kind: beastube_core::error::ErrorKind::Configuration,
+            code: "validation.invalid_input".to_owned(),
+            message_key: "error.provider.invalid_input".to_owned(),
+            params: std::collections::BTreeMap::new(),
+            recovery: beastube_core::error::Recovery::Unrecoverable,
+            diagnostic: Some(format!("unknown storage target: {target}")),
+            correlation_id: None,
+        });
     };
 
     for root in roots {
-        match std::fs::remove_dir_all(&root) {
-            Ok(()) | Err(_) if !root.exists() => {}
-            Err(error) => {
-                tracing::warn!(%error, path = %root.display(), "could not fully clear a storage location");
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            // Absent, or not readable. Either way there is nothing here to remove, and a location
+            // that was never created is not a failure worth reporting.
+            continue;
+        };
+        // Entry by entry, rather than `remove_dir_all` on the root itself. A single file the
+        // process still holds open — the log currently being written is the dependable example —
+        // makes a whole-tree delete fail and leaves *everything else* in place. That is the
+        // difference between a button that clears all but one file and a button that appears to do
+        // nothing at all. The root is left standing, so a cache directory its owner expects to
+        // exist still does.
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let removed = if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+            if let Err(error) = removed {
+                tracing::debug!(
+                    %error,
+                    path = %path.display(),
+                    "left a file that could not be removed"
+                );
             }
-            Ok(()) => {}
         }
-        // Recreated empty, because a cache directory the owner expects to exist is cheaper to leave
-        // in place than to make it handle its own absence.
-        let _ = std::fs::create_dir_all(&root);
     }
 
     get_storage_stats(state).await

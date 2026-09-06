@@ -77,7 +77,7 @@ jobs:
         with:
           # Pinned rather than read from `engines.node`, which is a range and would resolve to
           # whatever Node is newest on the day the release is cut.
-          node-version: '22.12.0'
+          node-version: '24.18.0'
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
