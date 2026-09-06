@@ -159,16 +159,17 @@ function audioTrackId(track: EmbedAudioTrack): string {
 }
 
 /**
- * The player's audio tracks, normalised, or an empty list when this build has none.
+ * The player's audio tracks, normalised, or an empty list when this build reports none.
  *
- * A single track is reported as none: one entry is not a choice.
+ * A lone track is reported rather than suppressed: it is the only way a viewer learns what language
+ * they are hearing on a video with no alternatives, and whether that is worth a menu row is the
+ * caller's decision.
  */
 function readAudioTracks(
   player: YouTubePlayerInstance | null,
 ): { id: string; label: string; isDefault: boolean; raw: EmbedAudioTrack }[] {
   try {
     const tracks = player?.getAvailableAudioTracks?.() ?? [];
-    if (tracks.length < 2) return [];
     return tracks
       .map((raw) => {
         const named =

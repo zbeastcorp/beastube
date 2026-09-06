@@ -17,8 +17,11 @@ breaking changes.
   position, size and background opacity are settings — under Settings → Playback, and only under
   BEASTUBE's own control bar, since YouTube's bar still draws its own. Subtitles lift clear of the
   control bar while it is on screen rather than sitting behind it.
-- **Pick the language a video is dubbed into.** Videos are increasingly published with the original
-  audio plus dubs, and the player offered no way to reach them. The audio row appears in the player
+- **Pick the language a video is dubbed into.** The audio row is offered on every video that names
+  its track, listing whatever is actually available — a video with one track shows that one, so the
+  language being heard is visible rather than merely assumed, and a video dubbed into twenty shows
+  all twenty in a list that scrolls. Videos are increasingly published with the original audio plus
+  dubs, and the player offered no way to reach them. The audio row appears in the player
   menu only when a video actually has a choice — measured against the live service, a MrBeast upload
   carries 24 audio tracks and 17 subtitle tracks, while most videos carry one track and get no row
   at all rather than a menu holding a single entry. The original is listed first and marked as such,

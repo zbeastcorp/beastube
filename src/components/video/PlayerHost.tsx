@@ -256,11 +256,29 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    *
    * Most videos have a single track and get no row at all: one entry is not a choice (§131).
    */
-  const audioTracks = (session?.audioTracks ?? []).map((track) => ({
+  /**
+   * What the embed reports, held against the video it was read for.
+   *
+   * Only a fallback. YouTube omits track information entirely from a video that has one audio
+   * track, so the provider has nothing to name for those — and the row would disappear on exactly
+   * the videos most people watch. The embed still names the one track it is playing.
+   */
+  const [embedAudio, setEmbedAudio] = useState<{
+    videoId: string;
+    tracks: { id: string; label: string; isDefault: boolean }[];
+  } | null>(null);
+
+  const providerAudio = (session?.audioTracks ?? []).map((track) => ({
     id: track.id,
     label: track.language_name,
     isDefault: track.is_original === true || track.is_default === true,
   }));
+  const audioTracks =
+    providerAudio.length > 0
+      ? providerAudio
+      : embedAudio?.videoId === videoId
+        ? embedAudio.tracks
+        : [];
   /**
    * The track chosen by hand, held against the video it was chosen for.
    *
@@ -553,6 +571,9 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               // Likewise the rates on offer: a new video resets them, and the menu must show what
               // is true rather than what the last video allowed.
               setRates(playerRef.current?.availableRates() ?? []);
+              // Only used when the provider named nothing; see `embedAudio`.
+              const embedTracks = playerRef.current?.audioTracks() ?? [];
+              if (embedTracks.length > 0) setEmbedAudio({ videoId, tracks: embedTracks });
               // The viewer's chosen speed is applied rather than read back. A new video resets the
               // embed to 1x, so without this the preference was overwritten on every video and the
               // settings slider changed nothing that could be observed.
@@ -1044,7 +1065,7 @@ function SettingsPanel({
     <div
       role="menu"
       aria-label={t.t('player.settings')}
-      className="bg-surface-raised text-text absolute right-0 bottom-11 z-40 min-w-56 overflow-hidden rounded-xl py-1 shadow-lg"
+      className="bg-surface-raised text-text absolute right-0 bottom-11 z-40 flex max-h-[min(22rem,60vh)] min-w-56 flex-col overflow-hidden rounded-xl py-1 shadow-lg"
     >
       {panel === 'root' && (
         <>
@@ -1066,7 +1087,7 @@ function SettingsPanel({
               }}
             />
           )}
-          {audioTracks.length > 1 && (
+          {audioTracks.length > 0 && (
             <RootRow
               label={t.t('player.audio')}
               value={
@@ -1233,7 +1254,10 @@ function SubPanel({
         {title}
       </button>
       <div className="bg-border my-1 h-px" />
-      {children}
+      {/* A video dubbed into twenty languages produced a list taller than the player, with the
+          entries past the bottom edge unreachable. The options scroll on their own so the heading
+          and its back control stay put. */}
+      <div className="max-h-[min(18rem,45vh)] overflow-y-auto overscroll-contain">{children}</div>
     </>
   );
 }

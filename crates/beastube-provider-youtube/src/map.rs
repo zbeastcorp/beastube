@@ -394,7 +394,9 @@ const MIN_CUE_MS: u64 = 700;
 /// entry each, keeping the original first and the rest in the order the provider listed them,
 /// which is the order the site's own menu uses.
 ///
-/// Returns an empty list when the video has only one track: there is nothing to choose between.
+/// Every track the response names is returned, including a lone one. Whether that is worth a menu
+/// is the interface's decision, not this function's — and a viewer being told which language they
+/// are hearing is worth something even when it is the only one on offer.
 pub(crate) fn audio_tracks(streams: &[rustypipe::model::AudioStream]) -> Vec<AudioTrack> {
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut tracks: Vec<AudioTrack> = Vec::new();
@@ -418,10 +420,6 @@ pub(crate) fn audio_tracks(streams: &[rustypipe::model::AudioStream]) -> Vec<Aud
         });
     }
 
-    // One track is not a choice.
-    if tracks.len() < 2 {
-        return Vec::new();
-    }
     // The original leads; everything else keeps the provider's order.
     tracks.sort_by_key(|track| !track.is_original);
     tracks
