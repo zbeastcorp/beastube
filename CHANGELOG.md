@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 the minor number carries
 breaking changes.
 
+## [0.1.2] — 2026-09-06
+
+### Fixed
+
+- **Subtitles can be turned on.** The caption control could not work, for a circular reason: the
+  embed's name for its caption module was read from a call that reports the modules currently
+  _loaded_ rather than the ones available, and captions start unloaded. So the name came back
+  empty, the control reported the video had no captions, and switching them on returned without
+  doing anything — the name only appears once the module is loaded, and loading it was exactly what
+  was being asked for. The embed announces the module through an event that was never subscribed
+  to; it is now, and the name is remembered for as long as the video is loaded.
+
 ## [0.1.1] — 2026-09-06
 
 ### Changed
