@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 the minor number carries
 breaking changes.
 
+## [0.1.5] — 2026-09-07
+
+### Added
+
+- **Pick the language a video is dubbed into.** Videos are increasingly published with the original
+  audio plus dubs, and the player offered no way to reach them. The audio row appears in the player
+  menu only when a video actually has a choice — measured against the live service, a MrBeast upload
+  carries 24 audio tracks and 17 subtitle tracks, while most videos carry one track and get no row
+  at all rather than a menu holding a single entry. The original is listed first and marked as such,
+  so a dub is distinguishable from the performance.
+
 ## [0.1.4] — 2026-09-07
 
 ### Fixed

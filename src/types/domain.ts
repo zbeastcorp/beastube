@@ -229,6 +229,23 @@ export interface CaptionTrack {
   is_auto_generated?: boolean;
 }
 
+/**
+ * One of the audio tracks a video offers.
+ *
+ * Videos are increasingly published with the original audio plus dubs in other languages. A video
+ * with a single track reports none of these: there is nothing to choose between.
+ */
+export interface AudioTrack {
+  /** Provider identifier, e.g. `es.3`. Opaque. */
+  id: string;
+  language_code?: string;
+  /** Display name, already localized upstream. Rendered as opaque text. */
+  language_name: string;
+  is_default?: boolean;
+  /** The video's own audio rather than a translation of it. */
+  is_original?: boolean;
+}
+
 /** The full shape used by the watch page. Flattens {@link VideoSummary} on the wire. */
 export interface VideoDetails extends VideoSummary {
   description?: string;
@@ -237,6 +254,8 @@ export interface VideoDetails extends VideoSummary {
   like_count?: number;
   chapters?: Chapter[];
   captions?: CaptionTrack[];
+  /** Alternative audio tracks, when the video has more than one. Absent when there is no choice. */
+  audio_tracks?: AudioTrack[];
   category?: string;
   is_unlisted?: boolean;
   is_age_restricted?: boolean;

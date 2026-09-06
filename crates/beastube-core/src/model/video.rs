@@ -155,6 +155,31 @@ pub struct CaptionTrack {
     pub is_auto_generated: bool,
 }
 
+/// One of the audio tracks a video offers.
+///
+/// Videos are increasingly published with the original audio plus dubs in other languages. A
+/// video with a single track reports none of these: there is nothing to choose between, and an
+/// audio menu holding one entry is a control that cannot do anything (§131).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioTrack {
+    /// Provider identifier for the track, e.g. `es.3`. Opaque; used to ask for the track by name.
+    pub id: String,
+    /// BCP 47 language tag, when the provider reports one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_code: Option<String>,
+    /// Display name, already localized upstream. Rendered as opaque text.
+    pub language_name: String,
+    /// Whether this is the track the provider serves by default.
+    #[serde(default)]
+    pub is_default: bool,
+    /// Whether this is the video's original audio rather than a dub.
+    ///
+    /// Worth distinguishing in the menu: "original" tells a viewer which track carries the
+    /// performance rather than a translation of it.
+    #[serde(default)]
+    pub is_original: bool,
+}
+
 /// The full shape used by the watch page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VideoDetails {
@@ -181,6 +206,9 @@ pub struct VideoDetails {
     /// Available subtitle tracks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub captions: Vec<CaptionTrack>,
+    /// Alternative audio tracks, when the video has more than one. Empty when there is no choice.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_tracks: Vec<AudioTrack>,
     /// Provider category name, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
@@ -257,6 +285,7 @@ mod tests {
             channel_avatar: ThumbnailSet::empty(),
             channel_subscriber_count: None,
             like_count: None,
+            audio_tracks: Vec::new(),
             chapters: vec![
                 Chapter {
                     title: "Outro".to_owned(),

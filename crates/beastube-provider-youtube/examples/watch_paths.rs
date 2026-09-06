@@ -36,7 +36,11 @@ async fn main() {
     println!();
 
     // Collect real ids: a well-known long-form video, plus whatever shorts a live search returns.
-    let mut targets: Vec<(String, bool)> = vec![("dQw4w9WgXcQ".to_owned(), false)];
+    // The second is a video published with dubs, so the audio-track list is exercised.
+    let mut targets: Vec<(String, bool)> = vec![
+        ("dQw4w9WgXcQ".to_owned(), false),
+        ("0e3GPea1Tyg".to_owned(), false),
+    ];
 
     if let Ok(results) = provider
         .search("roblox trends", &SearchFilters::default(), None, &cancel)
@@ -60,9 +64,10 @@ async fn main() {
 
         let details = match provider.video(&id, &cancel).await {
             Ok(video) => format!(
-                "ok: {:<22} captions={}",
-                video.summary.title.chars().take(22).collect::<String>(),
-                video.captions.len()
+                "ok: {:<20} captions={:<3} audio={}",
+                video.summary.title.chars().take(20).collect::<String>(),
+                video.captions.len(),
+                video.audio_tracks.len()
             ),
             Err(error) => format!("FAIL {error}"),
         };

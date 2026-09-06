@@ -183,11 +183,14 @@ impl YouTubeProvider {
     /// say captions were unavailable when they were one request away. Never fails the caller:
     /// a watch page that loads without a caption list is the behaviour that shipped before, and it
     /// is a far better outcome than a watch page that does not load.
-    async fn caption_tracks(
+    async fn caption_and_audio_tracks(
         &self,
         id: &VideoId,
         cancel: &CancellationToken,
-    ) -> Vec<beastube_core::model::video::CaptionTrack> {
+    ) -> (
+        Vec<beastube_core::model::video::CaptionTrack>,
+        Vec<beastube_core::model::video::AudioTrack>,
+    ) {
         let client = self.query().await;
         let owned = id.as_str().to_owned();
 
@@ -201,10 +204,13 @@ impl YouTubeProvider {
         });
 
         match Self::with_cancellation(cancel, request).await {
-            Ok(player) => map::caption_tracks(player.subtitles),
+            Ok(player) => (
+                map::caption_tracks(player.subtitles.clone()),
+                map::audio_tracks(&player.audio_streams),
+            ),
             Err(error) => {
-                tracing::debug!(video = id.as_str(), %error, "caption tracks were unavailable");
-                Vec::new()
+                tracing::debug!(video = id.as_str(), %error, "track lists were unavailable");
+                (Vec::new(), Vec::new())
             }
         }
     }
@@ -612,14 +618,14 @@ impl VideoProvider for YouTubeProvider {
         let client = self.query().await;
         let owned = id.as_str().to_owned();
 
-        let (watch_page, captions) = futures::join!(
+        let (watch_page, (captions, audio_tracks)) = futures::join!(
             Self::with_cancellation(cancel, async move {
                 client
                     .video_details(owned)
                     .await
                     .map_err(|error| classify(&error, "video_details"))
             }),
-            self.caption_tracks(id, cancel),
+            self.caption_and_audio_tracks(id, cancel),
         );
 
         let details = match watch_page {
@@ -639,6 +645,7 @@ impl VideoProvider for YouTubeProvider {
                     return Err(error);
                 };
                 details.captions = captions;
+                details.audio_tracks = audio_tracks;
                 tracing::debug!(
                     video = id.as_str(),
                     "watch-page details were unreadable; used the player payload"
@@ -688,6 +695,7 @@ impl VideoProvider for YouTubeProvider {
             // reads as "this video has no captions" — the same outcome as before, rather than a
             // failed watch page.
             captions,
+            audio_tracks,
             category: None,
             is_unlisted: false,
             is_age_restricted: false,

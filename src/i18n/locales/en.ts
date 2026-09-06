@@ -146,6 +146,11 @@ export const en = {
   },
 
   player: {
+    audio: 'Audio',
+    /** Shown as the row's value when the player has not said which track is playing. */
+    audioDefault: 'Default',
+    /** Marks the video's own audio, so a dub is distinguishable from a translation of it. */
+    audioOriginal: '{language} (original)',
     play: 'Play',
     pause: 'Pause',
     stop: 'Stop',

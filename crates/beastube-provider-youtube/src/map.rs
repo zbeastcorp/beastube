@@ -18,7 +18,9 @@ use beastube_core::model::SearchItem;
 use beastube_core::model::channel::ChannelSummary;
 use beastube_core::model::playlist::PlaylistSummary;
 use beastube_core::model::thumbnail::{Thumbnail, ThumbnailSet};
-use beastube_core::model::video::{CaptionTrack, Chapter, LiveStatus, VideoDetails, VideoSummary};
+use beastube_core::model::video::{
+    AudioTrack, CaptionTrack, Chapter, LiveStatus, VideoDetails, VideoSummary,
+};
 use beastube_core::time_util::Timestamp;
 use rustypipe::model::{
     ChannelItem, ChannelTag, PlaylistItem, Thumbnail as YtThumbnail, Verification, VideoItem,
@@ -309,6 +311,7 @@ pub(crate) fn details_from_player(json: &str, id: &VideoId) -> Option<VideoDetai
         like_count: None,
         chapters: Vec::new(),
         captions: Vec::new(),
+        audio_tracks: Vec::new(),
         category: micro
             .and_then(|m| m.get("category"))
             .and_then(serde_json::Value::as_str)
@@ -336,6 +339,46 @@ pub(crate) fn caption_tracks(subtitles: Vec<rustypipe::model::Subtitle>) -> Vec<
             is_auto_generated: subtitle.auto_generated,
         })
         .collect()
+}
+
+/// The distinct audio tracks across a video's audio streams.
+///
+/// The extractor reports the track on each *stream*, and a video has several streams per track —
+/// one per bitrate — so the same language arrives many times over. This collapses them to one
+/// entry each, keeping the original first and the rest in the order the provider listed them,
+/// which is the order the site's own menu uses.
+///
+/// Returns an empty list when the video has only one track: there is nothing to choose between.
+pub(crate) fn audio_tracks(streams: &[rustypipe::model::AudioStream]) -> Vec<AudioTrack> {
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut tracks: Vec<AudioTrack> = Vec::new();
+
+    for stream in streams {
+        let Some(track) = stream.track.as_ref() else {
+            continue;
+        };
+        if !seen.insert(track.id.as_str()) {
+            continue;
+        }
+        tracks.push(AudioTrack {
+            id: track.id.clone(),
+            language_code: track.lang.clone(),
+            language_name: track.lang_name.clone(),
+            is_default: track.is_default,
+            is_original: matches!(
+                track.track_type,
+                Some(rustypipe::model::AudioTrackType::Original)
+            ),
+        });
+    }
+
+    // One track is not a choice.
+    if tracks.len() < 2 {
+        return Vec::new();
+    }
+    // The original leads; everything else keeps the provider's order.
+    tracks.sort_by_key(|track| !track.is_original);
+    tracks
 }
 
 /// Converts a video item, returning `None` if its identifier fails validation.

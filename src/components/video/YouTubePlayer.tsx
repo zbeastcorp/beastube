@@ -149,6 +149,45 @@ const QUALITY_ORDER: readonly Exclude<Quality, 'auto'>[] = [
 ];
 
 /**
+ * A stable identifier for one of the player's audio tracks.
+ *
+ * The field carrying it differs between builds, so the first one present wins and the language code
+ * is the fallback — it is what actually distinguishes one dub from another.
+ */
+function audioTrackId(track: EmbedAudioTrack): string {
+  return track.id ?? track.languageCode ?? track.displayName ?? '';
+}
+
+/**
+ * The player's audio tracks, normalised, or an empty list when this build has none.
+ *
+ * A single track is reported as none: one entry is not a choice.
+ */
+function readAudioTracks(
+  player: YouTubePlayerInstance | null,
+): { id: string; label: string; isDefault: boolean; raw: EmbedAudioTrack }[] {
+  try {
+    const tracks = player?.getAvailableAudioTracks?.() ?? [];
+    if (tracks.length < 2) return [];
+    return tracks
+      .map((raw) => {
+        const named =
+          typeof raw.languageName === 'string' ? raw.languageName : raw.languageName?.name;
+        return {
+          id: audioTrackId(raw),
+          label: named ?? raw.displayName ?? raw.languageCode ?? '',
+          isDefault: raw.audioIsDefault === true,
+          raw,
+        };
+      })
+      .filter((track) => track.id !== '' && track.label !== '');
+  } catch {
+    // Torn down, or a build that throws rather than returning nothing.
+    return [];
+  }
+}
+
+/**
  * The caption module's name in the current player build. The older build called it `cc`.
  *
  * Used only as the opening guess when nothing has been learned from `onApiChange` yet; a wrong
@@ -273,6 +312,21 @@ function renderSize(
 }
 
 /** The subset of the player API this component uses. */
+/**
+ * One entry from the player's own audio-track list.
+ *
+ * Shape is not documented, so every field is optional and read defensively. The object is handed
+ * straight back to `setAudioTrack` rather than reconstructed, which is what makes not knowing its
+ * shape survivable.
+ */
+interface EmbedAudioTrack {
+  id?: string;
+  languageCode?: string;
+  languageName?: { name?: string } | string;
+  displayName?: string;
+  audioIsDefault?: boolean;
+}
+
 interface YouTubePlayerInstance {
   playVideo: () => void;
   pauseVideo: () => void;
@@ -314,6 +368,15 @@ interface YouTubePlayerInstance {
    * exist for the video in front of the viewer (§131).
    */
   getAvailableQualityLevels: () => string[];
+  /**
+   * Audio tracks, on player builds that expose them.
+   *
+   * Absent from the published API reference, so both are optional: a build without them offers no
+   * audio menu rather than throwing.
+   */
+  getAvailableAudioTracks?: () => EmbedAudioTrack[];
+  setAudioTrack?: (track: EmbedAudioTrack) => void;
+  getAudioTrack?: () => EmbedAudioTrack | null;
   /** Names of the option modules the player currently has, e.g. `captions`. */
   getOptions: () => string[];
   loadModule: (module: string) => void;
@@ -627,6 +690,17 @@ export interface PlayerHandle {
    * Asked of the player rather than assumed, so a caption control can be absent for a video that
    * has none instead of present and inert (§131).
    */
+  /**
+   * The audio tracks this video offers, or an empty list when it offers no choice.
+   *
+   * Empty also covers a player build without the extended methods, so the caller shows no audio
+   * menu rather than one that cannot do anything (§131).
+   */
+  audioTracks: () => { id: string; label: string; isDefault: boolean }[];
+  /** The track currently playing, or `null` when unknown. */
+  currentAudioTrack: () => string | null;
+  /** Switches audio track by the id reported by [`audioTracks`]. */
+  setAudioTrack: (id: string) => void;
   hasCaptions: () => boolean;
   setCaptions: (enabled: boolean) => void;
 }
@@ -1517,6 +1591,30 @@ export function YouTubePlayer({
         if (!player) return;
         try {
           player.setVolume(Math.max(0, Math.min(100, volume)));
+        } catch {
+          // As above.
+        }
+      },
+      audioTracks: () =>
+        readAudioTracks(playerRef.current).map(({ id, label, isDefault }) => ({
+          id,
+          label,
+          isDefault,
+        })),
+      currentAudioTrack: () => {
+        try {
+          const current = playerRef.current?.getAudioTrack?.();
+          return current ? audioTrackId(current) : null;
+        } catch {
+          return null;
+        }
+      },
+      setAudioTrack: (id: string) => {
+        try {
+          // The player's own object is handed back untouched. Its shape is undocumented, so
+          // rebuilding one from an id would be guessing at a structure that can change.
+          const match = readAudioTracks(playerRef.current).find((track) => track.id === id);
+          if (match) playerRef.current?.setAudioTrack?.(match.raw);
         } catch {
           // As above.
         }
