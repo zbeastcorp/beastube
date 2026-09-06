@@ -149,6 +149,14 @@ const QUALITY_ORDER: readonly Exclude<Quality, 'auto'>[] = [
 ];
 
 /**
+ * The caption module's name in the current player build. The older build called it `cc`.
+ *
+ * Used only as the opening guess when nothing has been learned from `onApiChange` yet; a wrong
+ * guess is a no-op rather than an error.
+ */
+const HTML5_CAPTION_MODULE = 'captions';
+
+/**
  * The narrowest frame that loads into YouTube's 60fps track family.
  *
  * The embed settles on a 30fps or 60fps family when a video *loads* and keeps it for that load,
@@ -331,6 +339,7 @@ interface YouTubeApi {
         onReady?: (event: PlayerEvent) => void;
         onStateChange?: (event: PlayerEvent) => void;
         onError?: (event: PlayerEvent) => void;
+        onApiChange?: (event: PlayerEvent) => void;
       };
     },
   ) => YouTubePlayerInstance;
@@ -696,6 +705,16 @@ export function YouTubePlayer({
   const pendingResumeRef = useRef<number | null>(null);
 
   /**
+   * The embed's name for its caption module, remembered for as long as this video is loaded.
+   *
+   * `getOptions()` lists the modules that are *currently loaded*, not the ones available — so with
+   * captions off, which is the default, it returns nothing and the name cannot be read back. That
+   * is why this is remembered rather than asked for each time: it was the reason captions could
+   * never be switched on. `onApiChange` is the documented moment the embed says a module exists.
+   */
+  const captionModuleRef = useRef<string | null>(null);
+
+  /**
    * The video whose failure is on screen, readable from an effect event.
    *
    * A ref beside the state because `swapVideo` needs to know synchronously whether the video being
@@ -977,6 +996,18 @@ export function YouTubePlayer({
 
             startPoll(setInterval(samplePosition, POSITION_POLL_MS));
           },
+          onApiChange: () => {
+            if (isCancelled()) return;
+            // Fired when the embed loads or unloads a module with an exposed API. Reading the name
+            // here is the only reliable chance to learn it, so it is kept rather than re-derived.
+            try {
+              const modules = playerRef.current?.getOptions() ?? [];
+              const found = modules.find((name) => name === 'captions' || name === 'cc');
+              if (found !== undefined) captionModuleRef.current = found;
+            } catch {
+              // The player throws once torn down; there is nothing to learn from it then.
+            }
+          },
           onStateChange: (event) => {
             if (isCancelled()) return;
             // Playing is proof the failure has passed, which covers re-entering the same video
@@ -1037,6 +1068,10 @@ export function YouTubePlayer({
 
     loadedIdRef.current = id;
     pendingResumeRef.current = null;
+    // Whether the previous video had captions says nothing about this one. Keeping the name would
+    // offer a caption control on a video that has none, which is worse than not offering one.
+    // `onApiChange` fires again for the new video and supplies it if there is one.
+    captionModuleRef.current = null;
     // Pointing the player somewhere else is exactly when the old failure stops applying. Without
     // this the overlay was never cleared by anything, so one transient error — a decode hiccup, a
     // network stall during load — left an opaque panel over that video for the rest of the session.
@@ -1370,12 +1405,12 @@ export function YouTubePlayer({
   const captionModule = (): string | null => {
     try {
       const modules = playerRef.current?.getOptions() ?? [];
-      if (modules.includes('captions')) return 'captions';
-      if (modules.includes('cc')) return 'cc';
-      return null;
+      const loaded = modules.find((name) => name === 'captions' || name === 'cc');
+      if (loaded !== undefined) captionModuleRef.current = loaded;
     } catch {
-      return null;
+      // Torn down. Whatever was learned earlier is still the best answer available.
     }
+    return captionModuleRef.current;
   };
 
   useImperativeHandle(
@@ -1489,12 +1524,20 @@ export function YouTubePlayer({
       hasCaptions: () => captionModule() !== null,
       setCaptions: (enabled: boolean) => {
         const player = playerRef.current;
-        const module = captionModule();
-        if (!player || module === null) return;
+        if (!player) return;
+        const known = captionModule();
         try {
-          // Unloading is how the embed turns captions off; there is no `setEnabled`.
-          if (enabled) player.loadModule(module);
-          else player.unloadModule(module);
+          if (enabled) {
+            // `HTML5_CAPTION_MODULE` is the name the current player build uses; the older one used
+            // `cc`. Loading a module the embed does not have is a no-op, so trying the default when
+            // nothing has been learned yet is safe — and necessary, because the name only becomes
+            // readable *after* something loads it. Gating this on a known name is what made the
+            // control inert: it could never load the module it needed in order to know the name.
+            player.loadModule(known ?? HTML5_CAPTION_MODULE);
+          } else if (known !== null) {
+            // Unloading is how the embed turns captions off; there is no `setEnabled`.
+            player.unloadModule(known);
+          }
         } catch {
           // As above.
         }
