@@ -59,7 +59,11 @@ async fn main() {
         };
 
         let details = match provider.video(&id, &cancel).await {
-            Ok(video) => format!("ok: {}", video.summary.title.chars().take(26).collect::<String>()),
+            Ok(video) => format!(
+                "ok: {:<22} captions={}",
+                video.summary.title.chars().take(22).collect::<String>(),
+                video.captions.len()
+            ),
             Err(error) => format!("FAIL {error}"),
         };
         let related = match provider.related(&id, &cancel).await {

@@ -177,6 +177,38 @@ impl YouTubeProvider {
         map::details_from_player(&json, id)
     }
 
+    /// The video's caption tracks, or an empty list if they cannot be read.
+    ///
+    /// They live on the player response, not the watch page — which is why the capability used to
+    /// say captions were unavailable when they were one request away. Never fails the caller:
+    /// a watch page that loads without a caption list is the behaviour that shipped before, and it
+    /// is a far better outcome than a watch page that does not load.
+    async fn caption_tracks(
+        &self,
+        id: &VideoId,
+        cancel: &CancellationToken,
+    ) -> Vec<beastube_core::model::video::CaptionTrack> {
+        let client = self.query().await;
+        let owned = id.as_str().to_owned();
+
+        // Boxed: the extractor's player future is around 16 KB, which is too much to carry inline
+        // inside the futures this is joined with.
+        let request = Box::pin(async move {
+            client
+                .player(owned)
+                .await
+                .map_err(|error| classify(&error, "player_subtitles"))
+        });
+
+        match Self::with_cancellation(cancel, request).await {
+            Ok(player) => map::caption_tracks(player.subtitles),
+            Err(error) => {
+                tracing::debug!(video = id.as_str(), %error, "caption tracks were unavailable");
+                Vec::new()
+            }
+        }
+    }
+
     /// Fetches the visitor ID ahead of the first request.
     ///
     /// Called once at startup from a background task, so the first thing the user asks for does
@@ -580,14 +612,17 @@ impl VideoProvider for YouTubeProvider {
         let client = self.query().await;
         let owned = id.as_str().to_owned();
 
-        let details = match Self::with_cancellation(cancel, async move {
-            client
-                .video_details(owned)
-                .await
-                .map_err(|error| classify(&error, "video_details"))
-        })
-        .await
-        {
+        let (watch_page, captions) = futures::join!(
+            Self::with_cancellation(cancel, async move {
+                client
+                    .video_details(owned)
+                    .await
+                    .map_err(|error| classify(&error, "video_details"))
+            }),
+            self.caption_tracks(id, cancel),
+        );
+
+        let details = match watch_page {
             Ok(details) => details,
             // The watch-page parser treats one absent optional section as fatal — it reports
             // `could not find secondary_info` and yields nothing — so a video that is perfectly
@@ -600,9 +635,10 @@ impl VideoProvider for YouTubeProvider {
             // blocked in the region, so retrying those would replace a truthful "this cannot be
             // played" with an ordinary-looking watch page for a video that will not play.
             Err(error @ ProviderError::SchemaDrift { .. }) => {
-                let Some(details) = self.details_via_player(id, cancel).await else {
+                let Some(mut details) = self.details_via_player(id, cancel).await else {
                     return Err(error);
                 };
+                details.captions = captions;
                 tracing::debug!(
                     video = id.as_str(),
                     "watch-page details were unreadable; used the player payload"
@@ -647,9 +683,11 @@ impl VideoProvider for YouTubeProvider {
             channel_subscriber_count: channel.subscriber_count,
             like_count: details.like_count.map(u64::from),
             chapters: map::chapters(details.chapters),
-            // Caption tracks are not exposed by this extractor build; the capability says so, and
-            // the UI omits the control rather than showing an empty menu.
-            captions: Vec::new(),
+            // Fetched alongside the watch page rather than from it: the watch-page payload has no
+            // caption list, but the player response does. Failure here leaves the list empty, which
+            // reads as "this video has no captions" — the same outcome as before, rather than a
+            // failed watch page.
+            captions,
             category: None,
             is_unlisted: false,
             is_age_restricted: false,
@@ -815,7 +853,9 @@ impl MetadataProvider for YouTubeProvider {
             channel_shorts: false,
             playlists: false,
             discovery_feed: false,
-            captions: false,
+            // Read from the player response; verified against the live service, which returned six
+            // tracks for a long-form video and one auto-generated track for a short.
+            captions: true,
             chapters: true,
             // The kind filter is applied locally; date and duration filters are not implemented,
             // so the UI must not offer them.
@@ -1031,7 +1071,10 @@ mod tests {
             !capabilities.discovery_feed,
             "discovery_feed() returns Unsupported, so the capability must be false"
         );
-        assert!(!capabilities.captions, "caption tracks are not extracted");
+        assert!(
+            capabilities.captions,
+            "caption tracks are read from the player response"
+        );
     }
 
     #[test]

@@ -51,6 +51,17 @@ export interface PlayerSession {
    * arrived, which is fine: it fills in a moment later and is gone once playback starts.
    */
   posterUrl?: string;
+  /**
+   * Whether the provider reported caption tracks for this video.
+   *
+   * The embed cannot be asked this reliably: it only names its caption module once that module is
+   * loaded, and it is not loaded until captions are switched on — so asking produced "no captions"
+   * for every video whose captions were off, which is all of them by default. The provider reads
+   * the track list from the player response and simply knows.
+   *
+   * Absent while the video's metadata is still loading.
+   */
+  hasCaptions?: boolean;
 }
 
 /** Events the owning view wants, kept out of the reactive store deliberately. */

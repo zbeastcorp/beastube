@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 the minor number carries
 breaking changes.
 
+## [0.1.4] — 2026-09-07
+
+### Fixed
+
+- **Subtitles work.** The caption control was asking the wrong thing of the wrong component. Whether
+  a video has captions was read from the embedded player, which only names its caption module once
+  that module is loaded — and it is not loaded until captions are switched on. So every video with
+  captions off reported having none, the button was hidden, and there was no way to switch them on.
+  The provider reads the track list from the video's own player response instead and simply knows:
+  measured against the live service, six tracks for a long-form video and one auto-generated track
+  for each short tested. The embed can still confirm captions late, but it can no longer deny them.
+
 ## [0.1.3] — 2026-09-07
 
 ### Fixed

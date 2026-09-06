@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>caption enable probe</title>
+<style>
+  body {
+    margin: 0;
+    background: #000;
+  }
+</style>
+<div id="player"></div>
+<script>
+  // Does loading the module actually put captions on screen, or does a track have to be chosen?
+  window.__p = { log: [], ready: false };
+  const note = (k, v) => window.__p.log.push([k, v]);
+  const opt = (o) => {
+    try {
+      return player.getOption('captions', o);
+    } catch (e) {
+      return 'threw:' + e.message;
+    }
+  };
+
+  let player;
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player('player', {
+      height: '360',
+      width: '640',
+      videoId: 'dQw4w9WgXcQ',
+      playerVars: { enablejsapi: 1, cc_load_policy: 3, mute: 1, autoplay: 1, start: 30 },
+      events: {
+        onStateChange: (e) => {
+          if (e.data === 1 && !window.__p.ready) {
+            window.__p.ready = true;
+            note('playing', true);
+          }
+        },
+      },
+    });
+  };
+  window.__rawTracklist = () => player.getOption('captions', 'tracklist') || [];
+  // The real thing the fix does, in one tick, exactly as a click handler would.
+  window.__toggleOn = () => {
+    player.loadModule('captions');
+    const tracks = player.getOption('captions', 'tracklist') || [];
+    const pick = tracks.find((t) => t.languageCode === 'en') || tracks[0];
+    if (pick) player.setOption('captions', 'track', { languageCode: pick.languageCode });
+    return { tracks: tracks.length, picked: pick ? pick.languageCode : null };
+  };
+  // Idempotent re-assertion: setting the same track twice is harmless, and it removes the
+  // dependency on guessing how long the module takes to come up on a given machine.
+  window.__toggleOnRetry = (delays) => {
+    player.loadModule('captions');
+    const apply = () => {
+      const tracks = player.getOption('captions', 'tracklist') || [];
+      const pick = tracks.find((t) => t.languageCode === 'en') || tracks[0];
+      if (pick) player.setOption('captions', 'track', { languageCode: pick.languageCode });
+    };
+    apply();
+    delays.forEach((d) => setTimeout(apply, d));
+    return 'scheduled';
+  };
+  window.__step = {
+    inspect: () => ({
+      options: player.getOptions(),
+      track: opt('track'),
+      tracklist: (opt('tracklist') || []).length,
+    }),
+    load: () => {
+      player.loadModule('captions');
+      return 'loaded';
+    },
+    setTrack: () => {
+      player.setOption('captions', 'track', { languageCode: 'en' });
+      return 'track set';
+    },
+    unload: () => {
+      player.unloadModule('captions');
+      return 'unloaded';
+    },
+  };
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+</script>

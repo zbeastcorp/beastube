@@ -191,7 +191,15 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   // rather than always starting "off" over a player that has captions showing. Applied again once
   // the settings document has actually loaded — see below.
   const [captionsOn, setCaptionsOn] = useState(captionsByDefault);
-  const [captionsAvailable, setCaptionsAvailable] = useState(false);
+  /**
+   * The video the embed has confirmed captions for, or `null`.
+   *
+   * Held as an id rather than a flag so it resets itself when the video changes — no effect, no
+   * stale "has captions" carried onto the next video. It only ever *adds* to what the provider
+   * said: the embed reports "none" for any video whose caption module is not loaded, which is
+   * every video with captions switched off, so it is not allowed to deny availability.
+   */
+  const [embedCaptionsFor, setEmbedCaptionsFor] = useState<string | null>(null);
   const [chromeVisible, setChromeVisible] = useState(true);
   /**
    * Whether anything inside the player currently holds keyboard focus.
@@ -249,6 +257,15 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    * player showing subtitles. Applied once, and only while the state still holds the default, so
    * it can never overwrite a choice made in the moments before the document landed.
    */
+  /**
+   * Whether to offer the caption control at all.
+   *
+   * Derived rather than stored, so it follows the video with nothing to keep in step. The provider
+   * read the track list from the video's own player response and is the answer that matters; the
+   * embed's own report can confirm it late but never contradict it.
+   */
+  const captionsAvailable = (session?.hasCaptions ?? false) || embedCaptionsFor === videoId;
+
   const settingsLoaded = useSettingsStore((state) => state.loaded);
   const seeded = useRef(false);
   useEffect(() => {
@@ -492,9 +509,11 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
                 if (state === 'error') return was === videoId ? was : videoId;
                 return was === videoId ? null : was;
               });
-              // Caption availability is a property of the video, and the embed only knows once it
-              // has loaded one. Asked here so the control is absent for a video that has none.
-              setCaptionsAvailable(playerRef.current?.hasCaptions() ?? false);
+              // The provider already answered this from the video's own track list; the embed can
+              // only ever add to that. It must not be allowed to *remove* availability, because it
+              // reports "none" for any video whose caption module has not been loaded — which is
+              // every video with captions switched off.
+              if (playerRef.current?.hasCaptions() === true) setEmbedCaptionsFor(videoId);
               // Likewise the rates on offer: a new video resets them, and the menu must show what
               // is true rather than what the last video allowed.
               setRates(playerRef.current?.availableRates() ?? []);
@@ -532,13 +551,13 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               // bail-out rather than a render.
               const now = playerRef.current?.currentQuality() ?? null;
               setServing((was) => (was === now ? was : now));
-              // Captions are asked about here too, not only on a state change. The embed loads its
-              // caption module a moment *after* playback starts, so the single check on `playing`
-              // usually ran before the module existed and answered "no captions" — which is why the
-              // button was missing from videos that plainly have subtitles. Written only when it
-              // differs, so the common case is a bail-out rather than a render.
-              const captioned = playerRef.current?.hasCaptions() ?? false;
-              setCaptionsAvailable((was) => (was === captioned ? was : captioned));
+              // Also polled, because the embed learns about its caption module a moment after
+              // playback starts. One-directional for the reason above: this can confirm captions
+              // exist, never deny it. Written only when it changes, so the common case is a
+              // bail-out rather than a render.
+              if (playerRef.current?.hasCaptions() === true) {
+                setEmbedCaptionsFor((was) => (was === videoId ? was : videoId));
+              }
               if (playerRef.current?.isHighFrameRate() === true) {
                 setHighFrameRateFor((was) => (was === videoId ? was : videoId));
               }

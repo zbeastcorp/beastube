@@ -18,7 +18,7 @@ use beastube_core::model::SearchItem;
 use beastube_core::model::channel::ChannelSummary;
 use beastube_core::model::playlist::PlaylistSummary;
 use beastube_core::model::thumbnail::{Thumbnail, ThumbnailSet};
-use beastube_core::model::video::{Chapter, LiveStatus, VideoDetails, VideoSummary};
+use beastube_core::model::video::{CaptionTrack, Chapter, LiveStatus, VideoDetails, VideoSummary};
 use beastube_core::time_util::Timestamp;
 use rustypipe::model::{
     ChannelItem, ChannelTag, PlaylistItem, Thumbnail as YtThumbnail, Verification, VideoItem,
@@ -319,6 +319,23 @@ pub(crate) fn details_from_player(json: &str, id: &VideoId) -> Option<VideoDetai
             .unwrap_or(false),
         is_age_restricted: false,
     })
+}
+
+/// Converts the extractor's subtitle list into caption tracks.
+///
+/// These come from the player response rather than the watch page: the watch page does not carry
+/// them, which is why the capability said captions were unavailable when in fact they were one
+/// request away.
+pub(crate) fn caption_tracks(subtitles: Vec<rustypipe::model::Subtitle>) -> Vec<CaptionTrack> {
+    subtitles
+        .into_iter()
+        .map(|subtitle| CaptionTrack {
+            language_code: subtitle.lang,
+            language_name: subtitle.lang_name,
+            url: subtitle.url,
+            is_auto_generated: subtitle.auto_generated,
+        })
+        .collect()
 }
 
 /// Converts a video item, returning `None` if its identifier fails validation.
