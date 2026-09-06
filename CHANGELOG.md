@@ -6,7 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 the minor number carries
 breaking changes.
 
-## [Unreleased]
+## [0.1.0] — 2026-09-06
+
+First release.
 
 ### Added
 
@@ -25,6 +27,10 @@ breaking changes.
 - **Channel navigation** by clicking a channel name anywhere it appears.
 - **A hardware acceleration setting** that does something: turning it off makes the next launch
   render in software, which is the remedy for a driver that paints a black rectangle.
+- **Two housekeeping ceilings that are actually enforced.** History can be deleted past a chosen
+  age, and the caches can be emptied once they pass a chosen size. Both are off by default.
+- **One press to clear every cache**, and a Content Security Policy, which the application
+  previously did without entirely.
 
 ### Fixed
 
@@ -60,6 +66,20 @@ breaking changes.
   navigation moves focus to the content landmark, `<html lang>` follows the interface language, the
   player's control bar stays visible while focused, and the card menu is reachable without a hover.
 - **High Contrast painting every link yellow.**
+- **Storage controls that reported one quantity and acted on another.** The browser row measured
+  the whole 29 MB profile while the button removed five subdirectories worth about 2 MB, so the
+  figure barely moved and the button — disabled only at a total that could never reach zero —
+  never disabled. Measuring and clearing now read one list. Logs could not be cleared at all,
+  because a single file held open made the whole delete fail.
+- **"Stored data" counting the download folder**, which is the viewer's own files in a directory
+  they chose. On a machine where that folder shared a name with something else, the screen
+  reported gigabytes of unrelated content as data BEASTUBE was storing.
+- **"Delete history older than", which deleted nothing.** The setting existed in five places and
+  was connected in none of them.
+- **A renderer holding more privilege than it used.** The window could reach the opener and dialog
+  plugins directly, bypassing the URL validation that exists for exactly that reason, and could
+  end the process. Free text reaching the native side is now bounded there rather than only in the
+  interface.
 
 ### Changed
 
@@ -73,4 +93,4 @@ breaking changes.
   framework they pulled into the build, six unused npm packages, three Tauri plugins that were
   compiled in and never registered, and eleven exported functions with no caller anywhere.
 
-[Unreleased]: https://github.com/zbeastcorp/beastube/commits/main
+[0.1.0]: https://github.com/zbeastcorp/beastube/releases/tag/v0.1.0
