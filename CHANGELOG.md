@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 the minor number carries
 breaking changes.
 
+## [0.1.3] — 2026-09-07
+
+### Fixed
+
+- **An update no longer opens a setup window.** The updater ran the installer in its "passive"
+  mode, which asks nothing of the viewer but still puts an installer progress dialog on screen —
+  so an update that was meant to be invisible announced itself with a window belonging to a program
+  nobody launched. It now runs quiet: the application closes, is replaced, and reopens. Nothing
+  else appears. What an update replaces is unchanged — the program directory only; history,
+  playlists, bookmarks and watch positions live elsewhere and are never touched by it.
+
 ## [0.1.2] — 2026-09-06
 
 ### Fixed

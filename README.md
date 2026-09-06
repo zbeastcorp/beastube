@@ -102,8 +102,12 @@ application, so a build will refuse an update it cannot verify — including one
 ### Updating
 
 BEASTUBE keeps itself up to date. Shortly after launch it checks, and if a newer version exists it
-downloads it, verifies the signature, installs it without a wizard and restarts — telling you
-before it does, not after.
+downloads it, verifies the signature, installs it and restarts — telling you before it does, not
+after. Nothing opens: no setup window, no progress dialog of its own, no prompt. The application
+closes and reopens on the new version.
+
+Your library is not touched. History, playlists, bookmarks and watch positions live outside the
+program directory, and an update replaces the program only.
 
 It will not do that while something is playing, it will not retry a version that already failed to
 install on your machine, and **Settings → About → Update automatically** turns it off, leaving the
