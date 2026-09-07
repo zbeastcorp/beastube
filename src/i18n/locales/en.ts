@@ -145,6 +145,19 @@ export const en = {
     notEmbeddable: 'The uploader has disabled playback outside YouTube',
   },
 
+  update: {
+    downloading: 'Downloading BEASTUBE {version}',
+    downloadingPercent: 'Downloading BEASTUBE {version} — {percent}%',
+    installing: 'Installing BEASTUBE {version}',
+    restarting: 'Restarting',
+    /** Said once, before the restart, so it is never a surprise. */
+    willRestart: 'BEASTUBE will restart when this finishes.',
+    failed: 'BEASTUBE {version} could not be installed',
+    failedHint: 'You are still on the version you had. It will be tried again another time.',
+    progressLabel: 'Update progress',
+    dismiss: 'Hide',
+  },
+
   player: {
     audio: 'Audio',
     /** Shown as the row's value when the player has not said which track is playing. */
@@ -553,8 +566,6 @@ export const en = {
       restarting: 'Restarting to finish',
       updateFailed: 'Could not check for updates. Check your connection and try again.',
       updateSize: 'An update replaces the whole application, about 50 MB.',
-      /** Shown when an update installs on its own, so a restart is never a surprise. */
-      installingAutomatically: 'Updating to {version}. BEASTUBE will restart.',
       automatic: 'Update automatically',
       automaticHint:
         'Installs a newer version shortly after launch and restarts. Never while something is playing, and a version that fails to install is not retried on its own.',

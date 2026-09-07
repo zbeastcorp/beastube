@@ -149,6 +149,16 @@ const QUALITY_ORDER: readonly Exclude<Quality, 'auto'>[] = [
 ];
 
 /**
+ * The language part of a tag or a track id: `es` from `es-419`, `es.3` or `es`.
+ *
+ * Both sides encode the language differently — the provider appends a track index, the embed uses a
+ * region subtag — and the language itself is the only part they agree on.
+ */
+function baseLanguage(value: string): string {
+  return value.toLowerCase().split(/[.\-_]/)[0] ?? value.toLowerCase();
+}
+
+/**
  * A stable identifier for one of the player's audio tracks.
  *
  * The field carrying it differs between builds, so the first one present wins and the language code
@@ -167,7 +177,7 @@ function audioTrackId(track: EmbedAudioTrack): string {
  */
 function readAudioTracks(
   player: YouTubePlayerInstance | null,
-): { id: string; label: string; isDefault: boolean; raw: EmbedAudioTrack }[] {
+): { id: string; label: string; language: string; isDefault: boolean; raw: EmbedAudioTrack }[] {
   try {
     const tracks = player?.getAvailableAudioTracks?.() ?? [];
     return tracks
@@ -177,6 +187,7 @@ function readAudioTracks(
         return {
           id: audioTrackId(raw),
           label: named ?? raw.displayName ?? raw.languageCode ?? '',
+          language: raw.languageCode ?? audioTrackId(raw),
           isDefault: raw.audioIsDefault === true,
           raw,
         };
@@ -700,8 +711,14 @@ export interface PlayerHandle {
   audioTracks: () => { id: string; label: string; isDefault: boolean }[];
   /** The track currently playing, or `null` when unknown. */
   currentAudioTrack: () => string | null;
-  /** Switches audio track by the id reported by [`audioTracks`]. */
-  setAudioTrack: (id: string) => void;
+  /**
+   * Switches audio track.
+   *
+   * Takes a language tag as well as an id because the two sides do not share an id space: the
+   * menu is built from the provider's list, whose ids look like `es.3`, while the embed hands back
+   * ids of its own. Matching on the provider's id alone found nothing and switched nothing.
+   */
+  setAudioTrack: (id: string, languageCode?: string) => void;
   hasCaptions: () => boolean;
   setCaptions: (enabled: boolean) => void;
 }
@@ -1610,11 +1627,20 @@ export function YouTubePlayer({
           return null;
         }
       },
-      setAudioTrack: (id: string) => {
+      setAudioTrack: (id: string, languageCode?: string) => {
         try {
+          const available = readAudioTracks(playerRef.current);
+          // Language is what actually identifies a dub across the two lists. The id is tried
+          // first for the case where they do happen to agree, then the tag, then the bare
+          // language — `es` should still find `es-419` when that is the only Spanish on offer.
+          const wanted = (languageCode ?? baseLanguage(id)).toLowerCase();
+          const match =
+            available.find((track) => track.id === id) ??
+            available.find((track) => track.language.toLowerCase() === wanted) ??
+            available.find((track) => baseLanguage(track.language) === baseLanguage(wanted));
+
           // The player's own object is handed back untouched. Its shape is undocumented, so
           // rebuilding one from an id would be guessing at a structure that can change.
-          const match = readAudioTracks(playerRef.current).find((track) => track.id === id);
           if (match) playerRef.current?.setAudioTrack?.(match.raw);
         } catch {
           // As above.

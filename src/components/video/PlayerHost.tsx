@@ -769,7 +769,10 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
                   audioTrack={audioTrack}
                   onAudioTrack={(next) => {
                     setChosenAudio({ videoId, id: next });
-                    playerRef.current?.setAudioTrack(next);
+                    const language = (session?.audioTracks ?? []).find(
+                      (track) => track.id === next,
+                    )?.language_code;
+                    playerRef.current?.setAudioTrack(next, language);
                   }}
                   rates={rates}
                   onRate={(next) => {

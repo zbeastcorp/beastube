@@ -19,6 +19,7 @@ import { NavigationProgress } from '@/components/shell/NavigationProgress';
 import { PlayerHost } from '@/components/video/PlayerHost';
 import { OverlayHost } from '@/components/shell/OverlayHost';
 import { ToastHost } from '@/components/shell/ToastHost';
+import { UpdateProgress } from '@/components/shell/UpdateProgress';
 import { preloadPlayerApi } from '@/components/video/YouTubePlayer';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { TopBar } from '@/components/shell/TopBar';
@@ -41,6 +42,7 @@ import { invoke, isTauriRuntime, listen } from '@/services/ipc';
 import { applyPresentation, applyWebviewScheme, useSettingsStore } from '@/stores/settings';
 import { useSessionStore } from '@/stores/session';
 import { useUiStore } from '@/stores/ui';
+import { useUpdateStore } from '@/stores/updates';
 
 import { RouterProvider, useNavigate, useRoute } from './router';
 import { renderRoute } from './views';
@@ -250,36 +252,33 @@ function Shell(): ReactNode {
             return;
           }
 
-          // Not silent. The application is about to close and reopen, and a restart nobody was
-          // told about reads as a crash. The action opens About, where the live percentage is
-          // already shown for an install that is running.
-          const notice = useUiStore.getState().toast({
-            messageKey: 'settings.about.installingAutomatically',
-            params: { version: update.version },
-            tone: 'info',
-            durationMs: null,
-            action: {
-              labelKey: 'settings.about.checkUpdates',
-              run: () => {
-                navigate({ name: 'settings', section: 'about' });
-              },
-            },
-          });
+          // Not silent, and not a bare sentence either. The application is about to close and
+          // reopen; a restart nobody was told about reads as a crash, and "updating" with no
+          // measure of how far it has got reads as a hang. `UpdateProgress` draws this.
+          useUpdateStore
+            .getState()
+            .set({ kind: 'downloading', version: update.version, percent: 0 });
 
-          void downloadAndInstallUpdate(update, () => {
-            // Nothing to draw here: this install has no row of its own. About seeds itself from
-            // `isInstallingUpdate()`, so opening it mid-download shows the real percentage.
+          void downloadAndInstallUpdate(update, (percent) => {
+            useUpdateStore
+              .getState()
+              .set(
+                percent === null || percent < 100
+                  ? { kind: 'downloading', version: update.version, percent }
+                  : { kind: 'installing', version: update.version },
+              );
           }).then(
             (outcome) => {
+              // An install already running is not a finished one; leave its own card alone.
               if (outcome === 'already-running') return;
+              useUpdateStore.getState().set({ kind: 'restarting', version: update.version });
               void relaunchApp();
             },
             () => {
               // Remember the failure before saying anything, so a version that cannot install on
               // this machine is not fetched again on every launch from here on.
-              useUiStore.getState().dismissToast(notice);
+              useUpdateStore.getState().set({ kind: 'failed', version: update.version });
               useSettingsStore.getState().update({ updates: { skip_version: update.version } });
-              announce();
             },
           );
         })
@@ -362,6 +361,7 @@ function Shell(): ReactNode {
       {/* Likewise at the root: a download that finishes after you have navigated away still has
           to say so, and a notice mounted inside a screen dies with that screen. */}
       <ToastHost />
+      <UpdateProgress />
       <TopBar />
       {/* `relative`, so the narrow-window drawer and its scrim have something to cover. */}
       <div className="relative flex min-h-0 flex-1">

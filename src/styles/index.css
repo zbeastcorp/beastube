@@ -790,3 +790,14 @@
     color: CanvasText;
   }
 }
+
+/* The indeterminate update bar: used when the server reports no content length, so there is no
+   position to show. Sweeps rather than sitting at a number nobody measured. */
+@keyframes update-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}

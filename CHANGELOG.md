@@ -10,6 +10,11 @@ breaking changes.
 
 ### Fixed
 
+- **Choosing a dubbed language now actually changes the audio.** The menu is built from the
+  provider's track list, whose identifiers look like `es.3`, and the choice was handed to the
+  embedded player to act on — which keeps identifiers of its own. Nothing ever matched, so selecting
+  a language selected it in the menu and changed nothing that could be heard. The two sides are now
+  matched on the language they both name rather than on an identifier only one of them uses.
 - **The installer no longer asks for administrator rights, and no longer installs machine-wide by
   accident.** It was configured to offer both scopes, which meant a silent install with no existing
   copy present chose the machine-wide one — landing in Program Files, needing elevation, and
@@ -22,6 +27,12 @@ breaking changes.
 
 ### Added
 
+- **An update shows what it is doing.** Automatic updates announced themselves with a single line
+  and then went quiet for fifty megabytes, which reads as a hang, and ended in a restart with no
+  warning, which reads as a crash. There is now a card in the corner carrying the version, a real
+  progress bar fed by the download itself, and a note that the application will restart. It never
+  blocks anything, and it can be hidden — which hides the card, not the update. Where the server
+  reports no length the bar sweeps rather than inventing a position.
 - **Subtitles can be moved, resized and given a background.** They are now drawn by BEASTUBE rather
   than by the embedded player, which is what makes any of that possible: the player renders captions
   inside a cross-origin frame where nothing outside can reach them, and its API exposes a font size
@@ -33,11 +44,9 @@ breaking changes.
   its track, listing whatever is actually available — a video with one track shows that one, so the
   language being heard is visible rather than merely assumed, and a video dubbed into twenty shows
   all twenty in a list that scrolls. Videos are increasingly published with the original audio plus
-  dubs, and the player offered no way to reach them. The audio row appears in the player
-  menu only when a video actually has a choice — measured against the live service, a MrBeast upload
-  carries 24 audio tracks and 17 subtitle tracks, while most videos carry one track and get no row
-  at all rather than a menu holding a single entry. The original is listed first and marked as such,
-  so a dub is distinguishable from the performance.
+  dubs, and the player offered no way to reach them at all. Measured against the live service, a
+  MrBeast upload carries 24 audio tracks and 17 subtitle tracks. The original is listed first and
+  named as the original, so a dub is distinguishable from the performance.
 
 ## [0.1.4] — 2026-09-07
 
