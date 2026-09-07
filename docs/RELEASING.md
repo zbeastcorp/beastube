@@ -41,6 +41,26 @@ To generate a fresh pair (only when starting over):
 pnpm tauri signer generate -w "$env:USERPROFILE\.beastube-keys\beastube-updater.key"
 ```
 
+## Skipping versions is the point
+
+The feed lives at `releases/latest/download/latest.json`, and `releases/latest/` always resolves to
+the newest release GitHub considers current. Nothing walks the chain: an installation on 0.1.1 reads
+that one file, sees whatever is newest, and installs it directly. Publish five releases and someone
+who missed all of them lands on the fifth, not on the first of them.
+
+Two things have to hold for that, and both are easy to get wrong in a hurry:
+
+- **Every release attaches its own `latest.json`.** The file is fetched from the newest release, so
+  a release published without it leaves the endpoint pointing at nothing and every installation
+  stops updating until the next one.
+- **The newest release is marked as the latest one.** A release left as a draft or flagged
+  pre-release is skipped by `releases/latest/`, which then resolves to an _older_ release — and the
+  feed starts advertising a version people already have. `gh release create --latest` is what sets
+  this; the workflow's draft becomes latest when it is published.
+
+Neither failure announces itself. The application keeps checking, keeps being told it is current,
+and quietly never updates again.
+
 ## Cutting a release: the short way
 
 `.github/workflows/release.yml` does all of it. Once, before the first release, put the key into
