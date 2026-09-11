@@ -92,12 +92,12 @@ Bidirectional and exact. At the top of the range the player's own statistics rea
 
 **Do not offer below 360p.** The embed refuses to go lower however small the frame gets — measured
 at 120 pixels wide, still serving `medium` — and every other route to it is closed, as above. So
-`240p` and `144p` are absent from the menu rather than present and serving 360p under another name
-(§131). The reachable range is 360p to 2160p, at 60fps wherever the video has it.
+`240p` and `144p` are absent from the menu rather than present and serving 360p under another
+name. The reachable range is 360p to 2160p, at 60fps wherever the video has it.
 
 **Offer only the tiers the video has.** `getAvailableQualityLevels` is per-video, so the menu is
 its intersection with the reachable ladder. A video with nothing above 360p offers `360p` and
-`Auto`, and nothing else (§131).
+`Auto`, and nothing else.
 
 **Load every video into the 60fps family.** The embed settles on a 30fps or 60fps track family
 when a video _loads_ and keeps it for that load, while resolution goes on following the frame for
@@ -184,7 +184,7 @@ The parent cannot read, clear, or override it.
 
 The design answer is the one already in place: the menu reports `getPlaybackQuality()`. If the
 embed refuses to move, the row keeps showing what is genuinely playing rather than the tier that
-was clicked. The control never claims a change it did not achieve (§131).
+was clicked. The control never claims a change it did not achieve.
 
 **AV1 remains outside our reach.** YouTube may serve AV1 to the embed, and a GPU without AV1
 hardware decode falls back to software, which shows up as dropped frames on high-resolution

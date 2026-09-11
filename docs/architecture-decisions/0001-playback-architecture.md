@@ -1,7 +1,12 @@
 # ADR 0001 — Playback architecture
 
-**Status:** Accepted (2026-09-03)
+**Status:** Accepted (2026-09-03), partly implemented
 **Supersedes:** none
+
+> **Update, 2026-09-12.** Only the IFrame half of this decision was built, and it is the only
+> playback path. `PlaybackProvider` and `DirectStreamAdapter` do not exist in the codebase, so the
+> "proven replaceable" claim under _Consequences_ was never demonstrated. The reasoning about SABR
+> below still holds, and is why little was lost by not building the second adapter.
 
 ## Problem
 
@@ -53,7 +58,7 @@ bundled PoToken sidecar — machinery whose purpose is to defeat an anti-abuse c
 - **`IframeAdapter` — the production default.** Ships enabled. Uses the official IFrame Player API.
 - **`DirectStreamAdapter` — isolated and experimental.** Off by default, compiled behind a
   non-default Cargo feature and a runtime setting. Exists so the architecture is proven replaceable
-  (§118) and so the media pipeline can be developed against.
+  and so the media pipeline can be developed against.
 
 Three constraints bind the experimental adapter, and are treated as architectural invariants rather
 than preferences:
@@ -77,16 +82,16 @@ than preferences:
    knows `PlaybackCapabilities`, `PlaybackState` and player commands; it cannot discover which
    adapter is active except through capability flags.
 3. **Capability-gated UI.** Controls render only where the active adapter reports support, so the
-   quality menu is absent under `IframeAdapter` rather than present and inert (§131).
+   quality menu is absent under `IframeAdapter` rather than present and inert.
 
 ## Consequences
 
 **Accepted losses under the default adapter.** No quality selector, no buffer/frame metrics, no
 custom seek engine, YouTube's advertising plays. `PlaybackCapabilities` reports each of these as
-unsupported, and the UI omits the control — the specification's "no fake features" rule (§131)
+unsupported, and the UI omits the control — the "no fake features" rule
 converts a missing capability into a missing control rather than a broken one.
 
-**Filtering is scoped to capability.** The content-filtering subsystem (§5–§10) is built in full —
+**Filtering is scoped to capability.** The content-filtering subsystem is built in full —
 rule engine, modes, allowlist/blocklist, versioning, validation, rollback, diagnostics — but its
 adapters act only within what the active playback architecture permits. Under `IframeAdapter` that
 means SponsorBlock creator-marked segment skipping (user-controlled, via the k-anonymity endpoint

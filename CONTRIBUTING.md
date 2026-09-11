@@ -1,7 +1,6 @@
 # Contributing to BEASTUBE
 
-Thanks for looking. This document is short on ceremony and specific about the things that actually
-get pull requests rejected here.
+Thanks for looking.
 
 ## Getting it running
 

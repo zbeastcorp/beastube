@@ -60,16 +60,14 @@ No account. No sync. Nothing sent anywhere.
 
 ## What it is
 
-BEASTUBE is a native Windows application for watching YouTube. It is not a browser wrapper around
-youtube.com and it is not a scraper pretending to be one: playback goes through YouTube's own
-sanctioned embed, wrapped in the application's own dark controls.
+BEASTUBE is a native Windows application for watching YouTube. Playback goes through YouTube's own
+embed, wrapped in the application's dark controls.
 
-What makes it different is what it does **not** do. There is no account to sign into, no telemetry,
-and no server of ours anywhere in the picture. Your history, playlists, bookmarks and watch
-positions live in a SQLite file on your disk and are never uploaded.
+There is no account to sign into, no telemetry, and no server of ours involved. Your history,
+playlists, bookmarks and watch positions live in a SQLite file on your own disk.
 
-Built with [Tauri 2](https://tauri.app) — a Rust core with a React front end, compiled to a single
-native binary. It is not Electron; the installed application is around 24 MB of program.
+Built with [Tauri 2](https://tauri.app): a Rust core with a React front end, compiled to a single
+native binary of about 24 MB.
 
 ## Installation
 
@@ -135,22 +133,19 @@ left in place; see [What is stored, and where](#what-is-stored-and-where) if you
   <img src="docs/screenshots/watch.png" width="90%" alt="The watch page, with the player's own dark controls">
 </div>
 
-**Two control bars, and the choice is a real trade-off** — Settings → Playback → Player controls.
+**Two control bars** — Settings → Playback → Player controls.
 
-- **YouTube's own bar (the default).** Its gear drives the embed's internal quality API directly:
-  every tier from 144p up, applied the instant it is picked. Quality is what people actually reach
-  for, so it wins the default. The screenshot above shows this.
-- **BEASTUBE's dark bar.** Matches the theme and crops YouTube's chrome away. Quality is 360p to
-  2160p, at 60fps where the video has it — the embed picks its rendition from the size of its own
-  viewport, so a tier is requested by laying the frame out at that tier's true pixel width and
-  scaling the result back down, live and without a reload. YouTube's settings panel is white and
-  cannot be themed, which is the other half of why this is a choice rather than a default.
+- **YouTube's own bar**, the default. Its gear drives the embed's quality API directly: every tier
+  from 144p up, applied immediately. The screenshot above shows this.
+- **BEASTUBE's dark bar.** Matches the theme and crops YouTube's chrome away. 360p to 2160p, at
+  60fps where the video has it. YouTube's own settings panel is white and cannot be themed, which
+  is why this is a choice rather than the default.
 
-The mechanism, and the several approaches that look correct and are not, are in
+How the quality mechanism works, and the approaches that look correct but are not, is in
 [ADR-0004](docs/architecture-decisions/0004-player-quality.md).
 
-Also here: subtitles, playback speed, resume-where-you-left-off, downloads, and a related rail that
-gets out of the way when the window is too narrow to earn it.
+Also here: subtitles, playback speed, resume where you left off, downloads, and a related rail that
+collapses when the window is too narrow for it.
 
 ### Shorts
 

@@ -66,7 +66,7 @@ Four constraints bind it:
    browser. It looks in its own resource directory, then beside its executable, then on `PATH`.
 
 3. **The control is absent when the tool is.** `get_download_tools` reports availability and the
-   download button renders only when both tools exist — §131 applied literally, the same rule that
+   download button renders only when both tools exist — the same rule that
    removes the quality menu under the embedded player. With the bundle this should never happen;
    it remains the behaviour for a broken installation or a bad path in settings, and it takes
    effect without a restart.
