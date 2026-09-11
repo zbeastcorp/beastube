@@ -139,7 +139,7 @@ Still worth knowing, and the fallback when the workflow cannot run.
      "platforms": {
        "windows-x86_64": {
          "signature": "<contents of BEASTUBE_0.2.0_x64-setup.exe.sig>",
-         "url": "https://github.com/zbeastcorp/beastube/releases/download/v0.2.0/BEASTUBE_0.2.0_x64-setup.exe"
+         "url": "https://github.com/beastops/beastube/releases/download/v0.2.0/BEASTUBE_0.2.0_x64-setup.exe"
        }
      }
    }
@@ -151,7 +151,7 @@ Still worth knowing, and the fallback when the workflow cannot run.
 The configured endpoint is:
 
 ```
-https://github.com/zbeastcorp/beastube/releases/latest/download/latest.json
+https://github.com/beastops/beastube/releases/latest/download/latest.json
 ```
 
 `releases/latest/download/` always resolves to the newest published release, so the endpoint never

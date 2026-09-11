@@ -273,4 +273,4 @@ First release.
   framework they pulled into the build, six unused npm packages, three Tauri plugins that were
   compiled in and never registered, and eleven exported functions with no caller anywhere.
 
-[0.1.0]: https://github.com/zbeastcorp/beastube/releases/tag/v0.1.0
+[0.1.0]: https://github.com/beastops/beastube/releases/tag/v0.1.0

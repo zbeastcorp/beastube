@@ -40,7 +40,7 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://github.com/zbeastcorp/beastube/releases/latest/download/latest.json"],
+      "endpoints": ["https://github.com/beastops/beastube/releases/latest/download/latest.json"],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzRjU2MzdGOTBDMEE4MgpSV1NDQ2d6NU4xWS9EZzdiT0Eyc00rRzQ1OU1jdlEwc1hIOGxGWnZsWEt2QUN4d3FERWtLaEw5cQo=",
       "windows": {
         "installMode": "quiet"

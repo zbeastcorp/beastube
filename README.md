@@ -4,213 +4,112 @@
 
 # BEASTUBE
 
-**A desktop YouTube client for Windows that keeps what you watch on your own machine.**
+**A native YouTube client for Windows.**
 
-[![CI](https://github.com/zbeastcorp/beastube/actions/workflows/ci.yml/badge.svg)](https://github.com/zbeastcorp/beastube/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/zbeastcorp/beastube?sort=semver&color=ff7a59)](https://github.com/zbeastcorp/beastube/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/zbeastcorp/beastube/total?color=ff7a59)](https://github.com/zbeastcorp/beastube/releases)
+Watch, search, save and download — from one desktop app, with your library on your own disk.
+
+[![CI](https://github.com/beastops/beastube/actions/workflows/ci.yml/badge.svg)](https://github.com/beastops/beastube/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/beastops/beastube?sort=semver&color=ff7a59)](https://github.com/beastops/beastube/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/beastops/beastube/total?color=ff7a59)](https://github.com/beastops/beastube/releases)
 [![Licence](https://img.shields.io/badge/licence-GPLv3-blue)](LICENSE)
-[![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?logo=windows&logoColor=white)](https://github.com/zbeastcorp/beastube/releases/latest)
-
-No account. No sync. Nothing sent anywhere.
+[![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4?logo=windows&logoColor=white)](https://github.com/beastops/beastube/releases/latest)
 
 <br>
 
-[![Download for Windows](https://img.shields.io/badge/⬇%20Download%20for%20Windows-ff5c5c?style=for-the-badge&logoColor=white)](https://github.com/zbeastcorp/beastube/releases/latest)
+[![Download for Windows](https://img.shields.io/badge/⬇%20Download%20for%20Windows-ff5c5c?style=for-the-badge&logoColor=white)](https://github.com/beastops/beastube/releases/latest)
 
-<sub>Installs per user — no administrator prompt. `yt-dlp` and `ffmpeg` are bundled, so downloads work on a machine with nothing else installed.</sub>
+<sub>Installs per user — no administrator prompt. `yt-dlp` and `ffmpeg` are bundled, so downloads work straight away.</sub>
 
 <br>
 
-![Tauri](https://img.shields.io/badge/Tauri_2-24C8DB?logo=tauri&logoColor=white)
-![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
-![React](https://img.shields.io/badge/React_19-20232a?logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+<img src="docs/screenshots/home.png" width="90%" alt="The BEASTUBE home feed">
 
-</div>
-
-<div align="center">
-  <img src="docs/screenshots/home.png" width="90%" alt="The BEASTUBE home feed">
 </div>
 
 ---
 
-## Contents
+Playback goes through YouTube's own embed, wrapped in BEASTUBE's dark controls. There's no account
+to sign into and no telemetry — your history, playlists, bookmarks and watch positions live in a
+SQLite file on your disk.
 
-- [What it is](#what-it-is)
-- [Installation](#installation)
-  - [Release files](#release-files)
-  - [Updating](#updating)
-  - [Uninstalling](#uninstalling)
-- [Features](#features)
-  - [Watching](#watching)
-  - [Shorts](#shorts)
-  - [Your library](#your-library)
-  - [Downloads](#downloads)
-  - [Settings](#settings)
-- [What is stored, and where](#what-is-stored-and-where)
-- [Building from source](#building-from-source)
-- [Project layout](#project-layout)
-- [Contributing](#contributing)
-- [Third-party software](#third-party-software)
-- [Licence](#licence)
-
----
-
-## What it is
-
-BEASTUBE is a native Windows application for watching YouTube. Playback goes through YouTube's own
-embed, wrapped in the application's dark controls.
-
-There is no account to sign into, no telemetry, and no server of ours involved. Your history,
-playlists, bookmarks and watch positions live in a SQLite file on your own disk.
-
-Built with [Tauri 2](https://tauri.app): a Rust core with a React front end, compiled to a single
-native binary of about 24 MB.
-
-## Installation
-
-Download **`BEASTUBE_<version>_x64-setup.exe`** from the
-[latest release](https://github.com/zbeastcorp/beastube/releases/latest) and run it.
-
-That is the whole of it. The installer carries `yt-dlp` and `ffmpeg`, so downloads work on a machine
-you have not prepared, and it installs the WebView2 runtime if Windows does not already have it
-(Windows 11 always does).
-
-**Requirements:** Windows 10 (1809 or newer) or Windows 11, 64-bit. About 250 MB of disk.
-
-### Release files
-
-| File                                   | Description                                                          |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| **`BEASTUBE_<version>_x64-setup.exe`** | **The installer. This is the one you want.** ~51 MB.                 |
-| `BEASTUBE_<version>_x64_en-US.msi`     | Same application as an MSI, for Group Policy and managed deployment. |
-| `*.sig`                                | Signatures, used by the built-in updater. Not needed by hand.        |
-| `latest.json`                          | Update manifest. Installed copies read this; you do not need it.     |
-
-**Which one.** Take the `.exe` unless you know you want the `.msi`. The `.exe` installs per-user
-without an administrator prompt and is what the in-app updater downloads. The `.msi` exists for
-deploying across a fleet — `msiexec /i BEASTUBE_<version>_x64_en-US.msi /qn` — and is larger,
-because MSI cannot compress as well as NSIS.
-
-Every release is signed with the project's updater key. The public half is compiled into the
-application, so a build will refuse an update it cannot verify — including one we did not sign.
-
-### Updating
-
-BEASTUBE keeps itself up to date. Shortly after launch it checks, and if a newer version exists it
-downloads it, verifies the signature, installs it and restarts — telling you before it does, not
-after. Nothing opens: no setup window, no progress dialog of its own, no prompt. The application
-closes and reopens on the new version.
-
-Your library is not touched. History, playlists, bookmarks and watch positions live outside the
-program directory, and an update replaces the program only.
-
-It will not do that while something is playing, it will not retry a version that already failed to
-install on your machine, and **Settings → About → Update automatically** turns it off, leaving the
-button below it as the same update on request.
-
-**Settings → About → Check for updates** is the one that acts. It checks, and if there is a newer
-version it downloads it, verifies the signature, installs it without a wizard and restarts into it —
-one press, with the progress reported on that row. There is no second confirmation, because the
-press already said what you wanted; the row states the download size beforehand rather than after.
-There is no uninstall-and-reinstall step.
-
-It is a full installer each time rather than a patch, because Windows offers no delta mechanism on
-this path — around 50 MB, most of which is ffmpeg. The settings row says so before you press it.
-
-### Uninstalling
-
-Through **Settings → Apps** in Windows, or the `uninstall.exe` beside the program. Your library is
-left in place; see [What is stored, and where](#what-is-stored-and-where) if you want it gone too.
+Built with Tauri 2 · Rust · React · TypeScript · SQLite, compiled to a single native binary of
+about 24 MB.
 
 ## Features
 
-### Watching
+**Watching.** Two control bars, switchable in Settings → Playback. YouTube's own drives the embed's
+quality API directly — every tier from 144p up, applied immediately. BEASTUBE's matches the theme
+and reaches 360p to 2160p at 60fps. Subtitles can be moved, resized and given a background;
+dubbed audio tracks are selectable where a video has them.
 
-<div align="center">
-  <img src="docs/screenshots/watch.png" width="90%" alt="The watch page, with the player's own dark controls">
-</div>
+<img src="docs/screenshots/watch.png" width="100%" alt="The watch page">
 
-**Two control bars** — Settings → Playback → Player controls.
+**Explore and search.** Seven category hubs — Music, Gaming, Live, News, Sport, Learning, Fashion &
+Beauty — reading YouTube's own pages. The home feed is built from the same hubs, newest first.
 
-- **YouTube's own bar**, the default. Its gear drives the embed's quality API directly: every tier
-  from 144p up, applied immediately. The screenshot above shows this.
-- **BEASTUBE's dark bar.** Matches the theme and crops YouTube's chrome away. 360p to 2160p, at
-  60fps where the video has it. YouTube's own settings panel is white and cannot be themed, which
-  is why this is a choice rather than the default.
+**Shorts.** A full-height vertical feed with keyboard and wheel navigation.
 
-How the quality mechanism works, and the approaches that look correct but are not, is in
-[ADR-0004](docs/architecture-decisions/0004-player-quality.md).
+<img src="docs/screenshots/shorts.png" width="100%" alt="The Shorts feed">
 
-Also here: subtitles, playback speed, resume where you left off, downloads, and a related rail that
-collapses when the window is too narrow for it.
+**Library.** History, playlists, bookmarks and watch positions, all local. Incognito stops watches
+and searches being recorded, but still honours what you ask for explicitly — bookmarking a video
+writes, because you pressed a button that means keep this.
 
-### Shorts
+**Downloads.** Save videos with the bundled `yt-dlp` and `ffmpeg`. Neither needs installing
+separately.
 
-<div align="center">
-  <img src="docs/screenshots/shorts.png" width="90%" alt="The Shorts feed">
-</div>
+**Settings.** Theme (dark, light, AMOLED, or follow Windows), interface scale, density, reduced
+motion, maximum quality, playback speed, seek steps, autoplay, subtitles, download location, and a
+hardware-acceleration switch for drivers that render video incorrectly.
 
-A full-height vertical feed with keyboard and wheel navigation, in the portrait shape shorts are
-actually made in.
+<img src="docs/screenshots/settings.png" width="100%" alt="The settings screen">
 
-### Your library
+## Download
 
-History, playlists, bookmarks and watch positions, all local. Entries can be removed one at a time
-from a card's menu.
+Get **`BEASTUBE_<version>_x64-setup.exe`** from the
+[latest release](https://github.com/beastops/beastube/releases/latest) and run it. It installs the
+WebView2 runtime if Windows doesn't already have it (Windows 11 always does).
 
-Incognito stops watches and searches being recorded. It does not stop the things you ask for
-explicitly: bookmarking a video or adding it to a playlist still writes, because you pressed a
-button that means "keep this".
+**Requires** Windows 10 (1809 or newer) or Windows 11, 64-bit, and about 250 MB of disk.
 
-### Downloads
+| File                                   | Description                                                           |
+| -------------------------------------- | --------------------------------------------------------------------- |
+| **`BEASTUBE_<version>_x64-setup.exe`** | **The installer — take this one.** ~51 MB, per-user, no admin prompt. |
+| `BEASTUBE_<version>_x64_en-US.msi`     | Same app as an MSI, for Group Policy and managed deployment.          |
+| `*.sig`, `latest.json`                 | Used by the built-in updater. Not needed by hand.                     |
 
-Videos can be saved to disk with the bundled `yt-dlp`, joined by the bundled `ffmpeg`. Neither has
-to be installed separately and neither is vendored into this repository — the installer fetches them
-at build time, each verified against a vendor checksum.
+**Updates** install themselves. BEASTUBE checks shortly after launch, and a newer version is
+downloaded, verified against the signing key compiled into the app, installed and restarted into —
+no setup window, no prompt. It won't do that mid-playback, and **Settings → About → Update
+automatically** turns it off. Your library is untouched; an update replaces the program only.
 
-### Settings
+To uninstall, use Settings → Apps in Windows. Your library is left in place.
 
-<div align="center">
-  <img src="docs/screenshots/settings.png" width="90%" alt="The settings screen">
-</div>
+## Privacy
 
-Theme (dark, light, AMOLED, or follow Windows), interface scale, density, reduced motion, maximum
-quality, playback speed, seek steps, autoplay, subtitles on by default, download location, and a
-hardware-acceleration switch for machines whose graphics driver renders video incorrectly.
+- No account, and nothing to sign into.
+- No telemetry and no server of ours. BEASTUBE talks to YouTube and its media and image hosts, and
+  to GitHub to check for updates.
+- Your library lives in a SQLite file on your disk and is never uploaded.
 
-There is a **Diagnostics** screen too: version, runtime, storage sizes and filtering counters, read
-from your own machine, with a copy button. Nothing on it is transmitted anywhere.
-
-## What is stored, and where
-
-Two folders, and it is worth knowing which is which:
+Two folders hold everything:
 
 ```
 %APPDATA%\app.beastube.desktop\library.db     your library — a few MB
 %LOCALAPPDATA%\app.beastube.desktop\          caches and logs — can reach several hundred MB
 ```
 
-The SQLite file is the part that is _you_: history, playlists, bookmarks and watch positions.
+The first is the part that is _you_. The second is machinery — the embedded browser's profile, the
+metadata cache, `yt-dlp`'s cache and the log — and is safe to delete while BEASTUBE is closed.
+Delete both to reset completely.
 
-The second folder is machinery. It holds the embedded browser's own profile, the metadata cache,
-`yt-dlp`'s cache, and the application log. It grows — on a well-used installation it passes 500 MB,
-most of that the browser profile — and it is safe to delete while BEASTUBE is closed.
+The one identifier in play is the anonymous visitor token YouTube's own endpoints require. It's
+fetched per session, is not a login, and doesn't identify you.
 
-To reset completely, delete both. Deleting only `library.db` clears your library and leaves the
-caches, which is usually what you want but is not the same as starting fresh.
-
-Neither folder leaves your machine. There is no account and nothing is uploaded. The one identifier
-in play is the anonymous visitor token YouTube's own endpoints require; it is fetched per session,
-is not a login, and does not identify you.
-
-## Building from source
+## Build from source
 
 Requires [Rust](https://rustup.rs) 1.94+, [Node](https://nodejs.org) 22.12+ with
-[pnpm](https://pnpm.io), [PowerShell 7](https://aka.ms/powershell) (the setup scripts are `pwsh`),
-and the WebView2 runtime.
+[pnpm](https://pnpm.io), [PowerShell 7](https://aka.ms/powershell), and the WebView2 runtime.
 
 ```powershell
 pnpm install
@@ -219,62 +118,56 @@ pnpm tauri dev       # run it
 pnpm tauri build     # produce the installer
 ```
 
-`pnpm tools:fetch` is not optional for a bundled build: the two executables it downloads are
-installer resources, and downloads above roughly 360p cannot be produced without ffmpeg, because
-YouTube serves no combined audio-and-video stream at those sizes.
+`pnpm tools:fetch` isn't optional for a bundled build: both executables are installer resources, and
+downloads above roughly 360p need ffmpeg, because YouTube serves no combined audio-and-video stream
+at those sizes.
 
-The build lands at `target/release/bundle/nsis/BEASTUBE_<version>_x64-setup.exe` and contains only
-compiled artefacts — the Rust binary with the minified front end embedded, plus the two tools. No
-source is distributed.
-
-### Checks
+Checks, all of which CI runs:
 
 ```powershell
-pnpm typecheck       # tsc, strict, with exactOptionalPropertyTypes
-pnpm lint            # eslint, zero warnings tolerated
-pnpm format:check    # prettier
-pnpm test            # vitest
+pnpm typecheck && pnpm lint && pnpm format:check && pnpm test
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-## Project layout
+## Project structure
 
-| Path                           | What lives there                                                 |
-| ------------------------------ | ---------------------------------------------------------------- |
-| `src/`                         | React front end — views, stores, services, i18n catalogues       |
-| `src-tauri/`                   | The desktop shell: window setup, IPC commands, logging           |
-| `crates/beastube-core`         | Domain model and settings, shared by everything below            |
-| `crates/beastube-db`           | SQLite storage and migrations                                    |
-| `crates/beastube-provider*`    | Fetching from YouTube, and the traits that keep that swappable   |
-| `crates/beastube-download`     | Driving `yt-dlp` as a child process                              |
-| `docs/architecture-decisions/` | Why things are the way they are, with the measurements behind it |
+| Path                           | What lives there                                               |
+| ------------------------------ | -------------------------------------------------------------- |
+| `src/`                         | React front end — views, stores, services, i18n catalogues     |
+| `src-tauri/`                   | Desktop shell: window setup, IPC commands, logging             |
+| `crates/beastube-core`         | Domain model and settings                                      |
+| `crates/beastube-db`           | SQLite storage and migrations                                  |
+| `crates/beastube-provider*`    | Fetching from YouTube, and the traits that keep that swappable |
+| `crates/beastube-download`     | Driving `yt-dlp` as a child process                            |
+| `docs/architecture-decisions/` | Why playback and downloads work the way they do                |
 
-The architecture decision records are worth reading before changing playback or downloads. Both
-have non-obvious constraints that were measured rather than assumed.
+The architecture decision records are worth reading before changing playback or downloads — both
+have constraints that were measured rather than assumed.
 
 ## Contributing
 
-Bug reports and pull requests are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers the setup, the
-checks, and the few things this codebase is strict about — chiefly that a control which does nothing
-is treated as a bug, and that a claim about performance comes with the measurement behind it.
+Bug reports and pull requests are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup, the
+checks, and the few things this codebase is strict about. Release steps are in
+[`docs/RELEASING.md`](docs/RELEASING.md); what changed in each version is in
+[`CHANGELOG.md`](CHANGELOG.md).
 
-For anything security-shaped, read [`SECURITY.md`](SECURITY.md) and report it privately rather than
-in an issue. Release steps and the signing key are in [`docs/RELEASING.md`](docs/RELEASING.md); what
-changed in each version is in [`CHANGELOG.md`](CHANGELOG.md).
+## Security
+
+Report anything security-shaped privately rather than in an issue — see
+[`SECURITY.md`](SECURITY.md). Every release is signed with the project's updater key, and a build
+refuses an update it can't verify.
 
 ## Third-party software
 
-[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [`ffmpeg`](https://ffmpeg.org)
-(GPL v3) are bundled with the installer and run as separate processes. Neither is vendored into this
-repository. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+[`yt-dlp`](https://github.com/yt-dlp/yt-dlp) (Unlicense) and [`ffmpeg`](https://ffmpeg.org) (GPL v3)
+ship with the installer and run as separate processes. Neither is vendored into this repository. See
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
 BEASTUBE is not affiliated with, endorsed by, or sponsored by YouTube or Google.
 
 ## Licence
 
-GNU General Public License v3.0 or later. The full text is in [`LICENSE`](LICENSE).
-
-GPL is also the licence the bundled ffmpeg is under, so the two agree rather than pulling against
-each other. See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) for what that means in practice
-and where the corresponding source lives.
+GNU General Public License v3.0 or later — see [`LICENSE`](LICENSE). That's also ffmpeg's licence,
+so the two agree; [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) covers what that means in
+practice and where the corresponding source lives.

@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report privately, through GitHub's
-[private vulnerability reporting](https://github.com/zbeastcorp/beastube/security/advisories/new),
+[private vulnerability reporting](https://github.com/beastops/beastube/security/advisories/new),
 rather than in a public issue.
 
 Include what an attacker can achieve, how to reproduce it, and the version from Settings → About.
