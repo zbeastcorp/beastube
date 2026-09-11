@@ -37,23 +37,51 @@ jobs:
       # Creating the release and uploading assets to it.
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - name: Refuse to build without a signing key
+      # Without the key the bundler still produces an installer, just no `.sig` — a release that
+      # looks complete and that every installed copy refuses. So the build never proceeds without
+      # one. What differs is how loudly that is said, and by whom it was asked for.
+      #
+      # Asked for by hand, silence would be the wrong answer: someone is waiting on a release and
+      # needs to know why there isn't one. Reached by pushing a tag, a hard failure is noise — this
+      # project is released from a workstation, so every tag push left a red run behind it for a
+      # condition that is neither new nor a fault. Six of them in a row said nothing except that
+      # nobody had added a secret.
+      - name: Look for the signing key
+        id: key
         shell: bash
         env:
           KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          if [ -z "$KEY" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set."
-            echo "Without it the bundler still produces an installer, but no .sig — and every"
-            echo "installed copy refuses an update it cannot verify. See docs/RELEASING.md."
-            exit 1
+          if [ -n "$KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Stop, because there is no signing key
+        if: steps.key.outputs.present == 'false' && github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          echo "::error::TAURI_SIGNING_PRIVATE_KEY is not set."
+          echo "Without it the bundler still produces an installer, but no .sig — and every"
+          echo "installed copy refuses an update it cannot verify. See docs/RELEASING.md."
+          exit 1
+
+      - name: Skip, because there is no signing key
+        if: steps.key.outputs.present == 'false' && github.event_name != 'workflow_dispatch'
+        shell: bash
+        run: |
+          echo "::notice::No signing key, so this tag was not built here."
+          echo "That is the expected path while releases are cut from a workstation:"
+          echo "see the manual section of docs/RELEASING.md. Add"
+          echo "TAURI_SIGNING_PRIVATE_KEY to the repository secrets to build them here instead."
+
       - name: Check the tag matches the version being built
+        if: steps.key.outputs.present == 'true'
         shell: bash
         run: |
           tag="${{ inputs.tag || github.ref_name }}"
@@ -71,9 +99,11 @@ jobs:
             exit 1
           fi
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
+        if: steps.key.outputs.present == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+        if: steps.key.outputs.present == 'true'
         with:
           # Pinned rather than read from `engines.node`, which is a range and would resolve to
           # whatever Node is newest on the day the release is cut.
@@ -81,16 +111,21 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.key.outputs.present == 'true'
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.key.outputs.present == 'true'
 
       - name: Install dependencies
+        if: steps.key.outputs.present == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Fetch bundled tools
+        if: steps.key.outputs.present == 'true'
         run: pnpm tools:fetch
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
+        if: steps.key.outputs.present == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The contents of the key, not a path to it. `TAURI_SIGNING_PRIVATE_KEY_PATH` is
@@ -116,6 +151,7 @@ jobs:
           prerelease: false
 
       - name: Confirm the update manifest was produced
+        if: steps.key.outputs.present == 'true'
         shell: bash
         run: |
           # `latest.json` is the file the updater actually reads. Its absence is the one failure
