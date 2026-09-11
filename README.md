@@ -118,9 +118,8 @@ pnpm tauri dev       # run it
 pnpm tauri build     # produce the installer
 ```
 
-`pnpm tools:fetch` isn't optional for a bundled build: both executables are installer resources, and
-downloads above roughly 360p need ffmpeg, because YouTube serves no combined audio-and-video stream
-at those sizes.
+`pnpm tools:fetch` isn't optional for a bundled build — both executables ship inside the installer.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the rest of the setup.
 
 Checks, all of which CI runs:
 
