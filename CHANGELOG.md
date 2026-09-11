@@ -30,6 +30,14 @@ breaking changes.
   different key than the one being read, and the test that was supposed to catch it described a
   shape the provider does not actually send. 0 of 26 before, 26 of 26 now.
 
+- **The player's controls never went away in fullscreen.** Pressing the fullscreen button left it
+  holding keyboard focus, and the control bar is deliberately held open while focus is inside it —
+  so that keyboard users are not tabbing through buttons they cannot see. Windowed, focus leaves as
+  soon as you click anything else; fullscreen, there is nothing else to click, so the bar stayed up
+  over the picture for good. It now distinguishes focus the browser would draw a ring for from
+  focus left behind by a mouse click, so the bar still waits for the keyboard and no longer waits
+  forever for the mouse. The pointer now fades with it, as it does on the site.
+
 ### Added
 
 - **The channel page looks like a channel page.** It was an avatar, a name and a grid. It now has the

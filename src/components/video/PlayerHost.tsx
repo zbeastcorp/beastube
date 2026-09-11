@@ -486,8 +486,13 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
         pointerEvents: hidden ? 'none' : 'auto',
       }}
       onPointerMove={wake}
-      onFocusCapture={() => {
-        setChromeFocused(true);
+      onFocusCapture={(event) => {
+        // Only focus the browser would draw a ring for. Pressing a control with the mouse focuses
+        // it too, and counting that as keyboard focus held the bar open for good: in fullscreen
+        // there is nowhere else to click, so focus never left the player and the controls never
+        // faded. Clicking the fullscreen button was enough to do it, which is exactly the press
+        // every viewer makes on the way in.
+        if (isKeyboardFocus(event.target)) setChromeFocused(true);
       }}
       onBlurCapture={(event) => {
         // Only when focus has actually left the player, not on every hop between its buttons:
@@ -671,7 +676,10 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
                 toggle();
               }}
               aria-label={t.t(playing ? 'player.pause' : 'player.play')}
-              className="absolute inset-0 z-20 cursor-default"
+              // The pointer goes when the controls do, as it does on the site. It matters most in
+              // fullscreen, where an arrow parked over the picture is the one piece of chrome left
+              // on screen; any movement brings both back together.
+              className={`absolute inset-0 z-20 ${chromeUp ? 'cursor-default' : 'cursor-none'}`}
             />
 
             <div
@@ -1370,6 +1378,31 @@ function Scrubber({
 }
 
 /** One control on the bar: legible over any frame, no chrome until hovered. */
+/**
+ * Whether `node` holds focus the browser considers worth showing a ring for.
+ *
+ * This is the difference between a viewer who tabbed to a control and one who clicked it. The
+ * control bar stays up while the keyboard is inside it — without that, tabbing moves focus through
+ * buttons nobody can see — but a mouse click must not do the same, because a pointer user has the
+ * pointer to bring the bar back and would otherwise never be rid of it.
+ *
+ * `:focus-visible` is the platform's own answer to that question, and it is the one the focus ring
+ * is drawn from, so the bar and the ring agree by construction. Verified in the shell's engine: a
+ * real click reports `false`, a real Tab reports `true`.
+ *
+ * Fails toward keeping the bar visible. If the selector is ever unsupported, a viewer who can see
+ * controls they did not ask for is in a better position than a keyboard user driving a player
+ * they cannot see.
+ */
+function isKeyboardFocus(node: EventTarget | null): boolean {
+  if (!(node instanceof HTMLElement)) return false;
+  try {
+    return node.matches(':focus-visible');
+  } catch {
+    return true;
+  }
+}
+
 function ControlButton({
   label,
   onClick,
