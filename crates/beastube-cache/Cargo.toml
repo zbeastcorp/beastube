@@ -1,6 +1,6 @@
 [package]
 name = "beastube-cache"
-description = "BEASTUBE multi-layer cache (memory, disk, indexed) and thumbnail manager"
+description = "BEASTUBE in-memory cache with eviction, expiry and counters"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

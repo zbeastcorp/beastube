@@ -1,8 +1,10 @@
-//! BEASTUBE multi-layer cache: memory (L1), disk (L2) and the thumbnail manager built on them.
+//! BEASTUBE in-memory cache.
 //!
-//! Caches are disposable by design. Every entry is content-addressed and checksummed, so a
-//! truncated or corrupted file is detected on read, deleted and refetched rather than surfacing as
-//! an error the user has to act on. Nothing here holds data that cannot be rebuilt.
+//! Caches are disposable: nothing here holds data that cannot be rebuilt from its source, so an
+//! entry that fails verification is dropped and refetched rather than surfaced as an error.
+//!
+//! A disk layer is planned and not present. [`stats::CacheStats`] keeps disk counters because
+//! they are part of the shape a second layer will report through; nothing increments them yet.
 
 // Lint policy is set workspace-wide in Cargo.toml. Pure async Rust with no FFI.
 #![forbid(unsafe_code)]

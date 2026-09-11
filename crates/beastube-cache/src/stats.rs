@@ -117,15 +117,7 @@ impl CacheStats {
         self.disk_entries.store(entries, Ordering::Relaxed);
     }
 
-    /// Records a fetch actually issued to the byte source.
-    pub fn record_source_fetch(&self) {
-        self.source_fetches.fetch_add(1, Ordering::Relaxed);
-    }
 
-    /// Records a byte source failure that was not a cancellation.
-    pub fn record_source_failure(&self) {
-        self.source_failures.fetch_add(1, Ordering::Relaxed);
-    }
 
     /// Records a caller that joined an in-flight load instead of starting its own.
     ///
@@ -140,15 +132,7 @@ impl CacheStats {
         self.corruption_events.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Records a prefetch declined before any work was done.
-    pub fn record_prefetch_skipped(&self) {
-        self.prefetches_skipped.fetch_add(1, Ordering::Relaxed);
-    }
 
-    /// Records a value that was produced but could not be written to disk.
-    pub fn record_write_failure(&self) {
-        self.write_failures.fetch_add(1, Ordering::Relaxed);
-    }
 
     /// Takes a consistent-enough view of every counter.
     #[must_use]

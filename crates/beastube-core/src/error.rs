@@ -4,7 +4,7 @@
 //! …) so that no god-enum accumulates every failure mode in the workspace. What they share is the
 //! *wire* shape defined here: [`ErrorPayload`], produced by implementing [`DomainError`].
 //!
-//! Three properties are non-negotiable, and the type system enforces them:
+//! Three properties the type system enforces:
 //!
 //! * **No English prose crosses the IPC boundary.** Rust supplies a stable [`DomainError::code`]
 //!   and an i18n [`ErrorPayload::message_key`]; the UI renders the sentence, so every

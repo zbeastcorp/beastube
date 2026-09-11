@@ -53,7 +53,7 @@ fn default_filter() -> EnvFilter {
     EnvFilter::try_new(format!(
         "warn,beastube_app_lib={ours},beastube_core={ours},beastube_db={ours},\
          beastube_provider={ours},beastube_provider_youtube={ours},beastube_download={ours},\
-         beastube_filtering={ours},beastube_network={ours},beastube_cache={ours}"
+         beastube_filtering={ours},beastube_network={ours}"
     ))
     .unwrap_or_else(|_| EnvFilter::new("warn"))
 }

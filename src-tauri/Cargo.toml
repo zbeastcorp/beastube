@@ -19,7 +19,6 @@ tauri-build.workspace = true
 beastube-core.workspace = true
 beastube-db.workspace = true
 beastube-network.workspace = true
-beastube-cache.workspace = true
 beastube-provider.workspace = true
 beastube-provider-youtube.workspace = true
 beastube-filtering.workspace = true
