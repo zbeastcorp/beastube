@@ -1,7 +1,7 @@
 {
   "name": "beastube",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "BEASTUBE \u2014 fast, private, account-free desktop YouTube client",
   "type": "module",
   "license": "GPL-3.0-or-later",
