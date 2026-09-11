@@ -55,6 +55,7 @@ export const hi: PartialCatalogue = {
     expandSidebar: 'साइडबार बड़ा करें',
     goBack: 'पीछे जाएँ',
     goForward: 'आगे जाएँ',
+    localOnly: 'सब कुछ इसी डिवाइस पर रहता है',
   },
 
   explore: {
@@ -66,7 +67,7 @@ export const hi: PartialCatalogue = {
     sport: 'खेल',
     learning: 'लर्निंग',
     fashion: 'फ़ैशन और ब्यूटी',
-    empty: 'इस श्रेणी में अभी दिखाने के लिए कुछ नहीं है',
+    empty: 'यहाँ अभी कुछ नहीं है',
   },
 
   search: {
@@ -215,7 +216,7 @@ export const hi: PartialCatalogue = {
     followed: 'फ़ॉलो किया गया',
     followingLocalOnly: 'सिर्फ़ इस डिवाइस पर सहेजा गया — किसी खाते से सिंक नहीं होता',
     verified: 'सत्यापित',
-    empty: 'इस चैनल पर यहाँ कुछ नहीं है',
+    empty: 'यहाँ अभी कुछ नहीं है',
     videoCount: {
       one: '{count} वीडियो',
       other: '{count} वीडियो',
@@ -231,8 +232,7 @@ export const hi: PartialCatalogue = {
       one: '{count} व्यू',
       other: '{count} व्यू',
     },
-    links: 'लिंक',
-    details: 'विवरण',
+    tabs: 'चैनल टैब',
     openOnYouTube: 'YouTube पर खोलें',
   },
 

@@ -819,7 +819,7 @@ function ChannelView({
       {details ? <ChannelHeader details={details} /> : <ChannelHeaderSkeleton />}
 
       {tabs.length > 0 && (
-        <nav className="border-border mb-6 flex gap-8 border-b" aria-label={t.t('channel.details')}>
+        <nav className="border-border mb-6 flex gap-8 border-b" aria-label={t.t('channel.tabs')}>
           {tabs.map((name) => {
             const active = name === tab;
             return (
@@ -980,7 +980,7 @@ function ChannelHeader({ details }: { details: ChannelDetails }): ReactNode {
   );
 }
 
-/** The links and figures the site keeps behind its *About* panel. */
+/** What the header leaves out: the rest of the description, the owner's links, and the figures. */
 function ChannelAbout({
   details,
   description,
@@ -1012,48 +1012,41 @@ function ChannelAbout({
       ? t.t('channel.joined', { date: t.date(details.joined_at, { dateStyle: 'long' }) })
       : undefined,
     details.view_count !== undefined
-      ? t.plural('channel.totalViews', details.view_count, { count: t.number(details.view_count) })
+      ? t.plural('channel.totalViews', details.view_count, { count: t.compact(details.view_count) })
       : undefined,
     country,
   ].filter((fact): fact is string => fact !== undefined);
 
   return (
-    <div className="border-border bg-surface mt-4 flex flex-col gap-4 rounded-xl border p-4">
+    <div className="mt-4 flex max-w-3xl flex-col gap-3">
       {description.length > 0 && (
-        <p className="text-text max-w-3xl text-sm whitespace-pre-line">{description}</p>
+        <p className="text-text text-sm whitespace-pre-line">{description}</p>
       )}
 
       {links.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-text text-sm font-medium">{t.t('channel.links')}</h2>
-          <ul className="flex flex-wrap gap-x-6 gap-y-1">
-            {links.map((link) => (
-              <li key={link.url}>
-                <ExternalLink url={link.url} label={link.title} />
-              </li>
-            ))}
-          </ul>
-        </section>
+        <ul className="flex flex-wrap gap-x-5 gap-y-1">
+          {links.map((link) => (
+            <li key={link.url}>
+              <ExternalLink url={link.url} label={link.title} />
+            </li>
+          ))}
+        </ul>
       )}
 
-      {facts.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-text text-sm font-medium">{t.t('channel.details')}</h2>
-          <p className="text-text-muted text-sm">{facts.join(' • ')}</p>
-        </section>
-      )}
+      {facts.length > 0 && <p className="text-text-muted text-sm">{facts.join(' • ')}</p>}
 
-      {details.canonical_url !== undefined && (
-        <ExternalLink url={details.canonical_url} label={t.t('channel.openOnYouTube')} />
-      )}
-
-      <button
-        type="button"
-        onClick={onCollapse}
-        className="text-text hover:text-text-muted w-fit text-sm font-medium transition-colors"
-      >
-        {t.t('channel.showLess')}
-      </button>
+      <div className="flex items-center gap-5">
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="text-text hover:text-text-muted text-sm font-medium transition-colors"
+        >
+          {t.t('channel.showLess')}
+        </button>
+        {details.canonical_url !== undefined && (
+          <ExternalLink url={details.canonical_url} label={t.t('channel.openOnYouTube')} />
+        )}
+      </div>
     </div>
   );
 }

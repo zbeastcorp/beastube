@@ -50,6 +50,7 @@ export const es: PartialCatalogue = {
     expandSidebar: 'Expandir barra lateral',
     goBack: 'Volver',
     goForward: 'Avanzar',
+    localOnly: 'Todo se queda en este dispositivo',
   },
 
   explore: {
@@ -61,7 +62,7 @@ export const es: PartialCatalogue = {
     sport: 'Deportes',
     learning: 'Aprendizaje',
     fashion: 'Moda y belleza',
-    empty: 'No hay nada que mostrar en esta categoría ahora mismo',
+    empty: 'Nada por aquí todavía',
   },
 
   search: {
@@ -210,7 +211,7 @@ export const es: PartialCatalogue = {
     followed: 'Siguiendo',
     followingLocalOnly: 'Guardado solo en este dispositivo; no se sincroniza con una cuenta',
     verified: 'Verificado',
-    empty: 'Este canal no tiene nada aquí',
+    empty: 'Nada por aquí todavía',
     videoCount: {
       one: '{count} vídeo',
       other: '{count} vídeos',
@@ -226,8 +227,7 @@ export const es: PartialCatalogue = {
       one: '{count} visualización',
       other: '{count} visualizaciones',
     },
-    links: 'Enlaces',
-    details: 'Detalles',
+    tabs: 'Pestañas del canal',
     openOnYouTube: 'Abrir en YouTube',
   },
 

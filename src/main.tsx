@@ -46,19 +46,14 @@ createRoot(container).render(
             minHeight: '100vh',
           }}
         >
-          <h1 style={{ fontSize: '1rem', margin: '0 0 0.5rem' }}>
-            BEASTUBE could not start this screen
-          </h1>
-          <p style={{ opacity: 0.7, margin: '0 0 1rem', maxWidth: '40rem' }}>
-            Your library, playlists and bookmarks are safe — they are stored on this device and this
-            failure did not touch them.
-          </p>
+          <h1 style={{ fontSize: '1rem', margin: '0 0 0.5rem' }}>Something went wrong</h1>
+          <p style={{ opacity: 0.7, margin: '0 0 1rem' }}>Your library is safe.</p>
           <button
             type="button"
             onClick={reset}
             style={{ padding: '0.5rem 1rem', borderRadius: '999px', border: 0, cursor: 'pointer' }}
           >
-            Try again
+            Retry
           </button>
         </div>
       )}

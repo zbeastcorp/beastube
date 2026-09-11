@@ -266,9 +266,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }): ReactNode {
       ))}
 
       <hr className="border-border my-3" />
-      <p className="text-text-subtle px-3 text-xs leading-relaxed">
-        {t.t('settings.privacy.subtitle')}
-      </p>
+      <p className="text-text-subtle px-3 text-xs leading-relaxed">{t.t('nav.localOnly')}</p>
     </nav>
   );
 }

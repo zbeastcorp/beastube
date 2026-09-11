@@ -51,6 +51,7 @@ export const en = {
     expandSidebar: 'Expand sidebar',
     goBack: 'Go back',
     goForward: 'Go forward',
+    localOnly: 'Everything stays on this device',
   },
 
   explore: {
@@ -62,7 +63,7 @@ export const en = {
     sport: 'Sport',
     learning: 'Learning',
     fashion: 'Fashion & Beauty',
-    empty: 'Nothing to show in this category right now',
+    empty: 'Nothing here yet',
   },
 
   search: {
@@ -261,7 +262,7 @@ export const en = {
     followed: 'Followed',
     followingLocalOnly: 'Saved on this device only — not synced to a YouTube account',
     verified: 'Verified',
-    empty: 'This channel has nothing here',
+    empty: 'Nothing here yet',
     videoCount: {
       one: '{count} video',
       other: '{count} videos',
@@ -277,8 +278,7 @@ export const en = {
       one: '{count} view',
       other: '{count} views',
     },
-    links: 'Links',
-    details: 'Details',
+    tabs: 'Channel tabs',
     openOnYouTube: 'Open on YouTube',
   },
 
@@ -671,7 +671,7 @@ export const en = {
 
   error: {
     generic: 'Something went wrong',
-    genericHint: 'The action could not be completed.',
+    genericHint: 'Nothing was changed.',
     // A page that does not exist is not a failure, and saying so invites a bug report about a
     // typo. The old wording paired "Something went wrong" with the raw path underneath it.
     notFound: 'This page does not exist',
@@ -682,10 +682,10 @@ export const en = {
       timeout: 'The request timed out',
       timeoutHint: 'The connection is slow or the server is not responding.',
       connect_failed: 'Could not reach the server',
-      blocked_url: 'That address was refused for safety reasons',
-      rate_limited: 'Too many requests — waiting before trying again',
+      blocked_url: 'That link was blocked',
+      rate_limited: 'Too many requests. Waiting…',
       server_error: 'The server returned an error',
-      invalid_response: 'The response could not be understood',
+      invalid_response: "Couldn't load this",
       cancelled: 'The request was cancelled',
     },
     provider: {
@@ -695,20 +695,19 @@ export const en = {
       age_restricted: 'This content is age-restricted',
       members_only: 'This content is for channel members',
       private: 'This content is private',
-      schema_drift: 'BEASTUBE could not read the response',
-      schema_driftHint: 'YouTube has changed something. An update may be required.',
-      rate_limited: 'Too many requests to YouTube — try again shortly',
+      schema_drift: "Couldn't load this",
+      schema_driftHint: 'An update may be needed.',
+      rate_limited: 'Too many requests. Try again shortly',
       invalid_input: 'That request was not valid',
       paid: 'This content must be purchased',
       not_yet_broadcast: 'This stream has not started yet',
-      unsupported: 'BEASTUBE cannot do that with the current provider',
-      download_refused:
-        'YouTube refused the download of “{title}” — try again shortly, or update yt-dlp',
+      unsupported: 'Not available',
+      download_refused: 'Couldn’t download “{title}”. Try again shortly',
       download_failed: 'The download of “{title}” did not finish',
     },
     playback: {
-      load_failed: 'The video could not be loaded',
-      decode: 'The video could not be decoded',
+      load_failed: 'Couldn’t load this video',
+      decode: 'Couldn’t play this video',
       decodeHint: 'Try turning off hardware acceleration in Playback settings.',
       unsupported_codec: 'This video uses a format your system cannot play',
       /**
@@ -721,18 +720,17 @@ export const en = {
        * was a guess presented as a fact.
        */
       not_embeddable: 'This video cannot be played here',
-      notEmbeddableHint:
-        'YouTube is refusing to play it outside its own site. It may be age-restricted, blocked in your region, or unavailable right now.',
+      notEmbeddableHint: 'It may be age-restricted or blocked in your region.',
       stalled: 'Playback stalled',
-      referer_rejected: 'The player rejected the request',
+      referer_rejected: "Couldn't play this video",
       no_streams: 'No playable video was found',
-      expired: 'The playback link expired — reloading',
+      expired: 'Reconnecting…',
     },
     database: {
       locked: 'The library is busy — retrying',
       corrupt: 'The library file is damaged',
-      corruptHint: 'BEASTUBE can rebuild it, but locally saved data will be lost.',
-      query_failed: 'The library could not be read',
+      corruptHint: 'Rebuilding will clear saved data.',
+      query_failed: 'Couldn’t read your library',
       not_found: 'That item no longer exists',
       migration_failed: 'The library could not be upgraded',
       open_failed: 'The library could not be opened',
@@ -752,11 +750,9 @@ export const en = {
     },
     configuration: {
       invalid: 'A setting is not valid and was reset',
-      downloader_missing:
-        'The downloader is missing — reinstall BEASTUBE, or set a copy in Settings',
-      muxer_missing:
-        'ffmpeg is missing — it is required to save a video. Reinstall, or set a copy in Settings',
-      downloader_failed_to_start: 'The downloader could not be started',
+      downloader_missing: 'Can’t download. Reinstall BEASTUBE',
+      muxer_missing: 'Can’t save videos. Reinstall BEASTUBE',
+      downloader_failed_to_start: 'Couldn’t start the download',
     },
     filtering: {
       invalid_rules: 'The filter rules could not be read and were not applied',
