@@ -20,8 +20,18 @@
 //! |---|---|
 //! | search, suggestions | working |
 //! | video details, channel content | working |
+//! | channel header, About tab | working, but see below |
+//! | channel Shorts tab | working only off the raw response — the typed parser returns nothing |
+//! | channel video sort orders | **broken upstream** — every order, every tab, every channel refuses |
 //! | remote playlists | **broken upstream** — the extractor's parser no longer matches the response |
 //! | video stream URLs | **unavailable** — the provider serves them over a transport we do not implement |
+//!
+//! Two of those need naming precisely, because both are cases where the extractor answers
+//! confidently and wrongly rather than failing:
+//!
+//! - The channel header's `subscriber_count` is really the **video** count. See
+//!   [`YouTubeProvider::channel`], which takes both figures from the About tab instead.
+//! - A channel's Shorts tab parses to an empty list. See [`YouTubeProvider::channel_shorts`].
 //!
 //! [`ProviderCapabilities`] reflects exactly that, so the UI hides the playlist surface rather than
 //! offering one that always errors (§131). When upstream parsing is fixed, one flag turns it back
@@ -175,6 +185,54 @@ impl YouTubeProvider {
         .ok()?;
 
         map::details_from_player(&json, id)
+    }
+
+    /// The Shorts tab, read from the raw browse response.
+    ///
+    /// ## Why this exists
+    ///
+    /// The typed tab parser returns nothing for a tab that is full. Measured against the live
+    /// service, `channel_videos_tab(Shorts)` yields **0 items** for `MrBeast` and for Google for
+    /// Developers, both of which report `has_shorts` and both of whose tabs are populated on the
+    /// site. The same browse request read as JSON contains 48 `shortsLockupViewModel` objects and
+    /// no `videoRenderer` at all — the shelf holding them is not a variant the extractor knows,
+    /// so serde's catch-all arm swallows it whole. It is the same blind spot
+    /// [`map::shorts_from_json`] documents for search, on a different endpoint.
+    ///
+    /// `params` is the Shorts tab selector, the value the site's own navigation sends. It is
+    /// opaque and fixed; if the site retires it the request returns an empty tab rather than the
+    /// wrong content, which is why it is safe to hard-code.
+    ///
+    /// Pagination is not claimed. The response carries a continuation token, but nothing here can
+    /// resume from it yet, and a cursor the caller cannot follow is worse than an honest end of
+    /// list.
+    async fn channel_shorts(
+        &self,
+        id: &ChannelId,
+        cancel: &CancellationToken,
+    ) -> ProviderResult<Page<VideoSummary>> {
+        /// The Shorts tab selector, as the site's own navigation sends it.
+        const SHORTS_TAB_PARAMS: &str = "EgZzaG9ydHPyBgUKA5oBAA%3D%3D";
+
+        let client = self.query().await;
+        let body = serde_json::json!({
+            "browseId": id.as_str(),
+            "params": SHORTS_TAB_PARAMS,
+        });
+
+        let json = Self::with_cancellation(cancel, async move {
+            client
+                .raw(rustypipe::client::ClientType::Desktop, "browse", &body)
+                .await
+                .map_err(|error| classify(&error, "channel_shorts"))
+        })
+        .await?;
+
+        Ok(Page {
+            items: map::shorts_from_json(&json),
+            continuation: None,
+            total_estimate: None,
+        })
     }
 
     /// The video's caption tracks, or an empty list if they cannot be read.
@@ -389,7 +447,7 @@ impl SearchProvider for YouTubeProvider {
             .collect();
 
         // The typed extractor drops every short in the response, for the reason
-        // `map::shorts_from_search` documents. Measured across five live searches it discarded 25
+        // `map::shorts_from_json` documents. Measured across five live searches it discarded 25
         // to 30 per query, and on a casual one — "funny cat" — the response held 8 ordinary videos
         // against 30 shorts, so a search whose results were mostly short-form came back looking
         // almost empty and appeared to demand the exact title of a video. They are recovered here
@@ -521,7 +579,7 @@ impl SearchProvider for YouTubeProvider {
         })
         .await?;
 
-        Ok(map::shorts_from_search(&json))
+        Ok(map::shorts_from_json(&json))
     }
 
     async fn suggestions(
@@ -792,40 +850,102 @@ impl VideoProvider for YouTubeProvider {
 
 #[async_trait]
 impl ChannelProvider for YouTubeProvider {
+    /// Everything the channel page draws, from two requests made together.
+    ///
+    /// ## Why the About tab is fetched as well
+    ///
+    /// The channel page header and the About tab disagree, and the About tab is the one that is
+    /// right. Measured against the live service, the header parse reports `MrBeast` at **1000**
+    /// subscribers and Google for Developers at **6000** — those are their *video* counts,
+    /// rounded. The extractor reads `metadataParts[1]` ("1K videos") into `subscriber_count` and
+    /// leaves `video_count` empty, because the site moved the parts of that row. The About tab
+    /// reports 516,000,000 and 2,670,000 for the same two channels, which is what the site itself
+    /// displays.
+    ///
+    /// So both counts come from About, and the header supplies only what About does not carry:
+    /// name, avatar, banner, handle, verification, and which tabs exist. The two go out
+    /// concurrently, so the page costs one round trip rather than two.
+    ///
+    /// A failed About request is not fatal. It costs the counts, the links and the join date; the
+    /// page still has a banner, a name and videos, and half a header beats an error screen.
     async fn channel(
         &self,
         id: &ChannelId,
         cancel: &CancellationToken,
     ) -> ProviderResult<ChannelDetails> {
-        let client = self.query().await;
-        let owned = id.as_str().to_owned();
+        let page_client = self.query().await;
+        let about_client = self.query().await;
+        let for_page = id.as_str().to_owned();
+        let for_about = id.as_str().to_owned();
 
-        let channel = Self::with_cancellation(cancel, async move {
-            client
-                .channel_videos(owned)
-                .await
-                .map_err(|error| classify(&error, "channel"))
-        })
-        .await?;
+        let (page, about) = futures::join!(
+            Self::with_cancellation(cancel, async move {
+                page_client
+                    .channel_videos(for_page)
+                    .await
+                    .map_err(|error| classify(&error, "channel"))
+            }),
+            Self::with_cancellation(cancel, async move {
+                about_client
+                    .channel_info(for_about)
+                    .await
+                    .map_err(|error| classify(&error, "channel_info"))
+            }),
+        );
+
+        let page = page?;
+        let about = about.ok();
+
+        // Videos always; the others only where the channel reports having them, so nobody opens a
+        // tab onto an empty page (§131). Playlists is absent on purpose: the playlists endpoint
+        // returns zero items for every channel measured, so offering the tab would be a promise
+        // this build cannot keep.
+        let mut available_tabs = vec![ChannelTab::Videos];
+        if page.has_shorts {
+            available_tabs.push(ChannelTab::Shorts);
+        }
+        if page.has_live {
+            available_tabs.push(ChannelTab::Live);
+        }
 
         Ok(ChannelDetails {
             summary: beastube_core::model::channel::ChannelSummary {
                 id: id.clone(),
-                name: channel.name,
-                avatar: map::thumbnails(&channel.avatar),
-                subscriber_count: channel.subscriber_count,
-                handle: None,
-                is_verified: channel.verification != rustypipe::model::Verification::None,
+                name: page.name,
+                avatar: map::thumbnails(&page.avatar),
+                subscriber_count: about.as_ref().and_then(|info| info.subscriber_count),
+                handle: page
+                    .handle
+                    .map(|handle| handle.trim_start_matches('@').to_owned()),
+                is_verified: map::is_verified(page.verification),
             },
-            description: Some(channel.description),
-            banner: map::thumbnails(&channel.banner),
-            // Only the uploads tab is verified working; declaring more would offer tabs that fail.
-            available_tabs: vec![ChannelTab::Videos],
-            video_count: None,
-            canonical_url: None,
+            // An owner who wrote nothing has no description rather than an empty one, so the page
+            // hides the section instead of drawing a blank.
+            description: Some(page.description).filter(|text| !text.trim().is_empty()),
+            banner: map::thumbnails(&page.banner),
+            available_tabs,
+            video_count: about.as_ref().and_then(|info| info.video_count),
+            // Built here rather than taken from About, which reports an `http` URL the external
+            // opener refuses by design.
+            canonical_url: Some(format!("https://www.youtube.com/channel/{}", id.as_str())),
+            links: about
+                .as_ref()
+                .map(|info| map::channel_links(&info.links))
+                .unwrap_or_default(),
+            view_count: about.as_ref().and_then(|info| info.view_count),
+            joined_at: about
+                .as_ref()
+                .and_then(|info| map::joined_at(info.create_date)),
+            country: about.as_ref().and_then(|info| map::country_code(info.country)),
         })
     }
 
+    /// The videos behind one tab.
+    ///
+    /// Shorts take a different path from the other two. The typed tab parser returns **zero** items
+    /// for every channel measured that plainly has Shorts — they arrive as
+    /// `shortsLockupViewModel`, which it discards, exactly as it does in search. The same request
+    /// read as raw JSON carries 48 of them. See [`Self::channel_shorts`].
     async fn channel_content(
         &self,
         id: &ChannelId,
@@ -833,13 +953,16 @@ impl ChannelProvider for YouTubeProvider {
         _continuation: Option<&ContinuationToken>,
         cancel: &CancellationToken,
     ) -> ProviderResult<Page<VideoSummary>> {
-        // Videos, Shorts and Live are three tabs of the same endpoint. Playlists is a different
-        // shape entirely and is refused rather than mapped onto this one.
+        if tab == ChannelTab::Shorts {
+            return self.channel_shorts(id, cancel).await;
+        }
+
+        // Videos and Live are two tabs of the same endpoint. Playlists is a different shape
+        // entirely and is refused rather than mapped onto this one.
         let extractor_tab = match tab {
             ChannelTab::Videos => rustypipe::param::ChannelVideoTab::Videos,
-            ChannelTab::Shorts => rustypipe::param::ChannelVideoTab::Shorts,
             ChannelTab::Live => rustypipe::param::ChannelVideoTab::Live,
-            ChannelTab::Playlists => {
+            ChannelTab::Shorts | ChannelTab::Playlists => {
                 return Err(ProviderError::Unsupported {
                     operation: "channel_content",
                     provider: PROVIDER_NAME,
@@ -911,8 +1034,9 @@ impl MetadataProvider for YouTubeProvider {
             related_videos: true,
             channel_details: true,
             channel_videos: true,
-            // Verified absent by the live probe rather than assumed either way.
-            channel_shorts: false,
+            // Read straight out of the raw response, for the same reason `search_shorts` is: the
+            // typed tab parser returns an empty list for a tab the live probe finds 48 items in.
+            channel_shorts: true,
             playlists: false,
             discovery_feed: false,
             // Read from the player response; verified against the live service, which returned six
@@ -1164,6 +1288,35 @@ mod tests {
         assert!(
             capabilities.captions,
             "caption tracks are read from the player response"
+        );
+        assert!(
+            capabilities.channel_shorts,
+            "the Shorts tab is served from the raw browse response"
+        );
+    }
+
+    #[test]
+    fn the_shorts_tab_is_not_routed_through_the_typed_parser() {
+        // The typed parser returns an empty list for a populated Shorts tab, so `channel_content`
+        // must divert that tab before it reaches the tab endpoint. Reaching it would mean the tab
+        // is offered, is not refused, and is silently empty — the worst of the three outcomes.
+        let provider = provider();
+        let id = ChannelId::new("UCX6OQ3DkcsbYNE6H8uQQuVA").unwrap();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        // A cancelled token stops the request before any network work, so what this observes is
+        // purely which branch was taken: the raw path reports `Cancelled`, and the typed path
+        // would have reported `Unsupported` from the match arm.
+        let error = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(provider.channel_content(&id, ChannelTab::Shorts, None, &cancel))
+            .expect_err("a cancelled request cannot succeed");
+        assert!(
+            matches!(error, ProviderError::Cancelled),
+            "expected the raw shorts path, got {error:?}"
         );
     }
 

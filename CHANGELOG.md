@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0 the minor number carries
 breaking changes.
 
+## [Unreleased]
+
+### Fixed
+
+- **Channel subscriber counts were the video count.** Every channel page has been showing the wrong
+  number since channels shipped — a channel with 431 videos read "431 subscribers", and MrBeast read
+  "1000". The provider's page header lists subscribers and videos side by side and the extractor was
+  reading the second of the pair into the first, leaving the video count empty. Both figures now come
+  from the channel's About tab, which reports them correctly: 516M subscribers and 1K videos for the
+  same channel that used to read 1000.
+- **A channel's Shorts tab was empty.** It parsed to nothing at all for channels whose tab is full —
+  48 shorts in the response, none of them shown. They arrive in a shelf the extractor discards, the
+  same one search had to be taught to read, and they are now read the same way.
+
+### Added
+
+- **The channel page looks like a channel page.** It was an avatar, a name and a grid. It now has the
+  banner, the handle, the subscriber and video counts, the channel's description with the rest of it
+  a click away, the owner's links, and tabs for Videos, Shorts and Live. Tabs come from what each
+  channel actually has, so a channel with no Shorts does not grow an empty Shorts tab, and the panel
+  behind "more" carries the join date, the lifetime view count and the country.
+
+Three things the provider's own page has are deliberately absent, because this build cannot do them
+honestly: there is no Subscribe button (BEASTUBE has no account to subscribe with), no Playlists tab
+(the endpoint returns nothing for every channel), and no Latest/Popular/Oldest sort (the endpoint
+refuses every request, for every channel and every tab). If any of those start working, they are one
+change each.
+
 ## [0.1.5] — 2026-09-07
 
 ### Fixed

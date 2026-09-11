@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::ChannelId;
 use crate::model::thumbnail::ThumbnailSet;
+use crate::time_util::Timestamp;
 
 /// The compact shape used by search results and follow lists.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +49,20 @@ impl ChannelSummary {
     pub fn display_handle(&self) -> Option<String> {
         self.handle.as_ref().map(|h| format!("@{h}"))
     }
+}
+
+/// A link the owner published on their channel's About tab.
+///
+/// Both fields are untrusted provider text. The URL is `https` by construction: the adapter drops
+/// anything else rather than passing it on, because [`crate::security::validate_external_url`]
+/// refuses a non-`https` scheme at the point of opening, and a link that cannot be opened should
+/// not be drawn (§131).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelLink {
+    /// The label the owner gave it, such as `Website` or `Instagram`. Untrusted text.
+    pub title: String,
+    /// Where it points. `https` only.
+    pub url: String,
 }
 
 /// Content tabs a channel may expose.
@@ -101,6 +116,21 @@ pub struct ChannelDetails {
     /// Canonical provider URL, for the "open externally" action. Validated before use.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canonical_url: Option<String>,
+    /// Links the owner published on their About tab.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<ChannelLink>,
+    /// Lifetime views across the channel, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view_count: Option<u64>,
+    /// When the channel was created, when reported.
+    ///
+    /// A date rather than an instant at the source — the provider publishes "Feb 20, 2012" and
+    /// nothing finer — so this is that day at midnight UTC and should be rendered as a date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joined_at: Option<Timestamp>,
+    /// ISO 3166-1 alpha-2 country the owner declared, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
 }
 
 impl ChannelDetails {
@@ -136,6 +166,10 @@ mod tests {
             available_tabs: tabs,
             video_count: None,
             canonical_url: None,
+            links: Vec::new(),
+            view_count: None,
+            joined_at: None,
+            country: None,
         }
     }
 

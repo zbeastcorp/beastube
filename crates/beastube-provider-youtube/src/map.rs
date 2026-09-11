@@ -15,7 +15,7 @@
 
 use beastube_core::ids::{ChannelId, PlaylistId, VideoId};
 use beastube_core::model::SearchItem;
-use beastube_core::model::channel::ChannelSummary;
+use beastube_core::model::channel::{ChannelLink, ChannelSummary};
 use beastube_core::model::playlist::PlaylistSummary;
 use beastube_core::model::thumbnail::{Thumbnail, ThumbnailSet};
 use beastube_core::model::video::{
@@ -64,7 +64,11 @@ pub(crate) fn derived_thumbnails(id: &VideoId) -> ThumbnailSet {
 /// `shortsLockupViewModel` objects inside a shelf renderer that is not one of its known variants,
 /// so serde's catch-all arm swallows the whole shelf. Measured against a live `funny #shorts`
 /// search: 26 lockups in the response, and zero `videoRenderer` — the typed parser returned nothing
-/// at all for a query whose every result was a short.
+/// at all for a query whose every result was a short. A channel's Shorts tab behaves the same way:
+/// 48 lockups in the response, 0 items out of the typed parser.
+///
+/// Shared by both, because it does not care which endpoint produced the JSON — it looks for one
+/// key by name, wherever that key happens to sit.
 ///
 /// So this reads them straight out of the JSON the extractor already fetched. It is the same public
 /// endpoint, the same request, the same response; the only difference is that this reads a part of
@@ -75,7 +79,7 @@ pub(crate) fn derived_thumbnails(id: &VideoId) -> ThumbnailSet {
 /// Walked rather than deserialized into a fixed struct. InnerTube nests these differently depending
 /// on where a shelf lands in the response, and a walk that looks for one key by name is far harder
 /// to break than a path that has to be right about every level above it.
-pub(crate) fn shorts_from_search(json: &str) -> Vec<VideoSummary> {
+pub(crate) fn shorts_from_json(json: &str) -> Vec<VideoSummary> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(json) else {
         return Vec::new();
     };
@@ -192,6 +196,56 @@ fn parse_compact_count(text: &str) -> Option<u64> {
     // Truncation is the point — the source is already a rounded figure like "131M".
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Some(scaled as u64)
+}
+
+/// Maps the About tab's links, keeping only those the application can actually open.
+///
+/// The opener admits `https` and nothing else, on purpose — see
+/// [`beastube_core::security::validate_external_url`]. Owners publish `http` links, and some
+/// publish `mailto:` or worse. An `http` one is upgraded, since the destination is the same
+/// public page either way, and anything that is not one of those two schemes is dropped: a missing
+/// link beats a link that opens onto an error (§131).
+pub(crate) fn channel_links(source: &[(String, String)]) -> Vec<ChannelLink> {
+    source
+        .iter()
+        .filter_map(|(title, url)| {
+            let trimmed = url.trim();
+            let https = if let Some(rest) = trimmed.strip_prefix("http://") {
+                format!("https://{rest}")
+            } else if trimmed.starts_with("https://") {
+                trimmed.to_owned()
+            } else {
+                return None;
+            };
+            // Validated here rather than only at the point of opening, so a malformed link never
+            // becomes a button that fails when pressed.
+            beastube_core::security::validate_external_url(&https).ok()?;
+            Some(ChannelLink {
+                title: title.trim().to_owned(),
+                url: https,
+            })
+        })
+        .collect()
+}
+
+/// The channel's declared country as an ISO 3166-1 alpha-2 code.
+///
+/// The code rather than the extractor's `name()`, which is English only. The surface localises it
+/// with `Intl.DisplayNames`, so a Spanish or Hindi reader sees the country in their own language
+/// instead of "United States" in the middle of a translated page.
+pub(crate) fn country_code(country: Option<rustypipe::param::Country>) -> Option<String> {
+    // Through serde rather than `Debug`: the enum declares `rename_all = "UPPERCASE"`, so this is
+    // the spelling it defines rather than one inferred from how a variant happens to print.
+    let value = serde_json::to_value(country?).ok()?;
+    value.as_str().map(str::to_owned)
+}
+
+/// Converts the channel's creation date into the domain timestamp.
+///
+/// The provider publishes a day, not an instant, so this is that day at midnight UTC. Callers
+/// render it as a date; treating it as a time would invent a precision the source does not have.
+pub(crate) fn joined_at(date: Option<time::Date>) -> Option<Timestamp> {
+    date.map(|day| Timestamp::from(day.midnight().assume_utc()))
 }
 
 /// Converts a publication date into the domain timestamp.
@@ -815,7 +869,7 @@ mod tests {
         })
         .to_string();
 
-        let shorts = shorts_from_search(&json);
+        let shorts = shorts_from_json(&json);
         assert_eq!(shorts.len(), 1);
         let short = &shorts[0];
         assert_eq!(short.id.as_str(), "iuef391OhRU");
@@ -829,8 +883,8 @@ mod tests {
     fn a_lockup_without_an_identifier_is_skipped_not_faked() {
         let json = serde_json::json!({ "x": { "shortsLockupViewModel": { "accessibilityText": "t" } } })
             .to_string();
-        assert!(shorts_from_search(&json).is_empty());
-        assert!(shorts_from_search("not json").is_empty());
+        assert!(shorts_from_json(&json).is_empty());
+        assert!(shorts_from_json("not json").is_empty());
     }
 
     #[test]
@@ -840,7 +894,7 @@ mod tests {
             "overlayMetadata": { "primaryText": { "content": "t" } }
         }});
         let json = serde_json::json!({ "a": [lockup.clone()], "b": [lockup] }).to_string();
-        assert_eq!(shorts_from_search(&json).len(), 1);
+        assert_eq!(shorts_from_json(&json).len(), 1);
     }
 
     #[test]
@@ -947,7 +1001,7 @@ mod tests {
 //
 // The response itself carries all of it. YouTube moved this shelf to `lockupViewModel`, the same
 // modern renderer the shorts shelf uses and the same one the typed parser does not understand —
-// so this reads it directly, exactly as `shorts_from_search` above already does.
+// so this reads it directly, exactly as `shorts_from_json` above already does.
 // -------------------------------------------------------------------------------------------
 
 /// Reads the recommendation shelf out of a raw `next` response.
@@ -1218,6 +1272,71 @@ mod related_tests {
         assert_eq!(summary.published_text.as_deref(), Some("3 days ago"));
         assert_eq!(summary.duration_ms, Some(754_000));
         assert_eq!(summary.thumbnails.len(), 1);
+    }
+
+    fn links(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(title, url)| ((*title).to_owned(), (*url).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn channel_links_upgrade_plaintext_to_https() {
+        // Every About-tab URL the live probe returned for MrBeast was reachable over https; the
+        // provider simply reports some of them as http, which the external opener refuses.
+        let mapped = channel_links(&links(&[("Twitter", "http://twitter.com/MrBeast")]));
+        assert_eq!(mapped.len(), 1);
+        assert_eq!(mapped[0].url, "https://twitter.com/MrBeast");
+        assert_eq!(mapped[0].title, "Twitter");
+    }
+
+    #[test]
+    fn channel_links_drop_what_cannot_be_opened() {
+        let mapped = channel_links(&links(&[
+            ("Mail", "mailto:someone@example.com"),
+            ("Script", "javascript:alert(1)"),
+            ("Local", "file:///C:/Windows/System32"),
+            ("Relative", "/about"),
+            ("Empty", ""),
+            ("Real", "https://example.com/"),
+        ]));
+        // Only the one the opener would actually accept survives.
+        assert_eq!(mapped.len(), 1, "{mapped:?}");
+        assert_eq!(mapped[0].url, "https://example.com/");
+    }
+
+    #[test]
+    fn channel_links_drop_a_credentialled_url() {
+        // `validate_external_url` refuses embedded credentials; this checks the filter really
+        // consults it rather than only looking at the scheme.
+        let mapped = channel_links(&links(&[("Sneaky", "https://user:pass@example.com/")]));
+        assert!(mapped.is_empty(), "{mapped:?}");
+    }
+
+    #[test]
+    fn a_join_date_becomes_midnight_utc() {
+        let day = time::Date::from_calendar_date(2012, time::Month::February, 20).unwrap();
+        let stamp = joined_at(Some(day)).expect("a timestamp");
+        let back = time::OffsetDateTime::from_unix_timestamp(stamp.as_millis() / 1000).unwrap();
+        assert_eq!(back.year(), 2012);
+        assert_eq!(back.month(), time::Month::February);
+        assert_eq!(back.day(), 20);
+        assert_eq!((back.hour(), back.minute(), back.second()), (0, 0, 0));
+        assert_eq!(joined_at(None), None);
+    }
+
+    #[test]
+    fn a_country_maps_to_its_two_letter_code() {
+        assert_eq!(
+            country_code(Some(rustypipe::param::Country::Us)).as_deref(),
+            Some("US")
+        );
+        assert_eq!(
+            country_code(Some(rustypipe::param::Country::Gb)).as_deref(),
+            Some("GB")
+        );
+        assert_eq!(country_code(None), None);
     }
 
     #[test]

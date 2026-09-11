@@ -198,6 +198,25 @@ export const es: PartialCatalogue = {
     followed: 'Siguiendo',
     followingLocalOnly: 'Guardado solo en este dispositivo; no se sincroniza con una cuenta',
     verified: 'Verificado',
+    empty: 'Este canal no tiene nada aquí',
+    videoCount: {
+      one: '{count} vídeo',
+      other: '{count} vídeos',
+    },
+    more: 'más',
+    showLess: 'Mostrar menos',
+    andMoreLinks: {
+      one: 'y {count} enlace más',
+      other: 'y {count} enlaces más',
+    },
+    joined: 'Se unió el {date}',
+    totalViews: {
+      one: '{count} visualización',
+      other: '{count} visualizaciones',
+    },
+    links: 'Enlaces',
+    details: 'Detalles',
+    openOnYouTube: 'Abrir en YouTube',
   },
 
   library: {

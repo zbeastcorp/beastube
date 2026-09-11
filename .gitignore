@@ -44,3 +44,8 @@ Thumbs.db
 # means someone else can sign an update this application will install without asking.
 *.key
 !**/*.key.pub
+
+# Scratch written by the diagnostic examples into whatever directory they are run from. The
+# extractor keeps a metadata cache and drops a report file per warning; neither is ours to keep.
+rustypipe_cache.json
+rustypipe_reports/

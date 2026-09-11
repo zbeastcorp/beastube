@@ -9,7 +9,7 @@
 //! ## Why this exists
 //!
 //! Search in the application behaves as though it needs the exact title of a video, where the site
-//! returns loosely related results for the same words. [`map::shorts_from_search`] already
+//! returns loosely related results for the same words. [`map::shorts_from_json`] already
 //! documents the shape of that problem for short-form results — 26 lockups in the response and
 //! zero in the parsed result — and this asks whether the same thing is happening to ordinary
 //! videos.

@@ -203,6 +203,25 @@ export const hi: PartialCatalogue = {
     followed: 'फ़ॉलो किया गया',
     followingLocalOnly: 'सिर्फ़ इस डिवाइस पर सहेजा गया — किसी खाते से सिंक नहीं होता',
     verified: 'सत्यापित',
+    empty: 'इस चैनल पर यहाँ कुछ नहीं है',
+    videoCount: {
+      one: '{count} वीडियो',
+      other: '{count} वीडियो',
+    },
+    more: 'और',
+    showLess: 'कम दिखाएँ',
+    andMoreLinks: {
+      one: 'और {count} लिंक',
+      other: 'और {count} लिंक',
+    },
+    joined: '{date} को जुड़े',
+    totalViews: {
+      one: '{count} व्यू',
+      other: '{count} व्यू',
+    },
+    links: 'लिंक',
+    details: 'विवरण',
+    openOnYouTube: 'YouTube पर खोलें',
   },
 
   library: {

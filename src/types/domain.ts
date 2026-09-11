@@ -288,12 +288,24 @@ export interface ChannelSummary {
 }
 
 /** The full shape used by the channel page. */
+/** A link the owner published on their About tab. Always `https`; the adapter drops the rest. */
+export interface ChannelLink {
+  title: string;
+  url: string;
+}
+
 export interface ChannelDetails extends ChannelSummary {
   description?: string;
   banner?: ThumbnailSet;
   available_tabs?: ChannelTab[];
   video_count?: number;
   canonical_url?: string;
+  links?: ChannelLink[];
+  view_count?: number;
+  /** Unix milliseconds at midnight UTC on the day the channel was created. Render as a date. */
+  joined_at?: number;
+  /** ISO 3166-1 alpha-2, localised for display rather than shown raw. */
+  country?: string;
 }
 
 /** The compact shape used by playlist cards. */

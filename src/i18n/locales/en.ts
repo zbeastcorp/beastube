@@ -250,6 +250,24 @@ export const en = {
     followingLocalOnly: 'Saved on this device only — not synced to a YouTube account',
     verified: 'Verified',
     empty: 'This channel has nothing here',
+    videoCount: {
+      one: '{count} video',
+      other: '{count} videos',
+    },
+    more: 'more',
+    showLess: 'Show less',
+    andMoreLinks: {
+      one: 'and {count} more link',
+      other: 'and {count} more links',
+    },
+    joined: 'Joined {date}',
+    totalViews: {
+      one: '{count} view',
+      other: '{count} views',
+    },
+    links: 'Links',
+    details: 'Details',
+    openOnYouTube: 'Open on YouTube',
   },
 
   library: {

@@ -10,7 +10,7 @@
  * is never gated on a request (§87).
  */
 
-import { Clapperboard, ListVideo } from 'lucide-react';
+import { BadgeCheck, Clapperboard, ListVideo } from 'lucide-react';
 import { Fragment, useCallback, useRef, useState, type ReactNode, useEffect } from 'react';
 
 import { EmptyState } from '@/components/common/EmptyState';
@@ -46,6 +46,8 @@ import { useUiStore } from '@/stores/ui';
 import {
   bestThumbnailFor,
   isPortraitVideo,
+  type ChannelDetails,
+  type ChannelLink,
   type ChannelTab,
   type LocalPlaylist,
   type LocalPlaylistId,
@@ -78,6 +80,14 @@ const SHORTS_PAGE_SIZE = 20;
 
 /** How many Shorts the home shelf peeks at. Smaller than the tab: it is a row, not a screen. */
 const HOME_SHORTS_COUNT = 16;
+
+/**
+ * The channel banner's box.
+ *
+ * The provider serves the widest rendition at 2560x424, and reserving that ratio up front is what
+ * stops the whole page jumping down when the image lands.
+ */
+const BANNER_ASPECT = '2560 / 424';
 
 /** Videos shown before the first Shorts shelf breaks the grid. */
 const VIDEOS_BEFORE_SHELF = 6;
@@ -715,6 +725,28 @@ function BookmarksView(): ReactNode {
   );
 }
 
+/**
+ * One channel, laid out the way the provider's own site lays one out.
+ *
+ * ## What is here, and what is deliberately not
+ *
+ * The site's page is a banner, an avatar, a name, a metadata line, a description that expands, a
+ * row of the owner's links and a row of tabs. All of that is drawn here, because the adapter
+ * returns all of it — it was simply being discarded before it reached this file.
+ *
+ * Three things the site has are absent on purpose, each because this build cannot do them
+ * truthfully (§131):
+ *
+ * - **Subscribe / Join.** There is no account in this application, so there is nothing to
+ *   subscribe with.
+ * - **A Playlists tab.** The provider's playlists endpoint returns zero items for every channel
+ *   measured, so the tab would always open onto nothing.
+ * - **Latest / Popular / Oldest chips.** The ordered-videos endpoint refuses every request, for
+ *   every channel and every tab. A sort control that silently does not sort is worse than none.
+ *
+ * Tabs come from `available_tabs`, which the adapter fills from what each channel reports having,
+ * so a channel with no Shorts never grows a Shorts tab.
+ */
 function ChannelView({
   channelId,
   tab,
@@ -732,35 +764,36 @@ function ChannelView({
     invoke('get_channel_content', { channelId, tab }, { signal }),
   );
 
+  const details = channel.data;
   const videos = content.data?.items ?? [];
+  // Until the header arrives there is nothing to say about which tabs exist, and guessing would
+  // mean drawing a tab bar that rearranges itself a moment later.
+  const tabs = details?.available_tabs ?? [];
 
   return (
     <>
-      {channel.data ? (
-        <div className="mb-6 flex items-center gap-4">
-          {channel.data.avatar?.at(-1) && (
-            <img
-              src={channel.data.avatar.at(-1)?.url}
-              alt=""
-              className="size-20 rounded-full object-cover"
-            />
-          )}
-          <div className="flex flex-col gap-1">
-            <h1 className="text-text text-xl font-medium">{channel.data.name}</h1>
-            {channel.data.subscriber_count !== undefined && (
-              <span className="text-text-muted text-sm">
-                {t.plural('video.subscribers', channel.data.subscriber_count, {
-                  count: t.compact(channel.data.subscriber_count),
-                })}
-              </span>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="mb-6 flex items-center gap-4">
-          <div className="skeleton size-20 rounded-full" />
-          <div className="skeleton h-6 w-48 rounded" />
-        </div>
+      {details ? <ChannelHeader details={details} /> : <ChannelHeaderSkeleton />}
+
+      {tabs.length > 0 && (
+        <nav className="border-border mb-6 flex gap-8 border-b" aria-label={t.t('channel.details')}>
+          {tabs.map((name) => {
+            const active = name === tab;
+            return (
+              <Link
+                key={name}
+                to={{ name: 'channel', channelId, tab: name }}
+                aria-current={active ? 'page' : undefined}
+                className={`-mb-px border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
+                  active
+                    ? 'border-text text-text'
+                    : 'text-text-muted hover:text-text border-transparent'
+                }`}
+              >
+                {t.t(`channel.${name}` as TranslationKey)}
+              </Link>
+            );
+          })}
+        </nav>
       )}
 
       {content.error && videos.length === 0 ? (
@@ -769,6 +802,14 @@ function ChannelView({
         <FeedSkeleton />
       ) : videos.length === 0 ? (
         <EmptyState titleKey="channel.empty" icon="search" />
+      ) : tab === 'shorts' ? (
+        // Every item on this tab is a short, so the grid is chosen once here rather than card by
+        // card: a shelf of 9:16 cards laid out on the 16:9 grid leaves a row of gaps.
+        <ShortsGrid>
+          {videos.map((video) => (
+            <ShortsCard key={video.id} video={video} />
+          ))}
+        </ShortsGrid>
       ) : (
         <VideoGrid>
           {videos.map((video) => (
@@ -777,6 +818,242 @@ function ChannelView({
         </VideoGrid>
       )}
     </>
+  );
+}
+
+/**
+ * The banner, the avatar, and everything written beside them.
+ *
+ * The description starts clamped to one line, as the site's does, and expands in place rather than
+ * into a dialog — the same information with one less thing to dismiss. Expanding also reveals the
+ * owner's remaining links and the figures the site keeps behind its own *About* panel.
+ */
+function ChannelHeader({ details }: { details: ChannelDetails }): ReactNode {
+  const t = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+
+  const banner = details.banner?.at(-1);
+  const avatar = details.avatar?.at(-1);
+  const links = details.links ?? [];
+  const description = details.description?.trim() ?? '';
+
+  // Assembled as a list and joined, so a channel that hides its subscriber count does not leave a
+  // stray separator behind.
+  const metadata = [
+    details.handle !== undefined ? `@${details.handle}` : undefined,
+    details.subscriber_count !== undefined
+      ? t.plural('video.subscribers', details.subscriber_count, {
+          count: t.compact(details.subscriber_count),
+        })
+      : undefined,
+    details.video_count !== undefined
+      ? t.plural('channel.videoCount', details.video_count, {
+          count: t.compact(details.video_count),
+        })
+      : undefined,
+  ].filter((part): part is string => part !== undefined);
+
+  const expandable = description.length > 0 || links.length > 0;
+
+  return (
+    <header className="mb-6">
+      {banner && (
+        <LazyImage
+          src={banner.url}
+          alt=""
+          aspectRatio={BANNER_ASPECT}
+          className="mb-4 w-full rounded-xl object-cover"
+        />
+      )}
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        {avatar ? (
+          <img
+            src={avatar.url}
+            alt=""
+            className="size-20 shrink-0 rounded-full object-cover sm:size-40"
+          />
+        ) : (
+          <div className="bg-surface-hover size-20 shrink-0 rounded-full sm:size-40" />
+        )}
+
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-text flex items-center gap-2 text-2xl font-bold sm:text-4xl">
+            <span className="min-w-0 break-words">{details.name}</span>
+            {details.is_verified === true && (
+              <BadgeCheck
+                size={20}
+                className="text-text-muted shrink-0"
+                aria-label={t.t('channel.verified')}
+              />
+            )}
+          </h1>
+
+          {metadata.length > 0 && <p className="text-text-muted text-sm">{metadata.join(' • ')}</p>}
+
+          {/* Clamped even while the panel below is open. Letting it grow in place would drag the
+              avatar down with it — the row centres on this column — so the full text lives in the
+              panel instead, which is also where the site puts it. */}
+          {description.length > 0 && (
+            <p className="text-text-muted line-clamp-1 max-w-2xl text-sm">{description}</p>
+          )}
+
+          {/* Collapsed, this is the site's "YouTube and 6 more links" line; expanded, the panel
+              below carries the whole list. Either way it is one control in one place, so nothing
+              moves under the pointer. */}
+          {expandable && !expanded && (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="text-text hover:text-text-muted w-fit text-sm font-medium transition-colors"
+            >
+              {links.length > 0
+                ? [
+                    links[0]?.title,
+                    links.length > 1
+                      ? t.plural('channel.andMoreLinks', links.length - 1, {
+                          count: t.number(links.length - 1),
+                        })
+                      : undefined,
+                  ]
+                    .filter((part): part is string => part !== undefined && part.length > 0)
+                    .join(' ')
+                : t.t('channel.more')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <ChannelAbout
+          details={details}
+          description={description}
+          links={links}
+          onCollapse={() => setExpanded(false)}
+        />
+      )}
+    </header>
+  );
+}
+
+/** The links and figures the site keeps behind its *About* panel. */
+function ChannelAbout({
+  details,
+  description,
+  links,
+  onCollapse,
+}: {
+  details: ChannelDetails;
+  description: string;
+  links: ChannelLink[];
+  onCollapse: () => void;
+}): ReactNode {
+  const t = useTranslation();
+
+  // The adapter stores a country *code* rather than a country name, so each locale can name the
+  // place itself. `DisplayNames` is not obliged to know every code, and one it does not know is
+  // dropped rather than shown raw: a bare "US" in the middle of a sentence is not information
+  // anybody asked for.
+  const country = ((): string | undefined => {
+    if (details.country === undefined) return undefined;
+    try {
+      return new Intl.DisplayNames([t.locale], { type: 'region' }).of(details.country);
+    } catch {
+      return undefined;
+    }
+  })();
+
+  const facts = [
+    details.joined_at !== undefined
+      ? t.t('channel.joined', { date: t.date(details.joined_at, { dateStyle: 'long' }) })
+      : undefined,
+    details.view_count !== undefined
+      ? t.plural('channel.totalViews', details.view_count, { count: t.number(details.view_count) })
+      : undefined,
+    country,
+  ].filter((fact): fact is string => fact !== undefined);
+
+  return (
+    <div className="border-border bg-surface mt-4 flex flex-col gap-4 rounded-xl border p-4">
+      {description.length > 0 && (
+        <p className="text-text max-w-3xl text-sm whitespace-pre-line">{description}</p>
+      )}
+
+      {links.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-text text-sm font-medium">{t.t('channel.links')}</h2>
+          <ul className="flex flex-wrap gap-x-6 gap-y-1">
+            {links.map((link) => (
+              <li key={link.url}>
+                <ExternalLink url={link.url} label={link.title} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {facts.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-text text-sm font-medium">{t.t('channel.details')}</h2>
+          <p className="text-text-muted text-sm">{facts.join(' • ')}</p>
+        </section>
+      )}
+
+      {details.canonical_url !== undefined && (
+        <ExternalLink url={details.canonical_url} label={t.t('channel.openOnYouTube')} />
+      )}
+
+      <button
+        type="button"
+        onClick={onCollapse}
+        className="text-text hover:text-text-muted w-fit text-sm font-medium transition-colors"
+      >
+        {t.t('channel.showLess')}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * A link out to the viewer's own browser.
+ *
+ * A button rather than an `<a>`: the webview must never navigate away from the application, and an
+ * anchor carrying an external href is one middle-click from doing exactly that. The URL is checked
+ * again on the far side of the command — `open_external` admits `https` and nothing else — so this
+ * is not the only thing standing between a drifted provider response and the shell.
+ */
+function ExternalLink({ url, label }: { url: string; label: string }): ReactNode {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void invoke('open_external', { url }).catch(() => {
+          // Nothing to recover here: the link either opens or it is refused, and being refused is
+          // the outcome the validation exists to produce.
+        });
+      }}
+      className="text-accent hover:text-accent-hover text-sm underline-offset-2 hover:underline"
+      title={url}
+    >
+      {label.length > 0 ? label : url}
+    </button>
+  );
+}
+
+/** The header's shape while it loads, so the page does not jump when the real one arrives. */
+function ChannelHeaderSkeleton(): ReactNode {
+  return (
+    <header className="mb-6" aria-hidden="true">
+      <div className="skeleton mb-4 w-full rounded-xl" style={{ aspectRatio: BANNER_ASPECT }} />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="skeleton size-20 shrink-0 rounded-full sm:size-40" />
+        <div className="flex flex-col gap-2">
+          <div className="skeleton h-9 w-64 rounded" />
+          <div className="skeleton h-4 w-48 rounded" />
+          <div className="skeleton h-4 w-80 rounded" />
+        </div>
+      </div>
+    </header>
   );
 }
 
