@@ -13,10 +13,10 @@
 //!   [`beastube_core::ids::VideoId`] and paths the application resolved; no string from the
 //!   frontend is passed through unchecked.
 //! * **Progress is honest.** A percentage is reported only when the tool reports a total; a
-//!   download whose size is unknown says so rather than inventing a number (§131).
+//!   download whose size is unknown says so rather than inventing a number.
 //! * **Failure is classified, not pasted.** The tool's stderr is read and mapped to the same error
 //!   contract the rest of the application uses, so the UI can say "YouTube refused" or "the disk is
-//!   full" and keep the raw text for the diagnostics screen (§74).
+//!   full" and keep the raw text for the diagnostics screen.
 //! * **Cancellation is real.** Cancelling kills the child process and removes the partial files it
 //!   left behind, instead of merely forgetting about it.
 //!

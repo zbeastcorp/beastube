@@ -3,7 +3,7 @@
 //! The important distinction is between "this content cannot be shown" and "the extractor is
 //! broken". They look similar at the call site and mean opposite things: the first is a normal
 //! outcome the user should see explained, the second is an early warning that the external service
-//! changed and the adapter needs updating (§119).
+//! changed and the adapter needs updating.
 //!
 //! [`ProviderError::SchemaDrift`] exists for exactly that second case, and is deliberately never
 //! folded into a generic parse failure.
@@ -74,7 +74,7 @@ pub enum ProviderError {
 
     /// The provider answered, but not in a shape this build understands.
     ///
-    /// This is the early-warning signal that the external service changed (§119). It is kept
+    /// This is the early-warning signal that the external service changed. It is kept
     /// separate from every other parse failure precisely so it can be counted and surfaced on the
     /// diagnostics screen rather than blending into generic noise.
     #[error("could not read the provider response for {operation}")]

@@ -65,7 +65,7 @@
 //!   tokens; a registry of join handles would need its own cleanup path and would tempt callers
 //!   into `abort()`, which drops a future at an arbitrary await point.
 //! * **It does not retry on its own judgement.** Only errors the caller classifies as retryable are
-//!   retried, and never more than [`retry::MAX_ATTEMPT_CEILING`] times (§75).
+//!   retried, and never more than [`retry::MAX_ATTEMPT_CEILING`] times.
 //! * **It does not use randomness for anything but backoff jitter.** See [`retry::SystemJitter`].
 
 // Lint policy is set workspace-wide in Cargo.toml. This crate forbids unsafe outright: it is pure

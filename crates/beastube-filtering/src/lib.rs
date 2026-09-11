@@ -9,7 +9,7 @@
 //!
 //! ## The safety rule
 //!
-//! Filtering must never break ordinary playback (§10). Three invariants enforce that, and each is
+//! Filtering must never break ordinary playback. Three invariants enforce that, and each is
 //! covered by tests:
 //!
 //! 1. An allow rule always beats a block rule, whatever the priorities say.

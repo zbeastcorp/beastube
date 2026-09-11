@@ -12,7 +12,7 @@
 //! hand edit, or a partially-flushed page made that read fail, the application would not start —
 //! and the user could not reach the screen that would let them fix it. So a missing row, an
 //! undecodable row, and a row holding a JSON value of the wrong shape all resolve to
-//! [`Settings::default`] (§81). Only a failure of the *database itself* (locked, corrupt file) is
+//! [`Settings::default`]. Only a failure of the *database itself* (locked, corrupt file) is
 //! reported, because that is a condition settings cannot paper over.
 //!
 //! Every load is passed through [`Settings::sanitized`], so an out-of-range value clamps instead

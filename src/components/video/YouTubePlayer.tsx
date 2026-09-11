@@ -7,7 +7,7 @@
  *
  * ## What this adapter can and cannot do
  *
- * Capability-gated, not silently broken (§131):
+ * Capability-gated, not silently broken:
  *
  * * **Can**: play/pause, seek, playback rate, volume, fullscreen, captions toggle, position
  *   reporting, therefore creator-marked segment skipping — and selecting a quality tier, which
@@ -80,7 +80,7 @@ const API_LOAD_TIMEOUT_MS = 15_000;
  *
  * `2160p` tops the ladder deliberately. The embed also names a `highres` level above it, which is
  * not offered: honouring it would mean laying the frame out at 7680 pixels, and a tier the player
- * would answer at 4K is the kind of control that lies about what it did (§131).
+ * would answer at 4K is the kind of control that lies about what it did.
  */
 const QUALITY_WIDTH: Record<Exclude<Quality, 'auto'>, number> = {
   '2160p': 3840,
@@ -118,7 +118,7 @@ const HIGH_FRAME_RATE_TIERS: readonly Quality[] = ['2160p', '1440p', '1080p', '7
  * How a tier reads in a menu.
  *
  * The `60` suffix is appended only once the player has actually reported `hfr` for the video in
- * hand, so it states something observed rather than something assumed (§131).
+ * hand, so it states something observed rather than something assumed.
  */
 export function qualityLabel(tier: Quality, highFrameRate: boolean): string {
   if (tier === 'auto') return tier;
@@ -136,7 +136,7 @@ export function qualityLabel(tier: Quality, highFrameRate: boolean): string {
  *
  * `240p` and `1440p`-style entries below the floor are therefore absent rather than present and
  * inert: offering `144p` would serve 360p and call it 144p, which is exactly the fake feature the
- * specification forbids (§131). `EMBED_LEVEL` still names them, so a rendition the embed reports
+ * specification forbids. `EMBED_LEVEL` still names them, so a rendition the embed reports
  * from below the floor is still reported honestly if it ever appears.
  */
 const QUALITY_ORDER: readonly Exclude<Quality, 'auto'>[] = [
@@ -377,7 +377,7 @@ interface YouTubePlayerInstance {
    *
    * Genuinely per-video rather than a fixed ladder — measured: a 240p-era upload answers with
    * `["small", "auto"]` and nothing else. That is what lets a quality menu offer only tiers that
-   * exist for the video in front of the viewer (§131).
+   * exist for the video in front of the viewer.
    */
   getAvailableQualityLevels: () => string[];
   /**
@@ -564,7 +564,7 @@ export interface YouTubePlayerProps {
    * Called with the playhead position while playing.
    *
    * Sampled rather than pushed into global state: position changes several times a second, and
-   * routing it through a store would re-render the application on every tick (§89).
+   * routing it through a store would re-render the application on every tick.
    */
   onPosition?: (positionMs: number, durationMs: number) => void;
   /**
@@ -645,7 +645,7 @@ export interface YouTubePlayerProps {
    *
    * Exists so a surface that hides the embed's own chrome can offer real controls in its place. A
    * control that cannot act on the player would be exactly the kind of decoration the specification
-   * forbids (§131), so the commands are the same ones the API actually supports and nothing more.
+   * forbids, so the commands are the same ones the API actually supports and nothing more.
    */
   ref?: Ref<PlayerHandle>;
 }
@@ -700,13 +700,13 @@ export interface PlayerHandle {
    * Whether this video actually has captions.
    *
    * Asked of the player rather than assumed, so a caption control can be absent for a video that
-   * has none instead of present and inert (§131).
+   * has none instead of present and inert.
    */
   /**
    * The audio tracks this video offers, or an empty list when it offers no choice.
    *
    * Empty also covers a player build without the extended methods, so the caller shows no audio
-   * menu rather than one that cannot do anything (§131).
+   * menu rather than one that cannot do anything.
    */
   audioTracks: () => { id: string; label: string; isDefault: boolean }[];
   /** The track currently playing, or `null` when unknown. */

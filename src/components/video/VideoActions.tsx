@@ -3,7 +3,7 @@
  *
  * YouTube puts like, comment, share and remix here. Two of those need an account and one needs a
  * creation pipeline, and rendering a control that cannot do its job is the failure mode the
- * specification calls out by name (§131) — so this rail carries the two actions that are real
+ * specification calls out by name — so this rail carries the two actions that are real
  * without one:
  *
  * * **Save** writes a bookmark to the local database. It is the honest local equivalent of a like:
@@ -122,7 +122,7 @@ function RailButton({
 /**
  * The download control, in whichever of its four states applies.
  *
- * It is absent entirely when no downloader is installed. That is the §131 rule applied literally:
+ * It is absent entirely when no downloader is installed:
  * BEASTUBE drives `yt-dlp` and cannot produce a file without it, so on a computer that has none
  * the button would be a control that cannot do its job. The settings screen is where its absence
  * is explained and fixed, and picking a downloader there makes this appear without a restart.

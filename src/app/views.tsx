@@ -7,7 +7,7 @@
  *
  * Every view follows the same shape — cached or previous data stays on screen, a skeleton fills the
  * first load, and a failure renders an explanation with a retry where one is meaningful. Navigation
- * is never gated on a request (§87).
+ * is never gated on a request.
  */
 
 import { BadgeCheck, Clapperboard, ListVideo } from 'lucide-react';
@@ -202,7 +202,7 @@ function SearchView({ query, kind }: { query: string; kind: SearchResultKind }):
 
   // A playlist card that leads nowhere is worse than no card. The extractor's remote-playlist
   // parser no longer matches YouTube's response, the provider reports `playlists: false` because of
-  // it, and these results were still being rendered as links into a Not Found page (§131).
+  // it, and these results were still being rendered as links into a Not Found page.
   const items = (results.data?.page.items ?? []).filter(
     (item) => item.type !== 'playlist' || supported.playlists,
   );
@@ -287,7 +287,7 @@ function HomeView(): ReactNode {
 
   // Three sources, in the order they matter to someone opening the application: what they were part
   // way through, what the local ranker suggests, and what they watched recently. Each is
-  // independent, so a slow or failing recommendation pass never delays the rest (§87).
+  // independent, so a slow or failing recommendation pass never delays the rest.
   const resumable = useAsyncResource('home:resumable', () =>
     invoke('get_resumable', { limit: 12 }),
   );
@@ -352,7 +352,7 @@ function HomeView(): ReactNode {
   }
 
   // Named from what the videos were actually derived from, so a feed of broad topics is not
-  // presented as personalization that did not happen (§131).
+  // presented as personalization that did not happen.
   const feedHeading: TranslationKey =
     recommended.data?.source === 'discover' ? 'home.discover' : 'home.recommended';
 
@@ -520,7 +520,7 @@ function FeedSection({ heading, children }: { heading: string; children: ReactNo
  *
  * A real feed of short-form videos, assembled natively from searches the provider marks as
  * short-form — the tab used to run a text search for the word "shorts", which looked like a feature
- * and was not one (§131).
+ * and was not one.
  */
 function ShortsView({ videoId }: { videoId?: VideoId }): ReactNode {
   // Shared with the launch preload and with Home's shelf, so arriving here reads memory rather
@@ -731,7 +731,7 @@ function BookmarksView(): ReactNode {
  *
  * A plain grid, because that is what the provider's own category pages are: an editorial hub whose
  * front page collects videos from across the service. Nothing here is personalised and nothing
- * needs an account, which is the whole reason these can be offered at all (§43).
+ * needs an account, which is the whole reason these can be offered at all.
  *
  * The heading names the category rather than leaving the page unlabelled — the sidebar selection
  * says the same thing, but a page that states what it is survives being opened from a link.
@@ -779,7 +779,7 @@ function ExploreView({ category }: { category: ExploreCategory }): ReactNode {
  * returns all of it — it was simply being discarded before it reached this file.
  *
  * Three things the site has are absent on purpose, each because this build cannot do them
- * truthfully (§131):
+ * truthfully:
  *
  * - **Subscribe / Join.** There is no account in this application, so there is nothing to
  *   subscribe with.
@@ -1098,11 +1098,11 @@ function ChannelHeaderSkeleton(): ReactNode {
  * The user's playlists.
  *
  * Local only, and the screen says so by what it offers: rename and delete, but no share, no
- * collaborators, no sync. These lists exist on this machine and nowhere else (§42).
+ * collaborators, no sync. These lists exist on this machine and nowhere else.
  *
  * Built-in lists come first and cannot be renamed or deleted. The storage layer enforces that; the
  * controls are also absent here rather than present-and-refusing, which is the rule the rest of the
- * application follows (§131).
+ * application follows.
  */
 function PlaylistsView(): ReactNode {
   const t = useTranslation();
@@ -1253,7 +1253,7 @@ function LocalPlaylistView({ id }: { id: LocalPlaylistId }): ReactNode {
         </div>
 
         {/* Absent for a built-in list rather than disabled: it cannot be renamed or deleted, and a
-            control that refuses is worse than one that is not there (§131). */}
+            control that refuses is worse than one that is not there. */}
         {list && list.is_system !== true && (
           <div className="flex shrink-0 gap-2">
             <button

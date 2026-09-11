@@ -3,7 +3,7 @@
 //! ## What this deliberately does not record
 //!
 //! Counts only. No URL, host, video identifier, channel or title is stored, logged or exposed —
-//! not even in memory, and not even when a developer panel is open (§99, §11).
+//! not even in memory, and not even when a developer panel is open.
 //!
 //! That constraint is the whole design. A filtering layer sees every request the application makes,
 //! so a diagnostics feature that recorded *what* was filtered would quietly turn the privacy story

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// Scheduling priority, ordered from least to most urgent.
 ///
-/// Assignments used across the application (§31):
+/// Assignments used across the application:
 ///
 /// | Work | Priority |
 /// |---|---|
@@ -59,7 +59,7 @@ impl Priority {
     }
 
     /// Whether work at this priority may be deferred while the device is on battery saver or the
-    /// window is hidden (§129).
+    /// window is hidden.
     ///
     /// Playback-critical and user-blocking work is never deferred: a background-throttling policy
     /// that stalls the video is a worse outcome than the power it saves.
@@ -70,7 +70,7 @@ impl Priority {
 
     /// Whether this work should survive a navigation away from the view that requested it.
     ///
-    /// Speculative and housekeeping work is cancelled on navigation (§32); work the user is
+    /// Speculative and housekeeping work is cancelled on navigation; work the user is
     /// waiting on, and playback, is not.
     #[must_use]
     pub const fn survives_navigation(self) -> bool {

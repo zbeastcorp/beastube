@@ -16,7 +16,7 @@
  * ## Keys, not sentences
  *
  * A toast carries an i18n key and its parameters, never rendered text, so a message raised in Rust
- * and one raised in the UI are translated by the same layer (§109). The key is typed as a plain
+ * and one raised in the UI are translated by the same layer. The key is typed as a plain
  * string because error payloads bring theirs across the IPC boundary; an unknown key renders as
  * itself rather than throwing, which is the localization layer's documented fallback.
  */

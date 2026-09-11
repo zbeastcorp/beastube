@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn it_never_blocks_the_media_path_in_any_mode() {
-        // The load-bearing safety property: filtering must not be able to break playback (§10).
+        // The load-bearing safety property: filtering must not be able to break playback.
         for mode in [FilteringMode::Standard, FilteringMode::Strict] {
             let engine = engine(mode);
             for host in [

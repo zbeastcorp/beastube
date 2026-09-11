@@ -23,7 +23,7 @@
 //! 3. **One damaged row costs one row.** Thumbnail blobs degrade to an empty set
 //!    ([`decode_thumbnails`]), and a row whose identifier cannot be revalidated is dropped from a
 //!    listing ([`degrade`]) rather than failing the whole query. A local library that refuses to
-//!    open because one row is bad is worse than a library missing one row (§81).
+//!    open because one row is bad is worse than a library missing one row.
 //! 4. **Driver errors are classified.** Everything goes through [`DbError::from_sqlx`], so
 //!    "retry in a moment" (`SQLITE_BUSY`) never reaches the UI as "your database is damaged".
 //! 5. **No English reaches the caller.** Rejections are [`DbError::Invalid`] or
@@ -224,7 +224,7 @@ pub(crate) fn encode_thumbnails(thumbnails: &ThumbnailSet) -> DbResult<Option<St
 /// Drops a row that could not be decoded, keeping the rest of the result set.
 ///
 /// Used by listing methods. A single corrupt row must not empty a user's history view; it is
-/// logged and skipped so the remaining rows still render (§81).
+/// logged and skipped so the remaining rows still render.
 pub(crate) fn degrade<T>(decoded: DbResult<T>, table: &'static str) -> Option<T> {
     match decoded {
         Ok(value) => Some(value),

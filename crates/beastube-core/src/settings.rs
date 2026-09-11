@@ -4,10 +4,10 @@
 //! makes settings **forward and backward compatible**: a document written by a newer build loads in
 //! an older one (unknown keys are ignored), and a document written by an older build loads in a
 //! newer one (missing keys take their defaults). A corrupted or partially-written document
-//! therefore degrades to defaults rather than preventing startup (§81).
+//! therefore degrades to defaults rather than preventing startup.
 //!
 //! Defaults are chosen from measurement or from a stated constraint, never picked arbitrarily
-//! (§132); the rationale is recorded on each constant.
+//!; the rationale is recorded on each constant.
 
 use serde::{Deserialize, Serialize};
 
@@ -49,7 +49,7 @@ pub enum FilteringMode {
     /// restart, but nothing is matched.
     Off,
     /// Filters what can be identified with high confidence. Anything ambiguous is allowed, because
-    /// preserving playback outranks filtering aggressiveness (§10).
+    /// preserving playback outranks filtering aggressiveness.
     #[default]
     Standard,
     /// Additionally filters lower-confidence matches. Documented as more likely to produce false
@@ -376,7 +376,7 @@ pub struct CacheSettings {
 impl Default for CacheSettings {
     fn default() -> Self {
         Self {
-            // Bounded so the resident set stays predictable during long sessions (§84). Large
+            // Bounded so the resident set stays predictable during long sessions. Large
             // enough to hold roughly a thousand decoded card thumbnails.
             memory_budget_mb: 192,
             disk_budget_mb: 1024,

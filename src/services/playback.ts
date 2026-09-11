@@ -1,7 +1,7 @@
 /**
  * What the active playback adapter can do.
  *
- * The UI is capability-gated (§131, ADR-0001): a control renders only where the corresponding flag
+ * The UI is capability-gated (ADR-0001): a control renders only where the corresponding flag
  * is true, so a feature the adapter cannot deliver is *absent* rather than present and inert. This
  * module is the single place the UI learns those flags, which is what keeps adapter identity out of
  * the components — nothing outside here knows or asks which adapter is running.

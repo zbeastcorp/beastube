@@ -7,8 +7,8 @@
 //! Three properties are non-negotiable, and the type system enforces them:
 //!
 //! * **No English prose crosses the IPC boundary.** Rust supplies a stable [`DomainError::code`]
-//!   and an i18n [`ErrorPayload::message_key`]; the UI renders the sentence. This keeps §109
-//!   (all user-facing strings pass through the localization layer) true by construction.
+//!   and an i18n [`ErrorPayload::message_key`]; the UI renders the sentence, so every
+//!   user-facing string passes through the localization layer.
 //! * **Every error states its recovery strategy.** [`Recovery`] is machine-readable, so the retry
 //!   logic in `beastube-network` and the error surfaces in the UI act on the same decision instead
 //!   of re-deriving it from a string.
@@ -39,7 +39,7 @@ pub enum ErrorKind {
     /// SQLite failure: locked, corrupt, migration failure, constraint violation.
     Database,
     /// Cache read/write/corruption failure. Always recoverable by rebuilding: caches are
-    /// disposable by design (§71).
+    /// disposable by design.
     Cache,
     /// Filesystem failure: permission denied, disk full, invalid path, missing directory.
     FileSystem,
@@ -103,7 +103,7 @@ pub enum Recovery {
         delay_ms: u64,
         /// Attempts already made, for surfacing progress and enforcing a ceiling.
         attempts_made: u32,
-        /// Hard ceiling on attempts. Retrying is never unbounded (§75).
+        /// Hard ceiling on attempts. Retrying is never unbounded.
         max_attempts: u32,
     },
     /// Retrying may succeed but should be user-initiated (avoids hammering an upstream that is
@@ -167,7 +167,7 @@ pub struct ErrorPayload {
     /// Engineer-facing detail: the `Display` chain of the underlying error.
     ///
     /// Shown only in the diagnostics screen and written to the local log. It is never uploaded —
-    /// the application performs no telemetry (§11).
+    /// the application performs no telemetry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diagnostic: Option<String>,
     /// Correlates this failure with a task, request or playback session for log cross-referencing.

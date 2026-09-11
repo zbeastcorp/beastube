@@ -12,7 +12,7 @@ export default defineConfig({
   plugins: [
     react({
       // React Compiler memoizes automatically, which is what lets the codebase avoid scattering
-      // useMemo/useCallback without evidence (§88). Backed by oxc-transform-react in plugin v6.
+      // useMemo/useCallback without evidence. Backed by oxc-transform-react in plugin v6.
       compiler: true,
     }),
     tailwindcss(),

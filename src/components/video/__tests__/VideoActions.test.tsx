@@ -118,7 +118,7 @@ describe('the download control', () => {
   });
 
   it('says only that it is downloading when the size is unknown', () => {
-    // No total means no percentage. A fabricated number is worse than none (§131).
+    // No total means no percentage. A fabricated number is worse than none.
     useDownloadsStore.setState({
       tools: tools(true),
       byVideo: { [VIDEO.id]: progress('downloading') },

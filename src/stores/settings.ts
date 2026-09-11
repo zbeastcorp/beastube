@@ -3,7 +3,7 @@
  *
  * Owns the persisted settings document and the derived presentation state (resolved theme,
  * reduced-motion decision). It is deliberately one of several small stores rather than a slice of a
- * single global store (§135): a component reading the accent colour must not re-render when the
+ * single global store: a component reading the accent colour must not re-render when the
  * network status changes.
  *
  * Writes are debounced before reaching the native side. Dragging a volume slider produces dozens of
@@ -26,7 +26,7 @@ const PERSIST_DEBOUNCE_MS = 400;
  * Defaults used before the native side answers, and if it never does.
  *
  * Mirrors `Settings::default()` in Rust. Having them here means the first paint is correct rather
- * than unstyled, and a failure to load settings degrades to a working application (§81).
+ * than unstyled, and a failure to load settings degrades to a working application.
  */
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
@@ -125,7 +125,7 @@ interface SettingsState {
   load: () => Promise<void>;
   update: (patch: DeepPartial<Settings>) => void;
   reset: () => Promise<void>;
-  /** Writes any pending debounced change immediately. Called during shutdown (§82). */
+  /** Writes any pending debounced change immediately. Called during shutdown. */
   flush: () => Promise<void>;
 }
 

@@ -1,12 +1,12 @@
 //! The local library: history, watch positions and bookmarks.
 //!
-//! Everything here exists only on this machine. There is no account, no sync and no server (§13).
+//! Everything here exists only on this machine. There is no account, no sync and no server.
 //!
 //! The interesting logic is resume behaviour. Naively storing "last position" and always seeking
 //! there produces two bad outcomes users notice immediately:
 //!
 //! * A video watched to the end reopens at the final frame, showing a frozen last frame instead of
-//!   replaying (§47).
+//!   replaying.
 //! * A video abandoned after three seconds reopens three seconds in, which is indistinguishable
 //!   from the start but breaks the "play from the beginning" expectation.
 //!
@@ -118,7 +118,7 @@ impl PlaybackPosition {
 /// One row of local watch history.
 ///
 /// Metadata is denormalized so history renders offline and after a cache clear, which is the whole
-/// point of a local-first library (§72).
+/// point of a local-first library.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
     /// The video.

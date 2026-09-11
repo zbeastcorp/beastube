@@ -4,7 +4,7 @@
 //!
 //! A count-bounded cache of images has no bound at all. One thousand 4 KiB avatars and one thousand
 //! 2 MiB `maxresdefault` thumbnails are the same number of entries and differ by five hundred times
-//! in resident memory. Because this application is expected to stay open for hours (§84), the only
+//! in resident memory. Because this application is expected to stay open for hours, the only
 //! bound that means anything is the one measured in bytes — so the cache is built with a weigher
 //! and its capacity is expressed in bytes.
 //!

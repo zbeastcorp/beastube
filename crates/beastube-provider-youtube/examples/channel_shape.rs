@@ -16,7 +16,7 @@
 //!
 //! So this asks the service directly, for several channels at once: which of those fields arrive,
 //! which tabs report content, whether the sort orders return anything, and whether the playlists
-//! tab works. A field that is absent here must not become a tab or a line of text in the UI (§131).
+//! tab works. A field that is absent here must not become a tab or a line of text in the UI.
 
 use rustypipe::client::RustyPipe;
 use rustypipe::param::{ChannelOrder, ChannelVideoTab};

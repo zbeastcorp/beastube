@@ -44,7 +44,7 @@ impl Thumbnail {
     /// Aspect ratio (width / height), when both dimensions are known.
     ///
     /// Used to reserve layout space before the image loads, which is what keeps a scrolling grid
-    /// free of cumulative layout shift (§90).
+    /// free of cumulative layout shift.
     #[must_use]
     pub fn aspect_ratio(&self) -> Option<f32> {
         match (self.width, self.height) {

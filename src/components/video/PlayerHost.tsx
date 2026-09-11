@@ -139,7 +139,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
   // Bounds `auto` only. A tier chosen by hand in the menu below is honoured as given.
   const maxAutoQuality = useSettingsStore((state) => state.settings.playback.max_quality);
   // Preferences the settings screen has always persisted. Until now nothing read them, so each of
-  // those rows moved a value into the database and changed nothing a viewer could see (§131).
+  // those rows moved a value into the database and changed nothing a viewer could see.
   const preferredRate = useSettingsStore((state) => state.settings.playback.speed);
   const defaultQuality = useSettingsStore((state) => state.settings.playback.default_quality);
   const seekStepSeconds = useSettingsStore((state) => state.settings.playback.seek_step_seconds);
@@ -254,7 +254,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
    * it meant a field name changing upstream would make the row quietly disappear. The embed is
    * still what performs the switch; it is simply not what decides whether there is one to offer.
    *
-   * Most videos have a single track and get no row at all: one entry is not a choice (§131).
+   * Most videos have a single track and get no row at all: one entry is not a choice.
    */
   /**
    * What the embed reports, held against the video it was read for.
@@ -601,7 +601,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
               //
               // Nothing is lost by keeping the choice. A tier the video does not have simply gets
               // the closest the embed can serve, and the row reports what is actually playing — so
-              // the menu stays honest without ever overruling the viewer (§131).
+              // the menu stays honest without ever overruling the viewer.
               setQualities(playerRef.current?.availableQualities() ?? []);
               playerHandlers().onStateChange?.(state, forId);
             }}
@@ -840,7 +840,7 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
  * rather than hardcoded. Subtitles are offered only for a video that has them. Quality is asked
  * for by relaying the frame — see `YouTubePlayer` — and the tiers listed are the ones the embed
  * reports for this particular video, so the menu can never offer a rendition that does not exist
- * (§131).
+ *.
  *
  * The quality row shows what is being *served*, not what was clicked. Requesting a tier is a
  * resize, and the embed takes a few seconds to act on it; a row that flipped to `2160p` the

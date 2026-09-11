@@ -7,7 +7,7 @@
  * 1. **Obsolete work is abandoned.** Each run gets an `AbortController`; changing the key aborts
  *    the previous one. Without this, typing five characters leaves five searches in flight and the
  *    slowest one wins — the classic reason a search box shows results for a query already replaced
- *    (§32).
+ *   .
  * 2. **A late response never overwrites a newer one.** Even with abort, a resolved-but-superseded
  *    promise can land after a newer one. Each run carries a token, and only the run whose token
  *    still matches is allowed to commit.

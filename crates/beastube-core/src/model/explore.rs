@@ -2,7 +2,7 @@
 //!
 //! These are the destinations the site groups under *Explore*: a fixed set of editorial hubs, each
 //! collecting videos across many channels. They are not search results and not a personalised feed
-//! — no account is involved in reading any of them, which is what makes them usable here (§43).
+//! — no account is involved in reading any of them, which is what makes them usable here.
 //!
 //! The set is deliberately closed. Every member is one this build has confirmed returns videos
 //! without signing in, and the hub each one reads is recorded in the adapter rather than here, so
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// ## Why the site's own Explore list is not reproduced whole
 ///
 /// Three of its entries cannot be served by this build, and each is absent rather than present and
-/// failing (§131):
+/// failing:
 ///
 /// - **Trending** was retired by the provider itself; its browse id now answers `400` for every
 ///   variant, so there is nothing left to show and nothing to restore.
@@ -82,7 +82,7 @@ impl ExploreCategory {
 
 /// Rejects an unknown identifier rather than resolving it to anything.
 ///
-/// A retired or mistyped category must not quietly open a different one (§131).
+/// A retired or mistyped category must not quietly open a different one.
 impl std::str::FromStr for ExploreCategory {
     type Err = ();
 

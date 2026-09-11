@@ -1,7 +1,7 @@
 //! Filtering adapters.
 //!
 //! The engine decides; adapters apply the decision to one surface. Keeping them apart is what makes
-//! the subsystem independently replaceable (§6): the request adapter can be rewritten for a
+//! the subsystem independently replaceable: the request adapter can be rewritten for a
 //! different interception mechanism, and the content adapter for a different feed shape, without
 //! either touching the matching logic or each other.
 //!

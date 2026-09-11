@@ -15,7 +15,7 @@
 //!   idempotent by definition (RFC 9110 §9.2.2) and are replayed freely.
 //! * **No unbounded attempts.** The budget is small (three attempts by default) because a user
 //!   waiting on a search would rather see a failure they can retry than a spinner that resolves
-//!   after half a minute of invisible backoff (§75).
+//!   after half a minute of invisible backoff.
 //!
 //! ## Why equal jitter
 //!

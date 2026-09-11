@@ -4,7 +4,7 @@
  * Three properties matter here, and each is enforced rather than documented-and-hoped-for:
  *
  * 1. **Keys are type-checked.** {@link TranslationKey} is derived from the English catalogue, so
- *    `t('nav.hom')` fails to compile. This is what makes §109 ("all user-facing strings pass
+ *    `t('nav.hom')` fails to compile. This is what makes the rule that all user-facing strings pass
  *    through the localization layer") survive contact with a growing codebase — a missing string
  *    is a build error, not a blank label discovered by a user.
  * 2. **Missing translations degrade, never break.** Lookup falls back locale → English → the key

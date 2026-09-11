@@ -7,7 +7,7 @@
 //! can only be constructed from a [`ValidatedRuleSet`], and the only way to obtain a
 //! [`ValidatedRuleSet`] is [`RuleSet::validate`]. There is therefore no code path — present or
 //! future — that activates a set whose patterns were never checked, and no reviewer has to verify
-//! that every call site remembered to validate (§8).
+//! that every call site remembered to validate.
 //!
 //! ## What validation rejects, and why each one
 //!
@@ -25,7 +25,7 @@
 //! Disabled and already-expired rules are validated too. They can be re-enabled from the settings
 //! screen without a second validation pass, so a set is either wholly usable or wholly refused.
 //!
-//! ## Rollback (§8)
+//! ## Rollback
 //!
 //! [`RuleSetManager`] keeps the active set and the one it replaced. A caller that observes
 //! abnormal playback calls [`RuleSetManager::report_playback_failure`]; when enough failures land
@@ -786,7 +786,7 @@ impl ValidatedRuleSet {
     ///
     /// This is the floor the rollback path falls back to when there is no previous set to restore.
     /// An engine built on it allows every request and shows every item, which is the safe direction
-    /// to fail in (§10).
+    /// to fail in.
     #[must_use]
     pub fn inert() -> Self {
         Self {
@@ -951,7 +951,7 @@ impl RollbackReason {
 /// What a rollback did.
 ///
 /// Holds rule-set versions and a reason. It deliberately holds nothing about *what* was playing
-/// when the failures happened: the diagnostics screen must stay safe to screenshot (§11).
+/// when the failures happened: the diagnostics screen must stay safe to screenshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RollbackRecord {
     /// Version that was rolled back.
@@ -993,7 +993,7 @@ struct ManagerState {
     rolled_back_versions: BTreeSet<String>,
 }
 
-/// Owns the active rule set, the one before it, and the decision to go back (§8).
+/// Owns the active rule set, the one before it, and the decision to go back.
 ///
 /// ## Locking
 ///
@@ -1305,7 +1305,7 @@ impl RuleSetManager {
                 Some(previous) => previous,
                 None if state.active.is_inert() => return None,
                 // Nothing to restore: fall back to the empty set rather than leaving the caller
-                // without an engine. Filtering nothing is a working application (§10).
+                // without an engine. Filtering nothing is a working application.
                 None => Arc::new(ValidatedRuleSet::inert()),
             };
 

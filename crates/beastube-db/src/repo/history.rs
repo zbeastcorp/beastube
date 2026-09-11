@@ -47,7 +47,7 @@ const MAX_TEXT_LEN: usize = 512;
 /// What the caller knows about a video at the moment playback starts.
 ///
 /// Carries a copy of the display metadata rather than a reference to the cache, because history
-/// must render offline and after a cache clear (§72).
+/// must render offline and after a cache clear.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WatchRecord {
     /// The video being watched.

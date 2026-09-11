@@ -251,7 +251,7 @@ impl Database {
 
     /// Folds the write-ahead log back into the main database file.
     ///
-    /// Part of the shutdown sequence (§82): without it the WAL can stay large after a long
+    /// Part of the shutdown sequence: without it the WAL can stay large after a long
     /// session, and the next startup pays to replay it.
     ///
     /// # Errors

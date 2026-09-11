@@ -7,11 +7,11 @@
 //!
 //! ## Threats addressed
 //!
-//! * **Dangerous URL schemes** (§78) — a provider or imported file supplying `javascript:`,
+//! * **Dangerous URL schemes** — a provider or imported file supplying `javascript:`,
 //!   `file:`, `data:` or `vbscript:` must never reach the shell opener or the webview.
-//! * **Path traversal** (§79) — an identifier or filename used to build a cache path must not be
+//! * **Path traversal** — an identifier or filename used to build a cache path must not be
 //!   able to escape the cache root.
-//! * **Windows filesystem rules** (§79) — reserved device names (`CON`, `NUL`, `COM1`…), trailing
+//! * **Windows filesystem rules** — reserved device names (`CON`, `NUL`, `COM1`…), trailing
 //!   dots and spaces, and reserved characters produce files that cannot be created, opened or
 //!   deleted. On Windows these are not merely awkward, they are unrecoverable-looking bugs.
 

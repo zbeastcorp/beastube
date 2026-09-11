@@ -13,7 +13,7 @@
 //!
 //! [`get_download_tools`] reports what is installed. It does not download `yt-dlp`, update it, or
 //! read cookies from a browser. A missing downloader is a visible fact with a stated remedy rather
-//! than a button that fails when pressed (§131).
+//! than a button that fails when pressed.
 
 // `ErrorPayload` is the IPC wire contract, so its size is fixed by the protocol rather than by a
 // choice here; boxing it would add an allocation per failure and change nothing on the wire.
@@ -123,7 +123,7 @@ fn bounded_title(raw: &str) -> String {
 /// Starts a download, or returns the one already running for this video.
 ///
 /// Returns as soon as the download is accepted; everything after that arrives on the
-/// `download:progress` event, so the button shows real state without polling (§69). Pressing it
+/// `download:progress` event, so the button shows real state without polling. Pressing it
 /// twice is harmless — the second press gets the first download's record, not a second process.
 ///
 /// # Errors
@@ -288,7 +288,7 @@ pub(crate) async fn get_download_tools(state: State<'_, AppState>) -> CommandRes
     Ok(DownloadTools {
         // Both, not just the downloader. YouTube offers no combined audio-and-video format to the
         // clients yt-dlp reaches, so on a machine without ffmpeg a download button would be a
-        // control that cannot do its job (§131).
+        // control that cannot do its job.
         available: tools.downloader.is_some() && tools.ffmpeg.is_some(),
         can_merge: tools.ffmpeg.is_some(),
         downloader_path: tools.downloader.map(|path| path.display().to_string()),

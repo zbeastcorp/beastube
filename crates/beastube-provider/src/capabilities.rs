@@ -1,6 +1,6 @@
 //! What a provider can actually do.
 //!
-//! This is the mechanism behind §131 ("no fake features"). A provider declares its capabilities;
+//! This is the mechanism behind the no-fake-features rule. A provider declares its capabilities;
 //! the UI renders a control only where the corresponding flag is true. A capability that is false
 //! is a control that is *absent*, not one that is present and fails.
 //!
@@ -222,7 +222,7 @@ mod tests {
     fn the_embed_player_reports_a_quality_menu_but_no_metrics() {
         // A tier is requested by resizing the frame rather than by `setPlaybackQuality`, and the
         // embed reports the tiers each video actually has — so the menu is real. Buffer level and
-        // frame counts are exposed by nothing, so those readouts stay absent (§131).
+        // frame counts are exposed by nothing, so those readouts stay absent.
         let embed = PlaybackCapabilities::embedded_player();
         assert!(embed.has_quality_menu());
         assert!(embed.quality_selection);

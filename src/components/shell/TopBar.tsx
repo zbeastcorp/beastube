@@ -5,7 +5,7 @@
  * actions on the right. The search field is a real `<form>` so Enter submits and the browser's own
  * accessibility affordances apply.
  *
- * The incognito indicator is deliberately prominent (§50): a mode that silently changes whether
+ * The incognito indicator is deliberately prominent: a mode that silently changes whether
  * activity is recorded must be impossible to be in by accident.
  */
 
@@ -107,7 +107,7 @@ function SearchField(): ReactNode {
   // effect. An effect would render once with the stale value and again with the fresh one; keying
   // the component makes "a new query is a new field" structural, and React does it in one pass.
 
-  // Ctrl+K and "/" focus search from anywhere, matching the shortcut contract (§54).
+  // Ctrl+K and "/" focus search from anywhere, matching the shortcut contract.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;

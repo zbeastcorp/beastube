@@ -4,7 +4,7 @@
  * YouTube's shape: one portrait video filling the column, the next one a scroll or an arrow key
  * away, with the title, channel and controls overlaid. The tab previously ran a text search for the
  * word "shorts" and rendered the results as ordinary landscape cards — which looked like a Shorts
- * tab and was not one (§131).
+ * tab and was not one.
  *
  * ## Only one player exists
  *
@@ -764,7 +764,7 @@ export function ShortsFeed({
 
                   No Subscribe button, deliberately. Subscribing is an account action, and this
                   application has no account — a button that cannot do its job does not belong on
-                  the screen (§131). The channel row is itself absent for a short whose channel the
+                  the screen. The channel row is itself absent for a short whose channel the
                   extractor did not report, for the same reason. */}
               <div
                 className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col gap-1.5 p-4 pr-14"

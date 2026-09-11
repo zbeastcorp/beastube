@@ -10,7 +10,7 @@
 //!
 //! ## The four safety invariants
 //!
-//! Filtering must never break ordinary playback (§10). These make that structural rather than
+//! Filtering must never break ordinary playback. These make that structural rather than
 //! aspirational, and each has a test named after it:
 //!
 //! 1. **Disabled means allow.** With filtering off, or the mode `Off`, no rule is even consulted.
@@ -180,7 +180,7 @@ impl Decision {
 /// Why a request was allowed.
 ///
 /// Carries no URL or host — only which class of decision was reached, so enabling diagnostics never
-/// turns the filtering layer into a browsing log (§99).
+/// turns the filtering layer into a browsing log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AllowReason {
     /// Filtering is off, or the mode is `Off`.

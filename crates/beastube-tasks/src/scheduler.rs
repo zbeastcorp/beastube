@@ -381,7 +381,7 @@ impl TaskScheduler {
 
     /// Cancels every task that does not survive navigation, leaving playback untouched.
     ///
-    /// Called when the user navigates away from a view (§32).
+    /// Called when the user navigates away from a view.
     pub fn cancel_navigable(&self) {
         self.shared.cancellable_root.cancel();
     }
@@ -389,7 +389,7 @@ impl TaskScheduler {
     /// Stops admitting work, cancels what can be cancelled, and waits briefly for critical work.
     ///
     /// Returns once in-flight critical tasks finish or the grace period elapses, whichever comes
-    /// first. It never hangs: an unresponsive task costs the grace period, not the shutdown (§82).
+    /// first. It never hangs: an unresponsive task costs the grace period, not the shutdown.
     pub async fn shutdown(&self) {
         self.shared.shutting_down.store(true, Ordering::Release);
         // Non-critical work stops immediately; the queue is drained so nothing new starts.
@@ -573,7 +573,7 @@ impl TaskGroup {
         E: Retryable + Send + 'static,
     {
         // Critical work ignores the group and hangs off the critical root, so cancelling the group
-        // cannot stop playback (§32, Priority::survives_navigation).
+        // cannot stop playback (Priority::survives_navigation).
         let parent = if spec.priority().survives_navigation() {
             self.scheduler.shared.critical_root.clone()
         } else {

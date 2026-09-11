@@ -1,12 +1,12 @@
 //! Typed events emitted from the native side to the UI.
 //!
-//! Events exist so the UI does not poll (§69). Each one has a declared payload, a stable name, and
+//! Events exist so the UI does not poll. Each one has a declared payload, a stable name, and
 //! a documented producer, which is what keeps this from degenerating into an untyped bus where any
-//! module emits anything (§106).
+//! module emits anything.
 //!
 //! High-frequency playback position is deliberately **not** an event here. Position updates arrive
 //! many times a second, and routing them through the global event channel into shared state would
-//! re-render the application on every tick (§89). Position stays local to the player component; the
+//! re-render the application on every tick. Position stays local to the player component; the
 //! native side learns about it only at checkpoints.
 
 use serde::{Deserialize, Serialize};
@@ -53,7 +53,7 @@ pub enum FilterUpdateOutcome {
     AlreadyCurrent,
     /// A candidate rule set failed validation and was discarded; the previous set remains active.
     RejectedInvalid,
-    /// An activated rule set was rolled back after it correlated with playback failures (§8).
+    /// An activated rule set was rolled back after it correlated with playback failures.
     RolledBack,
 }
 
@@ -61,7 +61,7 @@ pub enum FilterUpdateOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaybackStateChanged {
     /// Session this transition belongs to. Late events from a superseded session are discarded by
-    /// comparing this against the active session (§28).
+    /// comparing this against the active session.
     pub session_id: String,
     /// The video being played.
     pub video_id: VideoId,
@@ -80,7 +80,7 @@ pub struct PlaybackFailed {
     pub session_id: String,
     /// The video being played.
     pub video_id: VideoId,
-    /// Position at failure, so recovery can resume rather than restart (§75).
+    /// Position at failure, so recovery can resume rather than restart.
     pub position_ms: u64,
     /// The failure.
     pub error: ErrorPayload,
@@ -288,7 +288,7 @@ impl AppEvent {
     /// Whether this event may be emitted while the user is in incognito mode.
     ///
     /// Incognito suppresses events that would cause persistent state to be written or that reveal
-    /// viewing activity to surfaces which outlive the session (§50). Infrastructure events are
+    /// viewing activity to surfaces which outlive the session. Infrastructure events are
     /// unaffected because they carry no viewing information.
     #[must_use]
     pub const fn allowed_in_incognito(&self) -> bool {

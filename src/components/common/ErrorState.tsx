@@ -8,7 +8,7 @@
  * That indirection is the point. A component that decided for itself when to show a retry button
  * would drift from the native side's actual retry policy, and users would be offered a retry for
  * something that can never succeed — a geo-blocked video, a deleted one — which is worse than no
- * button at all (§74, §75).
+ * button at all.
  *
  * ## Nothing engineer-facing reaches the screen
  *

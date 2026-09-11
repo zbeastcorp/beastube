@@ -1,6 +1,6 @@
 //! Cache failures, and why almost none of them reach the user.
 //!
-//! The cache holds only derived data (§71): every byte in it can be fetched again. That single
+//! The cache holds only derived data: every byte in it can be fetched again. That single
 //! fact shapes this module:
 //!
 //! * **Corruption is not an error path, it is a miss.** [`CorruptionKind`] exists so the disk layer
@@ -198,7 +198,7 @@ pub enum CacheError {
     ///
     /// Thumbnail URLs arrive inside provider responses, so they are untrusted input; validating
     /// here is what stops a drifted or hostile response from steering the fetcher at the local
-    /// media gateway (§78).
+    /// media gateway.
     #[error("the URL was rejected before fetching")]
     UnsafeUrl {
         /// Why the URL was rejected.

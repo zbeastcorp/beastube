@@ -5,7 +5,7 @@
  * once rather than per screen. Each is a real form element underneath — a `<button role="switch">`,
  * a `<select>`, an `<input type="range">` — because reimplementing them with divs means
  * reimplementing focus, keyboard handling and screen-reader semantics, and getting some of it
- * wrong (§64).
+ * wrong.
  *
  * Rows carry an optional hint. A setting whose consequence is not obvious from its label gets one:
  * "hardware acceleration" means nothing to most people until you say it is what to turn off when

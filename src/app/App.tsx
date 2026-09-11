@@ -2,7 +2,7 @@
  * The application shell.
  *
  * Composes the providers, the chrome and the routed view. Two decisions here matter for perceived
- * speed (§86, §87):
+ * speed:
  *
  * 1. **Settings load asynchronously, and the shell does not wait for them.** Defaults are already
  *    correct, so the window paints immediately and the loaded document swaps in. Blocking the first

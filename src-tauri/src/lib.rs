@@ -6,7 +6,7 @@
 //!
 //! ## Startup ordering
 //!
-//! The window is created hidden and shown once the frontend reports it has painted (§86). Showing
+//! The window is created hidden and shown once the frontend reports it has painted. Showing
 //! it immediately produces a white flash followed by the dark theme — small, but the first thing a
 //! user sees. A watchdog shows the window anyway after a short deadline, so a frontend that fails
 //! to load can never leave the application running with no visible window.
@@ -17,7 +17,7 @@ mod gpu;
 mod logging;
 // Request interception is a WebView2 facility; there is no cross-platform equivalent, and the
 // module is absent rather than stubbed on other targets so a missing capability is a compile error
-// rather than a silent no-op (§131).
+// rather than a silent no-op.
 #[cfg(windows)]
 mod request_filter;
 mod state;
@@ -176,7 +176,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         // Updates. The dependency was declared long before anything used it, which meant the
         // "Check for updates" string existed with nothing behind it; registering the plugin is what
-        // turns that into a real control rather than a label (§131).
+        // turns that into a real control rather than a label.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
@@ -246,7 +246,7 @@ pub fn run() {
             logging::init(&handle);
 
             // Subsystems are constructed before the window is revealed, but the construction
-            // itself makes no network request — so being offline costs nothing at startup (§86).
+            // itself makes no network request — so being offline costs nothing at startup.
             let init_handle = handle.clone();
             tauri::async_runtime::block_on(async move {
                 match AppState::initialize(&init_handle).await {

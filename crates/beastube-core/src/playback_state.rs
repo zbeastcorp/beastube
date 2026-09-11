@@ -5,7 +5,7 @@
 //! guaranteed and which fire redundantly. Translating them into a small set of explicit states with
 //! declared transitions is what keeps impossible combinations from arising — the alternative,
 //! several independent booleans (`isPlaying`, `isBuffering`, `isSeeking`), permits states like
-//! "playing and ended" that then have to be defended against at every read site (§23).
+//! "playing and ended" that then have to be defended against at every read site.
 //!
 //! This type lives in `core` rather than in the playback crate because both sides of the IPC
 //! boundary need it: the frontend derives it from media events, and the native side consumes it to
@@ -34,7 +34,7 @@ pub enum PlaybackState {
     /// are a performance metric.
     Buffering,
     /// A seek is in flight. Position reporting is suppressed so the scrub bar does not jump back to
-    /// the old position between the request and its completion (§28).
+    /// the old position between the request and its completion.
     Seeking,
     /// Reached the end of the media.
     Ended,

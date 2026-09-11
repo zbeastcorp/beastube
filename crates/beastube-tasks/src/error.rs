@@ -206,7 +206,7 @@ where
                     // The producer asked for an automatic retry, but the scheduler has already
                     // spent the whole automatic budget on this error. Handing `RetryAutomatic`
                     // back up would let a caller restart the same bounded loop indefinitely, which
-                    // is exactly the unbounded retry §75 forbids. Escalate to the user instead.
+                    // is exactly the unbounded retry this must not do. Escalate to the user.
                     Recovery::RetryManual
                 } else {
                     inner

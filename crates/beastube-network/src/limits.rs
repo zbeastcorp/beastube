@@ -21,7 +21,7 @@
 //!
 //! A semaphore hands out permits in FIFO order. That is the wrong order here: a prefetch that
 //! queued a moment before a playback segment would be served first, which is exactly the inversion
-//! [`Priority`] exists to prevent (§31). This gate keeps an explicit priority queue and hands a
+//! [`Priority`] exists to prevent. This gate keeps an explicit priority queue and hands a
 //! released slot to the most urgent waiter, breaking ties in arrival order so that equal-priority
 //! work stays fair.
 //!

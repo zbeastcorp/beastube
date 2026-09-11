@@ -2,7 +2,7 @@
 //!
 //! One [`DownloadManager`] lives for the whole session. It owns every download's state, bounds
 //! how many run at once, and pushes each change through a single [`ProgressSink`] — the shell
-//! turns those into events for the UI, which never polls (§69).
+//! turns those into events for the UI, which never polls.
 //!
 //! ## Why the state lives here and not in the UI
 //!

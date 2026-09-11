@@ -35,7 +35,7 @@
 //!
 //! Every failure here allows the request. A filter that fails closed would turn a bug in this file
 //! into an application that cannot load its own assets, and the worst case of failing open is one
-//! tracker request that should have been refused (§81).
+//! tracker request that should have been refused.
 
 // COM interop is unavoidable here: WebView2's request interception has no safe wrapper, and this is
 // the only place in the workspace that needs one. The unsafe blocks are confined to reading a

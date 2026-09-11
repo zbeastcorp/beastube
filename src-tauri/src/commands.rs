@@ -1,6 +1,6 @@
 //! The IPC surface.
 //!
-//! Commands are domain-oriented rather than one-per-table (§133): the frontend asks for "a page of
+//! Commands are domain-oriented rather than one-per-table: the frontend asks for "a page of
 //! history", not for rows it then has to assemble. Each is a thin adapter — validate, delegate,
 //! convert the error — so the interesting logic stays in the subsystem crates where it can be
 //! tested without a webview.
@@ -9,7 +9,7 @@
 //!
 //! Every command returns [`ErrorPayload`], never a string. That is what lets the UI classify a
 //! failure, decide whether to offer a retry, and render a localized message — none of which is
-//! possible with prose (§74).
+//! possible with prose.
 //!
 //! ## Untrusted arguments
 //!
@@ -216,7 +216,7 @@ pub(crate) async fn search(
 ///
 /// Failure is deliberately swallowed: the search itself succeeded, and turning a bookkeeping write
 /// into a visible error would fail an operation the user watched work. The single decision point
-/// for whether to record at all is [`AppState::records_searches`] (§50).
+/// for whether to record at all is [`AppState::records_searches`].
 async fn record_search(state: &AppState, query: &str) {
     if !state.records_searches() {
         return;
@@ -251,7 +251,7 @@ pub(crate) async fn get_suggestions(
     // The user's own previous queries lead, because a query they have run before is far more
     // likely to be what they mean than a popular one they have never typed. They are read only
     // when this session records searches: in incognito, the local list is not consulted at all, so
-    // an incognito session cannot reveal the non-incognito history through the dropdown (§50).
+    // an incognito session cannot reveal the non-incognito history through the dropdown.
     let mut merged: Vec<Suggestion> = Vec::new();
     if state.records_searches() {
         match state
@@ -452,7 +452,7 @@ pub(crate) async fn get_explore(
         .map_err(fail)
 }
 
-/// What the active provider supports, so the UI renders only real controls (§131).
+/// What the active provider supports, so the UI renders only real controls.
 #[tauri::command]
 pub(crate) fn get_provider_capabilities(
     state: State<'_, AppState>,
@@ -621,7 +621,7 @@ pub(crate) async fn get_position(
 
 /// Checkpoints a playback position.
 ///
-/// Called periodically and on pause, navigation and shutdown — never every frame (§47). Suppressed
+/// Called periodically and on pause, navigation and shutdown — never every frame. Suppressed
 /// in incognito by the same rule as history.
 ///
 /// # Errors
@@ -732,7 +732,7 @@ pub(crate) async fn set_bookmark(
 // ---------------------------------------------------------------------------------------------
 //
 // Local only, and deliberately so. These are lists the user builds on this machine; nothing here
-// talks to the provider, nothing syncs, and no account is involved (§42). The schema, the model and
+// talks to the provider, nothing syncs, and no account is involved. The schema, the model and
 // the ordering algorithm all shipped in the first migration — these commands are the layer that
 // finally makes the Playlists screen more than a promise.
 
@@ -949,7 +949,7 @@ pub(crate) fn is_incognito(state: State<'_, AppState>) -> bool {
 ///
 /// Counts only: this never carries a URL, host, video or channel, because a filtering layer sees
 /// every request and a diagnostic that carried one would put a browsing log in the subsystem best
-/// placed to build it (§99).
+/// placed to build it.
 #[tauri::command]
 pub(crate) fn get_filtering_diagnostics(
     state: State<'_, AppState>,
@@ -984,7 +984,7 @@ pub(crate) fn reset_filter_rules(
 /// and call that "stored data". Measured on a working installation, those two came to 4.4 MB while
 /// the application actually occupied about 629 MB. The rest was the embedded browser's own profile,
 /// which nothing counted and nothing could remove. A storage figure that is out by two orders of
-/// magnitude is not a smaller version of the truth; it is a different claim (§100).
+/// magnitude is not a smaller version of the truth; it is a different claim.
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct StorageLocation {
     /// Stable key the interface maps to a translated name.
@@ -1163,7 +1163,7 @@ fn directory_size(root: &std::path::Path) -> u64 {
 /// Deletes the provider's extractor cache.
 ///
 /// Cache data only: history, bookmarks, playlists and settings are untouched, which is what makes
-/// this distinct from resetting application data (§101).
+/// this distinct from resetting application data.
 ///
 /// # Errors
 ///
@@ -1364,7 +1364,7 @@ pub(crate) async fn clear_storage(
 ///
 /// Everything here is read from the running process. Nothing is transmitted anywhere — the screen
 /// exists so a user can answer "what am I running?" without trusting a support channel to ask
-/// (§121).
+///.
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct AppInfo {
     /// Version from the crate manifest.
@@ -1463,7 +1463,7 @@ const SHORTS_TOPICS: &[&str] = &[
 /// Where a set of recommendations came from.
 ///
 /// Returned so the UI can label the section truthfully. A feed derived from broad topics but
-/// presented as "recommended for you" would claim a personalization that did not happen (§131).
+/// presented as "recommended for you" would claim a personalization that did not happen.
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RecommendationSource {
@@ -1492,7 +1492,7 @@ pub(crate) struct RecommendedFeed {
 /// related list for each is fetched, and the results are interleaved so no single seed dominates.
 /// Videos already in the local history are removed. Nothing about the user is sent anywhere: the
 /// provider is asked "what is related to this video", never "what should this person watch" — which
-/// is the whole reason a useful home screen here needs no account (§43).
+/// is the whole reason a useful home screen here needs no account.
 ///
 /// The user can switch this off (`privacy.local_recommendations_enabled`), and incognito suppresses
 /// it for the session. Either way the feed falls back to broad topics rather than going empty.
@@ -1500,7 +1500,7 @@ pub(crate) struct RecommendedFeed {
 /// # Errors
 ///
 /// Never returns an error. Every failure degrades to a smaller feed, because a home screen showing
-/// an error instead of content is worse than one showing less content (§81).
+/// an error instead of content is worse than one showing less content.
 #[tauri::command]
 pub(crate) async fn get_recommended(
     state: State<'_, AppState>,
@@ -1866,7 +1866,7 @@ where
                 }
             }
             // Out of time. Whatever landed is what the viewer gets: a smaller feed beats a feed
-            // held hostage by one request that is never coming back (§81). Without this a single
+            // held hostage by one request that is never coming back. Without this a single
             // hung search stalled the whole surface even when every other one had already answered.
             Err(_) => {
                 set.abort_all();
@@ -2199,7 +2199,7 @@ mod feed_tests {
 /// Whether a video is bookmarked.
 ///
 /// Exists so the save control can render its real state rather than assuming "not saved" and
-/// telling the user something untrue about their own library (§131).
+/// telling the user something untrue about their own library.
 ///
 /// # Errors
 ///
@@ -2225,7 +2225,7 @@ pub(crate) async fn is_bookmarked(
 /// list is mostly other shorts, so the videos just watched become the seeds for the next batch and
 /// the feed bends toward what is actually being watched. No profile and no account are involved —
 /// the seeds are ids the caller already has on screen, and they are sent nowhere except to the
-/// provider as "what is related to this video" (§43).
+/// provider as "what is related to this video".
 ///
 /// `exclude` is the set already shown, so the feed does not circle back on itself.
 ///

@@ -4,7 +4,7 @@
 //! nominates (the application's own executable directory, so a copy shipped with the installer
 //! wins over whatever else is on the machine), then `PATH`. Nothing is downloaded and nothing is
 //! installed — this module only reports what is there, and the settings screen shows the answer so
-//! a missing tool is a visible fact rather than a mystery failure (§131).
+//! a missing tool is a visible fact rather than a mystery failure.
 
 use std::env;
 use std::path::{Path, PathBuf};

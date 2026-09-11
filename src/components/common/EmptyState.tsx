@@ -1,7 +1,7 @@
 /**
  * The empty state.
  *
- * Every list surface has one (§61). An empty screen with no explanation reads as a bug, so each
+ * Every list surface has one. An empty screen with no explanation reads as a bug, so each
  * state says what is missing *and* what to do about it, and history additionally says where the
  * data lives — a user who opens History for the first time should learn that it is local, not
  * wonder what was uploaded.

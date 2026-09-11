@@ -222,7 +222,7 @@ export function hashToRoute(hash: string): Route {
 
     case 'explore': {
       // An unknown category is a not-found rather than a silent fallback to the first one: a
-      // mistyped or retired category must not quietly show something else (§131).
+      // mistyped or retired category must not quietly show something else.
       const category = isOneOf(EXPLORE_CATEGORIES, segments[1]);
       return category ? { name: 'explore', category } : notFound();
     }

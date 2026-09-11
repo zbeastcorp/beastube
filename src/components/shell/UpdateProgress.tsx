@@ -19,7 +19,7 @@
  * ## The bar is honest
  *
  * `percent` is `null` when the server reports no content length, and the bar then animates as an
- * indeterminate sweep rather than inventing a position (§87). A progress bar that guesses is worse
+ * indeterminate sweep rather than inventing a position. A progress bar that guesses is worse
  * than one that admits it cannot measure.
  */
 

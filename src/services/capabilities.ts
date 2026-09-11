@@ -9,7 +9,7 @@
  * YouTube's response, and the provider says so by reporting `playlists: false`. Its own module
  * comment claims "the UI hides the playlist surface rather than" showing it — but search results
  * went on rendering playlist cards that linked to a route which rendered Not Found. A card that
- * looks like a destination and is not one is worse than no card (§131).
+ * looks like a destination and is not one is worse than no card.
  *
  * ## Read synchronously, defaulted conservatively
  *

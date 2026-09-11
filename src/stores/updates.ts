@@ -6,7 +6,7 @@
  * application down and bringing it back. Nothing that unmounts can own it.
  *
  * Deliberately not part of the settings or session stores — a progress figure changing several
- * times a second must not re-render anything that reads those (§89).
+ * times a second must not re-render anything that reads those.
  */
 
 import { create } from 'zustand';

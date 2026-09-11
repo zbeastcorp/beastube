@@ -7,13 +7,13 @@
  * ## Checkpointing
  *
  * Position is written on a timer, on pause, on state changes and on unmount — never on every
- * sample (§47). The player reports roughly four times a second; writing each one would mean four
+ * sample. The player reports roughly four times a second; writing each one would mean four
  * SQLite transactions per second for the whole length of a video, for information that is only ever
  * read once, when the video is reopened.
  *
  * The position itself is held in a ref rather than in state. It changes several times a second, and
  * putting it in React state would re-render the page — including the description and the related
- * list — on every tick (§89).
+ * list — on every tick.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -111,7 +111,7 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
    * Playing on when a video ends.
    *
    * The setting behind this has existed for a long time with nothing reading it, which made the
-   * row a switch that stored a value and changed nothing (§131). "The next video" here is the top
+   * row a switch that stored a value and changed nothing. "The next video" here is the top
    * of the recommendation shelf already on screen — the same one a viewer would click — so this
    * continues to somewhere they can see rather than somewhere chosen out of sight.
    *
@@ -361,7 +361,7 @@ export function WatchView({ videoId, startAtMs }: WatchViewProps): React.ReactNo
             {/* Save, download and share, on the row with the channel — where YouTube puts them.
                 The download control is present only on a computer that has `yt-dlp` installed,
                 because that is the program which actually produces the file (ADR-0003); without
-                it the button would be a control that cannot do its job (§131). */}
+                it the button would be a control that cannot do its job. */}
             {details && <VideoActions video={details} orientation="horizontal" />}
           </div>
 

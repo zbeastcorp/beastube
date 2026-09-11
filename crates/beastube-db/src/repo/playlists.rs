@@ -3,7 +3,7 @@
 //! The schema, the model and the sparse-position algorithm for this feature all shipped in the
 //! first migration; this repository is the layer that was missing between them. Until it existed
 //! the application had a Playlists screen, a nav entry, and two seeded system playlists that
-//! nothing could read — a promise the storage layer could not keep (§131).
+//! nothing could read — a promise the storage layer could not keep.
 //!
 //! ## System playlists are not editable, and that is enforced here
 //!

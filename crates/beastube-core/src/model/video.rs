@@ -51,7 +51,7 @@ pub struct VideoSummary {
     pub id: VideoId,
     /// Video title, as supplied by the provider.
     ///
-    /// Untrusted text: rendered through the UI's text path, never as HTML (§77).
+    /// Untrusted text: rendered through the UI's text path, never as HTML.
     pub title: String,
     /// Owning channel, when the provider reports it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,7 +69,7 @@ pub struct VideoSummary {
     /// Whether the provider marks the channel as verified.
     ///
     /// Only ever `true` when the provider said so. A badge the application invented would be a
-    /// claim about someone's identity, which is the last thing to guess at (§131).
+    /// claim about someone's identity, which is the last thing to guess at.
     #[serde(default)]
     pub channel_verified: bool,
     /// Available thumbnail renditions.
@@ -166,7 +166,7 @@ pub struct Cue {
     pub start_ms: u64,
     /// When it disappears.
     pub end_ms: u64,
-    /// The line itself. Untrusted text: rendered through the UI's text path, never as HTML (§77).
+    /// The line itself. Untrusted text: rendered through the UI's text path, never as HTML.
     pub text: String,
 }
 
@@ -174,7 +174,7 @@ pub struct Cue {
 ///
 /// Videos are increasingly published with the original audio plus dubs in other languages. A
 /// video with a single track reports none of these: there is nothing to choose between, and an
-/// audio menu holding one entry is a control that cannot do anything (§131).
+/// audio menu holding one entry is a control that cannot do anything.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioTrack {
     /// Provider identifier for the track, e.g. `es.3`. Opaque; used to ask for the track by name.

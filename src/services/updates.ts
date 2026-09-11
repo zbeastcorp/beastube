@@ -14,7 +14,7 @@
  *
  * It is not a patch. Windows offers no delta mechanism through this path, so every update pulls the
  * whole installer down — which for BEASTUBE means roughly 50 MB, most of it the bundled ffmpeg.
- * Callers are expected to show that progress rather than hide it (§86).
+ * Callers are expected to show that progress rather than hide it.
  *
  * ## The signature is the security boundary
  *
@@ -76,7 +76,7 @@ export function isInstallingUpdate(): boolean {
  * The percentage is derived from the plugin's byte events rather than from a timer. When the server
  * sends no `Content-Length` the total is unknown, and the callback is then given the bytes so far
  * rather than a fabricated percentage — a progress bar that invents its own position is worse than
- * one that admits it cannot measure (§87).
+ * one that admits it cannot measure.
  */
 export async function downloadAndInstallUpdate(
   update: Update,

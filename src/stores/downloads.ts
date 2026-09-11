@@ -36,7 +36,7 @@ interface DownloadsState {
    *
    * `null` reads as "cannot download" everywhere, which is the conservative direction: guessing
    * "available" and being wrong shows a control that fails when pressed, where guessing
-   * "unavailable" and being wrong briefly omits one that appears a moment later (§131).
+   * "unavailable" and being wrong briefly omits one that appears a moment later.
    */
   tools: DownloadTools | null;
   /** True once the session's downloads have been read. */
@@ -92,7 +92,7 @@ function announce(progress: DownloadProgress): void {
   if (progress.status === 'failed') {
     ui.toast({
       // The native side classified the failure; rendering its key is what keeps the sentence in
-      // the localization layer rather than in Rust (§109).
+      // the localization layer rather than in Rust.
       messageKey: progress.error?.message_key ?? 'error.generic',
       params: { title: progress.title },
       tone: 'danger',

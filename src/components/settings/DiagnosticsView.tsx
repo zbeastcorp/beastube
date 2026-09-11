@@ -3,7 +3,7 @@
  *
  * Answers "what am I actually running, and what is it doing?" without a support channel and without
  * a network request. Everything shown is read from the local process; the copy button puts a plain
- * text report on the clipboard so the *user* decides where it goes (§121).
+ * text report on the clipboard so the *user* decides where it goes.
  *
  * Two rules shape what appears here:
  *
@@ -11,7 +11,7 @@
  *    version, say — renders as "Unavailable" rather than as an empty row that looks like a bug.
  * 2. **Counts, never content.** The filtering rows are counters. A filtering layer sees every
  *    request, so a diagnostics screen that named one would amount to a browsing log kept in the
- *    subsystem best placed to build one (§99).
+ *    subsystem best placed to build one.
  */
 
 import { useState, type ReactNode } from 'react';
@@ -173,7 +173,7 @@ export function DiagnosticsView(): ReactNode {
         />
         <Row label={t.t('diagnostics.capabilities')} value={supportedCapabilities} />
         {/* Reported as unsupported rather than shown as zero: a zero would claim a measurement the
-            adapter cannot make (§131). */}
+            adapter cannot make. */}
         <Row
           label={t.t('diagnostics.bufferHealth')}
           value={capabilities.buffer_metrics ? '—' : t.t('diagnostics.unsupported')}

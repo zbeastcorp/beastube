@@ -203,7 +203,7 @@ export interface VideoSummary {
    * picture that arrived with the tile.
    */
   channel_avatar?: ThumbnailSet;
-  /** Whether the provider marks the channel as verified. Never inferred (§131). */
+  /** Whether the provider marks the channel as verified. Never inferred. */
   channel_verified?: boolean;
   thumbnails?: ThumbnailSet;
   duration_ms?: number;
@@ -467,7 +467,7 @@ export type PlaybackState =
  * What the active playback adapter can actually do.
  *
  * The UI renders a control only where the corresponding flag is true. This is the mechanism behind
- * §131 (no fake features): under the IFrame adapter `buffer_metrics` is false, so the buffer
+ * No fake features: under the IFrame adapter `buffer_metrics` is false, so the buffer
  * readout is absent rather than present and showing nothing.
  */
 export interface PlaybackCapabilities {
@@ -770,7 +770,7 @@ export type DownloadStatus =
  *
  * The whole record arrives on every change rather than a delta, so a screen that mounted midway
  * through is correct as soon as the next event lands. An absent size or speed means *unknown* —
- * the tool did not report one — and must render as an indeterminate state, never as zero (§131).
+ * the tool did not report one — and must render as an indeterminate state, never as zero.
  */
 export interface DownloadProgress {
   id: string;

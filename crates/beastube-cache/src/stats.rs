@@ -1,6 +1,6 @@
 //! Cache instrumentation.
 //!
-//! The diagnostics screen (§11 — everything stays local, nothing is uploaded) needs to answer three
+//! The diagnostics screen (everything stays local, nothing is uploaded) needs to answer three
 //! questions without guessing: *is the cache helping*, *is it staying inside its budget*, and *is
 //! the disk giving back what was written to it*. Those are the three groups of counters below.
 //!
@@ -240,7 +240,7 @@ pub struct CacheStatsSnapshot {
     pub source_failures: u64,
     /// Lookups that joined an in-flight load rather than starting one.
     pub coalesced_waits: u64,
-    /// Stored entries found to be damaged and discarded (§71).
+    /// Stored entries found to be damaged and discarded.
     pub corruption_events: u64,
     /// Prefetches declined because the system was constrained.
     pub prefetches_skipped: u64,

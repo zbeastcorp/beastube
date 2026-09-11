@@ -2,7 +2,7 @@
 //!
 //! `yt-dlp` reports failure as prose on stderr. That prose is the *diagnostic*; what the user sees
 //! is a message key chosen here, so "Sign in to confirm you're not a bot" becomes a sentence the
-//! localization layer owns and the raw line stays available on the diagnostics screen (§74).
+//! localization layer owns and the raw line stays available on the diagnostics screen.
 
 use std::collections::BTreeMap;
 

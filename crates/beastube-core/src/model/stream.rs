@@ -5,7 +5,7 @@
 //!
 //! * **The quality list is derived, never assumed.** [`StreamSet::available_qualities`] reports
 //!   only tiers that actually have a stream behind them, so the UI cannot present a 4K option for a
-//!   video that has none (§131, no fake features).
+//!   video that has none (no fake features).
 //! * **Byte ranges are preserved.** Adaptive streams are served as a single file with an
 //!   initialization segment and an index at known offsets. Carrying [`ByteRange`] through the model
 //!   is what lets the playback layer emit a DASH manifest with `SegmentBase`/`Initialization`

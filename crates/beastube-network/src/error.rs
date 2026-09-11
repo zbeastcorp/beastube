@@ -40,7 +40,7 @@ pub enum NetworkError {
     ///
     /// This is an error rather than a warning-and-proceed: a URL that fails validation came from a
     /// provider response or an imported file, and fetching it anyway is precisely the SSRF the
-    /// validator exists to prevent (§78).
+    /// validator exists to prevent.
     #[error("refusing to fetch {url}")]
     Url {
         /// The rejected URL, truncated for the diagnostic log.
@@ -132,7 +132,7 @@ pub enum NetworkError {
     ///
     /// The final failure is preserved as the source so diagnostics show *what* kept failing, while
     /// the recovery strategy becomes [`Recovery::RetryManual`]: we have already spent the automatic
-    /// budget, and spinning further would turn a hard failure into a long stall (§75).
+    /// budget, and spinning further would turn a hard failure into a long stall.
     #[error("gave up on {host} after {attempts} attempts")]
     RetriesExhausted {
         /// Host that kept failing.

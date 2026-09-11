@@ -6,7 +6,7 @@
 //! Every method takes a [`CancellationToken`]. Provider calls are the slowest thing the application
 //! does, and they are routinely made obsolete before they finish — a search superseded by the next
 //! keystroke, a channel page abandoned by navigation. Threading cancellation through the trait is
-//! what makes §32 ("cancel obsolete work") implementable rather than aspirational; an adapter that
+//! what makes cancelling obsolete work implementable rather than aspirational; an adapter that
 //! ignores the token merely wastes its own bandwidth instead of blocking the caller.
 
 use async_trait::async_trait;
@@ -193,7 +193,7 @@ pub trait MetadataProvider:
     ///
     /// The home surface. Providers with no login-free discovery return
     /// [`crate::ProviderError::Unsupported`], and the home view falls back to the local library —
-    /// which is why an account is never needed to have a useful first screen (§43).
+    /// which is why an account is never needed to have a useful first screen.
     ///
     /// # Errors
     ///
@@ -209,7 +209,7 @@ pub trait MetadataProvider:
     /// Distinct from [`Self::discovery_feed`] in the one way that matters here: a discovery feed
     /// answers "what should this viewer watch", which no provider can do without knowing who they
     /// are, whereas a category answers "what is on the music page", which is the same for everyone
-    /// and needs no account (§43).
+    /// and needs no account.
     ///
     /// # Errors
     ///

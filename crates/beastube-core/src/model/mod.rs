@@ -3,7 +3,7 @@
 //! These types are what the UI, the database and the provider adapters all agree on. They are
 //! deliberately *not* a mirror of any provider's response shape: an adapter's job is to translate
 //! into these types, absorbing upstream schema drift so that a provider change never propagates
-//! past the adapter boundary (§118).
+//! past the adapter boundary.
 //!
 //! Two conventions run throughout:
 //!

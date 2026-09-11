@@ -1,7 +1,7 @@
 //! The YouTube metadata adapter.
 //!
 //! Implements [`beastube_provider`]'s traits over the InnerTube extractor. Everything
-//! provider-specific stops here (§19): no crate above this one names YouTube or `rustypipe`.
+//! provider-specific stops here: no crate above this one names YouTube or `rustypipe`.
 //!
 //! ## Scope
 //!
@@ -34,7 +34,7 @@
 //! - A channel's Shorts tab parses to an empty list. See [`YouTubeProvider::channel_shorts`].
 //!
 //! [`ProviderCapabilities`] reflects exactly that, so the UI hides the playlist surface rather than
-//! offering one that always errors (§131). When upstream parsing is fixed, one flag turns it back
+//! offering one that always errors. When upstream parsing is fixed, one flag turns it back
 //! on.
 
 // Lint policy is set workspace-wide in Cargo.toml. This adapter is pure async Rust over an HTTP
@@ -306,7 +306,7 @@ impl YouTubeProvider {
     ///
     /// The extractor has no cancellation channel, so the request itself runs to completion in the
     /// background. What this buys is that the *caller* stops waiting immediately, which is the part
-    /// the user perceives (§32).
+    /// the user perceives.
     ///
     /// # Why a panic is caught here
     ///
@@ -354,7 +354,7 @@ impl YouTubeProvider {
 /// The distinction that matters is between "this content cannot be shown" and "the extractor no
 /// longer understands the response". The second is the early warning that the service changed, and
 /// is surfaced as [`ProviderError::SchemaDrift`] so it can be counted rather than lost among
-/// ordinary failures (§119).
+/// ordinary failures.
 fn classify(error: &YtError, operation: &'static str) -> ProviderError {
     match error {
         YtError::Extraction(extraction) => {
@@ -433,7 +433,7 @@ impl SearchProvider for YouTubeProvider {
         // A continuation is resumed through the extractor's continuation endpoint rather than by
         // re-running the search: re-running would return page one again, which reads as a feed that
         // refuses to scroll. The query is still required and echoed back, so a late page can be
-        // matched to the search it belongs to (§32).
+        // matched to the search it belongs to.
         let (page, corrected_query) = Self::with_cancellation(cancel, async move {
             match cursor_in {
                 Some(token) => client
@@ -918,7 +918,7 @@ impl ChannelProvider for YouTubeProvider {
         let about = about.ok();
 
         // Videos always; the others only where the channel reports having them, so nobody opens a
-        // tab onto an empty page (§131). Playlists is absent on purpose: the playlists endpoint
+        // tab onto an empty page. Playlists is absent on purpose: the playlists endpoint
         // returns zero items for every channel measured, so offering the tab would be a promise
         // this build cannot keep.
         let mut available_tabs = vec![ChannelTab::Videos];
@@ -1062,7 +1062,7 @@ impl MetadataProvider for YouTubeProvider {
     /// prose rather than one the provider actually sent.
     ///
     /// A hub that fails contributes nothing and the rest still fill the feed — one slow or broken
-    /// category must not cost the viewer their home screen (§87).
+    /// category must not cost the viewer their home screen.
     async fn discovery_feed(
         &self,
         _continuation: Option<&ContinuationToken>,

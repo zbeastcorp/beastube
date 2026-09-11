@@ -51,7 +51,7 @@ import { isErrorPayload } from '@/types/domain';
  * What the application is storing on this device.
  *
  * Mirrors `commands::StorageStats`. Paths are included so the privacy panel can name the exact
- * files rather than describing them, which is what makes the local-only claim checkable (§100).
+ * files rather than describing them, which is what makes the local-only claim checkable.
  */
 /**
  * One place on disk that belongs to BEASTUBE.
@@ -105,7 +105,7 @@ export interface RuleCounts {
  *
  * Mirrors `filtering::diagnostics::FilteringSnapshot`. There is deliberately no field here that
  * could name a URL, host, video or channel — a filtering layer sees every request, so a diagnostic
- * that carried one would amount to a browsing log (§99).
+ * that carried one would amount to a browsing log.
  */
 export interface FilteringSnapshot {
   enabled: boolean;
@@ -128,7 +128,7 @@ export interface FilteringSnapshot {
  * Build and environment facts, from `commands::AppInfo`.
  *
  * Read out of the running process and rendered locally. Nothing on the diagnostics screen is
- * transmitted anywhere (§121); "copy report" puts it on the clipboard so the user decides where it
+ * transmitted anywhere; "copy report" puts it on the clipboard so the user decides where it
  * goes.
  */
 export interface AppInfo {
@@ -150,7 +150,7 @@ export interface AppInfo {
  * BEASTUBE does not extract media itself; it drives `yt-dlp`, which is the software that keeps up
  * with YouTube's player challenges (ADR-0003). This reports what was found on this computer, so
  * the settings screen can state plainly that the downloader is missing rather than leaving a
- * button that fails when pressed (§131).
+ * button that fails when pressed.
  *
  * A version is present only when the tool ran and printed one — "installed but broken" therefore
  * shows as a path with no version, not as working.
@@ -191,7 +191,7 @@ export interface SkippableSegment {
 /**
  * Every IPC command, with its arguments and result.
  *
- * Commands are domain-oriented rather than one-per-CRUD-operation (§133): the frontend asks for
+ * Commands are domain-oriented rather than one-per-CRUD-operation: the frontend asks for
  * "the library page of history", not for a row set it then has to assemble.
  */
 export interface CommandMap {
@@ -270,7 +270,7 @@ export interface CommandMap {
   is_bookmarked: { args: { videoId: VideoId }; result: boolean };
 
   // Playlists. Local only: these are lists the user builds on this machine, with no account and no
-  // sync (§42). `playlists_containing` answers the whole "add to playlist" menu in one call rather
+  // sync. `playlists_containing` answers the whole "add to playlist" menu in one call rather
   // than asking once per playlist.
   get_playlists: { args: undefined; result: LocalPlaylist[] };
   /**
@@ -299,7 +299,7 @@ export interface CommandMap {
   is_incognito: { args: undefined; result: boolean };
 
   // Downloads. The native side owns them; these start and inspect, and every subsequent change
-  // arrives on `download:progress` rather than being polled for (§69).
+  // arrives on `download:progress` rather than being polled for.
   /** Starts a download, or returns the one already running for this video. */
   start_download: { args: { videoId: VideoId; title: string }; result: DownloadProgress };
   /** Stops one. `false` if it is unknown or already over. */
@@ -343,7 +343,7 @@ export interface CommandMap {
  * Why a recommendation set looks the way it does.
  *
  * The UI labels the section from this rather than assuming. A feed built from broad topics shown as
- * "recommended for you" would claim a personalization that did not happen (§131).
+ * "recommended for you" would claim a personalization that did not happen.
  */
 export type RecommendationSource = 'watched' | 'searched' | 'discover';
 
@@ -515,7 +515,7 @@ export async function invoke<C extends CommandName>(
       return await call();
     }
     // Race the call against the abort signal so an obsolete request stops blocking the caller
-    // immediately (§32), even though the native side keeps running to completion.
+    // immediately, even though the native side keeps running to completion.
     return await new Promise<CommandResult<C>>((resolve, reject) => {
       const onAbort = () => {
         reject(new IpcError(abortedError()));

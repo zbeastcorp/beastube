@@ -31,7 +31,7 @@ use std::path::PathBuf;
 /// `--disable-features=msWebOOUI,msPdfOOUI` removes Edge's own UI from a window that draws its own,
 /// and `msSmartScreenProtection` with it: `SmartScreen` reports the URL of each navigation to
 /// Microsoft, and this application's whole premise is that what you watch stays on your machine
-/// (§99). Nothing here downloads or executes a file on the viewer's behalf, so the protection it
+///. Nothing here downloads or executes a file on the viewer's behalf, so the protection it
 /// removes is one this window has no use for.
 ///
 /// `--disable-background-timer-throttling` keeps the playhead and the progress bar honest while the

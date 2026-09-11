@@ -1,6 +1,6 @@
 //! BEASTUBE multi-layer cache: memory (L1), disk (L2) and the thumbnail manager built on them.
 //!
-//! Caches are disposable by design (§71). Every entry is content-addressed and checksummed, so a
+//! Caches are disposable by design. Every entry is content-addressed and checksummed, so a
 //! truncated or corrupted file is detected on read, deleted and refetched rather than surfacing as
 //! an error the user has to act on. Nothing here holds data that cannot be rebuilt.
 

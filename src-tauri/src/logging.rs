@@ -17,7 +17,7 @@
 //! ## Nothing personal in it
 //!
 //! Log lines carry identifiers, counts and error text — never a query string, a watch history entry
-//! or a URL the user navigated to. The filtering diagnostics are built the same way (§99), and the
+//! or a URL the user navigated to. The filtering diagnostics are built the same way, and the
 //! log file is subject to the same rule: it must be safe to attach to a bug report.
 //!
 //! ## Panics are recorded

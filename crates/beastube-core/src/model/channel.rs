@@ -56,7 +56,7 @@ impl ChannelSummary {
 /// Both fields are untrusted provider text. The URL is `https` by construction: the adapter drops
 /// anything else rather than passing it on, because [`crate::security::validate_external_url`]
 /// refuses a non-`https` scheme at the point of opening, and a link that cannot be opened should
-/// not be drawn (§131).
+/// not be drawn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelLink {
     /// The label the owner gave it, such as `Website` or `Instagram`. Untrusted text.
@@ -68,7 +68,7 @@ pub struct ChannelLink {
 /// Content tabs a channel may expose.
 ///
 /// Reported per channel rather than assumed, so the UI renders only tabs that exist: a channel with
-/// no Shorts must not show an empty Shorts tab (§131).
+/// no Shorts must not show an empty Shorts tab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelTab {

@@ -5,7 +5,7 @@
  * buttons and the desktop shell's navigation all work without extra wiring.
  *
  * Navigation is synchronous and never suspends. A route change swaps the view immediately and the
- * view fetches its own data, showing cached content or a skeleton (§87) — the alternative, waiting
+ * view fetches its own data, showing cached content or a skeleton — the alternative, waiting
  * for data before committing the navigation, is the most common reason desktop applications built
  * on web technology feel sluggish.
  */

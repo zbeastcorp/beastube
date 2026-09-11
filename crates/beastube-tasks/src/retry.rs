@@ -9,7 +9,7 @@
 //! actually breaks the synchronization.
 //!
 //! The cost is that an individual retry can fire almost immediately. That is acceptable here
-//! because the attempt count is bounded regardless (§75): the worst case is a few fast attempts,
+//! because the attempt count is bounded regardless: the worst case is a few fast attempts,
 //! not an unbounded hot loop.
 //!
 //! ## Why the jitter source is injectable
@@ -20,14 +20,14 @@
 //! [`SystemJitter`] is a small xorshift generator rather than a dependency on `rand`. It is used
 //! **only** to spread retry timing and never for anything security-relevant — no token, key, nonce
 //! or identifier is derived from it. Pulling in a cryptographic RNG for this would be a dependency
-//! bought for nothing (§111).
+//! bought for nothing.
 
 use std::cell::Cell;
 use std::time::Duration;
 
 /// Hard ceiling on attempts, whatever a policy asks for.
 ///
-/// Retrying is never unbounded (§75). A caller that sets a larger `max_attempts` is clamped rather
+/// Retrying is never unbounded. A caller that sets a larger `max_attempts` is clamped rather
 /// than trusted, so a configuration mistake cannot turn a persistent failure into an infinite loop.
 pub const MAX_ATTEMPT_CEILING: u32 = 10;
 

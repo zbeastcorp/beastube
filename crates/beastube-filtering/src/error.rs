@@ -9,7 +9,7 @@
 //!
 //! * **Prose lives in `Display`, machine values live in [`DomainError::params`].** A regex compile
 //!   error is English text produced by the `regex` crate; it belongs in the diagnostic chain, never
-//!   in an i18n parameter that the UI would render verbatim (§109). Every `params` entry here is a
+//!   in an i18n parameter that the UI would render verbatim. Every `params` entry here is a
 //!   count, an enum discriminant or a version string.
 //! * **Untrusted strings are truncated before they enter an error.** A pattern comes from a
 //!   downloaded rule set or a hand-edited settings file, so [`shorten`] bounds what a hostile input
@@ -359,7 +359,7 @@ impl DomainError for FilterError {
         match self {
             // A bad rule found inside a candidate set is recovered by not activating that set. The
             // user cannot edit a downloaded rule, so offering them a settings path would be a dead
-            // end (§131: no affordance that does nothing).
+            // end (no affordance that does nothing).
             Self::InvalidRule { .. }
             | Self::TooManyRules { .. }
             | Self::InvalidVersion { .. }

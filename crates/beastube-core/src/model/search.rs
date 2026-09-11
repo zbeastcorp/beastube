@@ -5,7 +5,7 @@
 //! them to its own encoding and reports, through
 //! [`crate::model::search::SearchFilters::is_supported_by`]-style capability checks in the provider
 //! layer, which filters it can actually honour — the UI must not offer a filter that the active
-//! provider ignores (§131).
+//! provider ignores.
 
 use serde::{Deserialize, Serialize};
 
@@ -243,7 +243,7 @@ impl SearchItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchResults {
     /// The query text this page answers, echoed back so a late response can be discarded when the
-    /// user has since typed something else (§32).
+    /// user has since typed something else.
     pub query: String,
     /// The normalized filters that produced it.
     pub filters: SearchFilters,

@@ -6,9 +6,9 @@
  *
  * 1. **The thumbnail box reserves its aspect ratio before the image loads.** Without it every image
  *    that arrives shifts everything below it, producing the cumulative layout shift that makes a
- *    grid feel unstable (§90).
+ *    grid feel unstable.
  * 2. **The rendition is chosen for the rendered width**, not the largest available, so a 210px card
- *    does not pull a 1280px JPEG (§35).
+ *    does not pull a 1280px JPEG.
  * 3. **A failed thumbnail is detected by size, not by `onerror`.** The provider answers a missing
  *    thumbnail with HTTP 404 *and* valid JPEG bytes for a grey 120×90 placeholder, so `onerror`
  *    never fires; the load handler checks `naturalWidth` instead.
@@ -77,7 +77,7 @@ interface VideoCardProps {
    *
    * Passed only by the surfaces where the card *is* a history entry — Continue watching, and the
    * History screen. Elsewhere the menu omits the item rather than offering to remove something
-   * from a list it is not in (§131).
+   * from a list it is not in.
    */
   onRemoveFromHistory?: (() => void) | undefined;
 }
@@ -87,7 +87,7 @@ interface VideoCardProps {
  *
  * Memoized because a grid re-renders on every scroll frame while cards themselves rarely change;
  * this is one of the few places where memoization is justified by measurement rather than habit
- * (§88).
+ *.
  */
 export const VideoCard = memo(function VideoCard({
   video,

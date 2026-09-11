@@ -15,7 +15,7 @@
  *
  * `commandPalette` and `shortcuts` are declared in the union but nothing opens them and neither
  * screen exists yet, so neither is handled here. That is deliberate: a case rendering an empty
- * panel would be a feature claiming to exist (§131). They fall through to nothing until they are
+ * panel would be a feature claiming to exist. They fall through to nothing until they are
  * built, and the exhaustive `kind` switch will point here when they are.
  */
 

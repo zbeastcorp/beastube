@@ -4,7 +4,7 @@
 //! [`PlaylistId`]; a local playlist is user-owned, mutable, ordered, and identified by a database
 //! row. Merging them into one type would invite a UI that offers "rename" on something it cannot
 //! rename, or that implies a local playlist is synchronized with an external account — which it
-//! never is (§42).
+//! never is.
 
 use serde::{Deserialize, Serialize};
 
@@ -79,7 +79,7 @@ impl std::fmt::Display for LocalPlaylistId {
 /// One entry in a local playlist.
 ///
 /// Carries a denormalized [`VideoSummary`] so the playlist renders without a network round trip,
-/// and remains readable offline (§72) even after the metadata cache is cleared.
+/// and remains readable offline even after the metadata cache is cleared.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlaylistItem {
     /// The video.

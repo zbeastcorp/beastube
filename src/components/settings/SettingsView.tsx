@@ -7,7 +7,7 @@
  *
  * The privacy panel is deliberately the most detailed. It is where the application's claims about
  * itself are made checkable: where data lives, how much of it there is, and a control to remove each
- * kind. A privacy promise that cannot be inspected is just a sentence (§100).
+ * kind. A privacy promise that cannot be inspected is just a sentence.
  */
 
 import { useState, type ReactNode } from 'react';
@@ -207,7 +207,7 @@ function PlaybackPanel(): ReactNode {
           the screen did not have: `settings.playback.hardwareAcceleration` and its hint have been
           translated into three languages while nothing rendered them and nothing read the value.
           A setting that exists everywhere except where it can be used is the same defect as a
-          label with no feature behind it (§131). */}
+          label with no feature behind it. */}
       <SettingRow
         label={t.t('settings.playback.hardwareAcceleration')}
         hint={`${t.t('settings.playback.hardwareAccelerationHint')} ${t.t('settings.playback.hardwareAccelerationRestart')}`}
@@ -264,7 +264,7 @@ function PlaybackPanel(): ReactNode {
 
       {/* Only meaningful under BEASTUBE's own control bar: YouTube's draws its captions inside its
           own frame, where none of these can reach. Hidden rather than disabled, because a row that
-          cannot do anything is worse than one that is not there (§131). */}
+          cannot do anything is worse than one that is not there. */}
       {playback.player_controls === 'beastube' && (
         <>
           <SettingRow
@@ -344,7 +344,7 @@ function PlaybackPanel(): ReactNode {
           deliberate act and goes as high as the video offers, exactly as it does on YouTube.
 
           Still capability-gated, because an adapter that cannot select a tier cannot honour a
-          ceiling either — the control is then absent rather than inert (§131, ADR-0004). */}
+          ceiling either — the control is then absent rather than inert (ADR-0004). */}
       {capabilities.quality_selection && (
         <SettingRow label={t.t('settings.playback.maxQuality')} htmlFor={maxQualityId}>
           <Select
@@ -566,7 +566,7 @@ function DownloadsPanel(): ReactNode {
                 {' — '}
                 {t.t(`settings.downloads.status.${download.status}`)}
                 {/* Only when the size was known: a percentage derived from nothing would be a
-                    number the application invented (§131). */}
+                    number the application invented. */}
                 {download.fraction !== undefined &&
                   !isTerminalDownload(download.status) &&
                   ` ${Math.round(download.fraction * 100)}%`}
@@ -818,7 +818,7 @@ function PrivacyPanel(): ReactNode {
       {/* Every location, not a summary of two of them.
           The old row reported the library and the metadata cache — 4.4 MB on a real installation
           whose actual footprint was 629 MB, because nothing counted the embedded browser's profile.
-          Each row now names its own path, so the figure is checkable rather than trusted (§100),
+          Each row now names its own path, so the figure is checkable rather than trusted,
           and each clearable one has its own button: the browser cache is where the space is, and it
           was previously unreachable. */}
       <SettingRow
@@ -945,7 +945,7 @@ type UpdateState =
  *
  * `settings.about.checkUpdates` and its siblings were in the catalogue with nothing behind them,
  * and the updater plugin was a declared dependency that was never registered. A label that looks
- * like a feature and does nothing is precisely what §131 forbids, so either the plumbing had to
+ * like a feature and does nothing is precisely what must not ship, so either the plumbing had to
  * arrive or the strings had to go. This is the plumbing.
  */
 function AboutPanel(): ReactNode {
@@ -1139,7 +1139,7 @@ function FilteringPanel(): ReactNode {
         <ReadOnlyValue value={diagnostics.data?.active_rule_version ?? '…'} mono />
       </SettingRow>
 
-      {/* Counts only — never which requests were seen (§99). */}
+      {/* Counts only — never which requests were seen. */}
       <SettingRow label={t.t('settings.filtering.blockedCount')}>
         <ReadOnlyValue
           value={`${t.number(diagnostics.data?.blocked ?? 0)} / ${t.number(

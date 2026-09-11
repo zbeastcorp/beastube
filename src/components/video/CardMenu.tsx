@@ -9,7 +9,7 @@
  * ## Only what works
  *
  * Every entry is an action this application genuinely performs. Download appears only where a
- * downloader is installed, exactly as the watch-page control does (ADR-0003, §131). There is no
+ * downloader is installed, exactly as the watch-page control does (ADR-0003). There is no
  * "Not interested" or "Don't recommend channel", because nothing here would act on either — a
  * menu item that quietly does nothing is worse than a shorter menu.
  *

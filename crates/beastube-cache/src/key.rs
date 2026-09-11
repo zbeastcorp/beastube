@@ -52,7 +52,7 @@ pub const ENTRY_EXTENSION: &str = "bcx";
 /// A cache partition, which is also a directory under the cache root.
 ///
 /// Partitioning exists so that clearing thumbnails does not discard cached metadata, and so that
-/// each partition can carry its own lifetime (§71: thumbnails live for weeks, metadata for hours).
+/// each partition can carry its own lifetime (thumbnails live for weeks, metadata for hours).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Namespace(&'static str);
 

@@ -3,7 +3,7 @@
  *
  * Holds only presentation state that several unrelated components need: sidebar collapse, which
  * overlay is open, the toast queue. It deliberately does not hold provider data (that is fetched
- * and cached per view) or playback state (§89), so a toast appearing does not re-render a video
+ * and cached per view) or playback state, so a toast appearing does not re-render a video
  * grid.
  */
 
@@ -125,7 +125,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   //
   // The alternative was to force the rail when narrow and leave the button toggling a state with
   // no visible effect — a control that looks like a feature and does nothing, which is exactly
-  // what §131 forbids.
+  // a control that is present and does nothing.
   toggleSidebar: () => {
     if (get().shellNarrow) {
       set({ drawerOpen: !get().drawerOpen });

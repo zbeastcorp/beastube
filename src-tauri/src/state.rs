@@ -7,7 +7,7 @@
 //! ## Startup is staged
 //!
 //! Construction is deliberately ordered so the window can appear before the slow parts finish
-//! (§86). Opening the database and running migrations is fast and must succeed before anything can
+//!. Opening the database and running migrations is fast and must succeed before anything can
 //! read; building the provider touches the filesystem but makes no network request. Nothing here
 //! blocks on the network, so a machine that is offline still starts in the same time as one that is
 //! not.
@@ -16,7 +16,7 @@
 //!
 //! Whether a write happens is decided in one place — [`AppState::records_history`] — rather than at
 //! each of the several places that would otherwise have to remember. A mode that silently changes
-//! what is persisted is exactly the kind of thing that leaks through a forgotten branch (§50).
+//! what is persisted is exactly the kind of thing that leaks through a forgotten branch.
 
 // Held for subsystems that land next (the storage panel reads both); keeping them on the state now
 // avoids reconstructing it when they arrive.
@@ -105,7 +105,7 @@ impl AppState {
     /// The integrity check belongs here rather than at the call site because "opened" and "usable"
     /// are the same question to every caller: an unclean previous shutdown can leave a file that
     /// opens perfectly and is damaged inside, and finding that before anything writes more into it
-    /// is the whole point (§127).
+    /// is the whole point.
     async fn open_library(path: &Path) -> Result<Database, StartupError> {
         let database = Database::open(path).await?;
         database.integrity_check().await.map_err(|error| {
@@ -351,7 +351,7 @@ impl AppState {
     ///
     /// The single decision point: incognito suppresses recording regardless of the setting, and the
     /// privacy setting suppresses it otherwise. Every write path consults this rather than
-    /// re-deriving it (§50).
+    /// re-deriving it.
     #[must_use]
     pub(crate) fn records_history(&self) -> bool {
         !self.is_incognito() && self.settings.read().privacy.history_enabled

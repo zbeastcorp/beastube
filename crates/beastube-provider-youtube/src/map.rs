@@ -2,7 +2,7 @@
 //!
 //! This module is the entire blast radius of an upstream schema change. Everything above the
 //! provider layer speaks [`beastube_core::model`]; nothing above it names `rustypipe`, YouTube, or
-//! any wire shape (§118).
+//! any wire shape.
 //!
 //! Two rules run throughout:
 //!
@@ -335,7 +335,7 @@ fn parse_compact_count(text: &str) -> Option<u64> {
 /// [`beastube_core::security::validate_external_url`]. Owners publish `http` links, and some
 /// publish `mailto:` or worse. An `http` one is upgraded, since the destination is the same
 /// public page either way, and anything that is not one of those two schemes is dropped: a missing
-/// link beats a link that opens onto an error (§131).
+/// link beats a link that opens onto an error.
 pub(crate) fn channel_links(source: &[(String, String)]) -> Vec<ChannelLink> {
     source
         .iter()

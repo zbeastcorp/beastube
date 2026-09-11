@@ -3,7 +3,7 @@
  *
  * Incognito lives here rather than in settings because it is a property of *this run*, not a
  * persisted preference — leaving it in the settings document would risk it surviving a restart,
- * which is the opposite of what the mode promises (§50).
+ * which is the opposite of what the mode promises.
  */
 
 import { create } from 'zustand';
