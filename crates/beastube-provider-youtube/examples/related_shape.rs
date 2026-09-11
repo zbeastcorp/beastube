@@ -1,7 +1,7 @@
 //! Dumps the shape of the watch page's recommendation shelf.
 //!
 //! Kept as a tool rather than deleted, for the same reason `probe` is: this shelf is parsed out of
-//! a raw response (`map::related_from_next`), so when YouTube changes its renderer the parser goes
+//! a raw response (`map::videos_from_json`), so when YouTube changes its renderer the parser goes
 //! quiet rather than loud, and the first question is always "what does the response look like now?"
 //! This answers it in one run.
 //!

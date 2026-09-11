@@ -187,49 +187,69 @@ impl YouTubeProvider {
         map::details_from_player(&json, id)
     }
 
-    /// The Shorts tab, read from the raw browse response.
+    /// One channel tab, read from the raw browse response.
     ///
-    /// ## Why this exists
+    /// ## Why no tab goes through the typed parser
     ///
-    /// The typed tab parser returns nothing for a tab that is full. Measured against the live
-    /// service, `channel_videos_tab(Shorts)` yields **0 items** for `MrBeast` and for Google for
-    /// Developers, both of which report `has_shorts` and both of whose tabs are populated on the
-    /// site. The same browse request read as JSON contains 48 `shortsLockupViewModel` objects and
-    /// no `videoRenderer` at all — the shelf holding them is not a variant the extractor knows,
-    /// so serde's catch-all arm swallows it whole. It is the same blind spot
-    /// [`map::shorts_from_json`] documents for search, on a different endpoint.
+    /// Every tab on a channel is a grid of `lockupViewModel` objects, and the extractor's channel
+    /// parser expects `videoRenderer`. Measured against a live channel browse response: **30
+    /// lockups, zero `videoRenderer`**. So the typed parser either returns nothing or returns
+    /// stubs, and it did both:
     ///
-    /// `params` is the Shorts tab selector, the value the site's own navigation sends. It is
-    /// opaque and fixed; if the site retires it the request returns an empty tab rather than the
-    /// wrong content, which is why it is safe to hard-code.
+    /// - **Shorts** came back empty outright — 0 items from a tab holding 48.
+    /// - **Videos** came back with titles and thumbnails and nothing else: 0 of 30 with a
+    ///   duration, 0 of 30 with an upload date, 1 of 30 with a view count. That is what put bare,
+    ///   dateless cards on the channel page while search cards were complete.
+    ///
+    /// Reading the response directly fixes both, and reuses the lockup parser the recommendation
+    /// shelf already relies on — the same shape from a different endpoint.
+    ///
+    /// `params` selects the tab and is the value the site's own navigation sends. It is opaque and
+    /// fixed; if the site retires one, the request returns an empty tab rather than the wrong
+    /// content, which is why it is safe to hard-code.
     ///
     /// Pagination is not claimed. The response carries a continuation token, but nothing here can
     /// resume from it yet, and a cursor the caller cannot follow is worse than an honest end of
     /// list.
-    async fn channel_shorts(
+    async fn channel_tab(
         &self,
         id: &ChannelId,
+        tab: ChannelTab,
         cancel: &CancellationToken,
     ) -> ProviderResult<Page<VideoSummary>> {
-        /// The Shorts tab selector, as the site's own navigation sends it.
-        const SHORTS_TAB_PARAMS: &str = "EgZzaG9ydHPyBgUKA5oBAA%3D%3D";
+        let params = match tab {
+            ChannelTab::Videos => "EgZ2aWRlb3PyBgQKAjoA",
+            ChannelTab::Shorts => "EgZzaG9ydHPyBgUKA5oBAA%3D%3D",
+            ChannelTab::Live => "EgdzdHJlYW1z8gYECgJ6AA%3D%3D",
+            // A different shape entirely, and refused rather than mapped onto this one.
+            ChannelTab::Playlists => {
+                return Err(ProviderError::Unsupported {
+                    operation: "channel_content",
+                    provider: PROVIDER_NAME,
+                });
+            }
+        };
 
         let client = self.query().await;
-        let body = serde_json::json!({
-            "browseId": id.as_str(),
-            "params": SHORTS_TAB_PARAMS,
-        });
+        let body = serde_json::json!({ "browseId": id.as_str(), "params": params });
 
         let json = Self::with_cancellation(cancel, async move {
             client
                 .raw(rustypipe::client::ClientType::Desktop, "browse", &body)
                 .await
-                .map_err(|error| classify(&error, "channel_shorts"))
+                .map_err(|error| classify(&error, "channel_content"))
         })
         .await?;
 
+        // Shorts sit in a lockup of their own, which carries neither a duration nor a date.
+        let items = if tab == ChannelTab::Shorts {
+            map::shorts_from_json(&json)
+        } else {
+            map::videos_from_json(&json)
+        };
+
         Ok(Page {
-            items: map::shorts_from_json(&json),
+            items,
             continuation: None,
             total_estimate: None,
         })
@@ -838,7 +858,7 @@ impl VideoProvider for YouTubeProvider {
         .await?;
 
         Ok(Page {
-            items: map::related_from_next(&json),
+            items: map::videos_from_json(&json),
             // The shelf paginates by continuation token, which this reader does not yet follow.
             // Twenty recommendations is already more than the surface shows, and claiming a cursor
             // that nothing can resume would be worse than reporting the end of the list.
@@ -942,10 +962,8 @@ impl ChannelProvider for YouTubeProvider {
 
     /// The videos behind one tab.
     ///
-    /// Shorts take a different path from the other two. The typed tab parser returns **zero** items
-    /// for every channel measured that plainly has Shorts — they arrive as
-    /// `shortsLockupViewModel`, which it discards, exactly as it does in search. The same request
-    /// read as raw JSON carries 48 of them. See [`Self::channel_shorts`].
+    /// Every tab is served from the raw browse response; [`Self::channel_tab`] records why the
+    /// typed parser cannot be used for any of them.
     async fn channel_content(
         &self,
         id: &ChannelId,
@@ -953,45 +971,7 @@ impl ChannelProvider for YouTubeProvider {
         _continuation: Option<&ContinuationToken>,
         cancel: &CancellationToken,
     ) -> ProviderResult<Page<VideoSummary>> {
-        if tab == ChannelTab::Shorts {
-            return self.channel_shorts(id, cancel).await;
-        }
-
-        // Videos and Live are two tabs of the same endpoint. Playlists is a different shape
-        // entirely and is refused rather than mapped onto this one.
-        let extractor_tab = match tab {
-            ChannelTab::Videos => rustypipe::param::ChannelVideoTab::Videos,
-            ChannelTab::Live => rustypipe::param::ChannelVideoTab::Live,
-            ChannelTab::Shorts | ChannelTab::Playlists => {
-                return Err(ProviderError::Unsupported {
-                    operation: "channel_content",
-                    provider: PROVIDER_NAME,
-                });
-            }
-        };
-
-        let client = self.query().await;
-        let owned = id.as_str().to_owned();
-
-        let channel = Self::with_cancellation(cancel, async move {
-            client
-                .channel_videos_tab(owned, extractor_tab)
-                .await
-                .map_err(|error| classify(&error, "channel_content"))
-        })
-        .await?;
-
-        let cursor = continuation(channel.content.ctoken.clone());
-        Ok(Page {
-            items: channel
-                .content
-                .items
-                .into_iter()
-                .filter_map(map::video_summary)
-                .collect(),
-            continuation: cursor,
-            total_estimate: None,
-        })
+        self.channel_tab(id, tab, cancel).await
     }
 }
 

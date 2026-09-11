@@ -1005,7 +1005,7 @@ mod tests {
 // -------------------------------------------------------------------------------------------
 
 /// Reads the recommendation shelf out of a raw `next` response.
-pub(crate) fn related_from_next(json: &str) -> Vec<VideoSummary> {
+pub(crate) fn videos_from_json(json: &str) -> Vec<VideoSummary> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(json) else {
         return Vec::new();
     };
@@ -1129,14 +1129,28 @@ fn video_from_lockup(lockup: &serde_json::Value) -> Option<VideoSummary> {
     let thumbnails =
         sources_to_thumbnails(lockup.pointer("/contentImage/thumbnailViewModel/image/sources"));
 
-    // The duration sits in the thumbnail's bottom overlay, as the badge text the card draws.
-    let mut overlay_text = Vec::new();
-    if let Some(overlays) = lockup.pointer("/contentImage/thumbnailViewModel/overlays") {
-        text_contents(overlays, &mut overlay_text);
+    // The duration is the badge drawn over the thumbnail, and it is a bare string under `text`
+    // rather than the `{ content }` object every other string in a lockup uses. Scanning for
+    // `content` therefore never found it: measured against the live recommendation shelf, that
+    // was 0 of 26 cards with a duration when all 26 carry one.
+    //
+    // The badge is read by name rather than by path because the same badge appears under
+    // different overlay wrappers depending on the surface, and a non-duration badge ("LIVE", a
+    // members-only label) simply fails to parse and is skipped.
+    let mut badges = Vec::new();
+    if let Some(image) = lockup.pointer("/contentImage/thumbnailViewModel") {
+        collect_by_key(image, "thumbnailBadgeViewModel", &mut badges);
     }
-    let duration_ms = overlay_text
+    let duration_ms = badges
         .iter()
-        .find_map(|text| parse_duration_text(text));
+        .filter_map(|badge| {
+            // Live, `text` is a bare string. Elsewhere in a lockup every string is wrapped as
+            // `{ content }`, and this badge has been seen both ways, so both are accepted.
+            let text = badge.get("text")?;
+            text.as_str()
+                .or_else(|| text.get("content").and_then(serde_json::Value::as_str))
+        })
+        .find_map(parse_duration_text);
 
     // The avatar block also carries the channel identifier, which is what makes the name a link.
     let avatar_block = metadata.and_then(|block| {
@@ -1156,33 +1170,65 @@ fn video_from_lockup(lockup: &serde_json::Value) -> Option<VideoSummary> {
         .and_then(serde_json::Value::as_str)
         .and_then(|raw| ChannelId::new(raw).ok());
 
-    // The rows are the channel, then views and date. Read as a flat list and classified by what
-    // each string says, because a live item has no date and an upcoming one has no view count —
-    // indexing by position would put a date where a count belongs.
-    let rows = metadata.and_then(|block| {
-        block.pointer("/metadata/contentMetadataViewModel/metadataRows")
-    });
-    let mut parts = Vec::new();
-    if let Some(rows) = rows {
-        text_contents(rows, &mut parts);
-    }
+    // The metadata rows are read as rows rather than flattened into one list, because how many
+    // there are is the only thing that says whether a channel name is present at all.
+    //
+    // Two shapes reach here, and they differ by exactly one row:
+    //
+    // - A recommendation shelf names the uploader: `[["Rick Astley"], ["28M", "6y ago"]]`.
+    // - A channel's own grid does not, because every card on it has the same uploader — the page
+    //   is that channel: `[["79M views", "6 days ago"]]`.
+    //
+    // Flattening and taking the first entry as the channel — which this did — reads "79M views" as
+    // the uploader's name on every card of every channel page, and then looks for the view count
+    // in what is left and finds nothing. Measured against the live channel grid, that is 0 of 30
+    // cards with a view count and 30 of 30 with a nonsense channel name.
+    //
+    // Collaborations are why this counts rows instead of testing for the avatar block: a co-hosted
+    // upload on a channel grid does carry a channel row ("MrBeast and Mark Rober") while carrying
+    // no avatar, and a recommendation can do the same ("Shakira and 2 more").
+    let rows = metadata
+        .and_then(|block| block.pointer("/metadata/contentMetadataViewModel/metadataRows"))
+        .and_then(serde_json::Value::as_array);
 
-    // The first row is the channel; everything after it is the count and the date, in that order
-    // but not reliably present. Read live, the shelf gives `["MrBeast 2", "24M", "1d ago"]` — note
-    // the bare count, with no "views" word at all, which is why this cannot key on that word the
-    // way the search mapping can.
-    let channel_name = parts.first().cloned();
-    let published_text = parts.iter().skip(1).find(|text| is_time_text(text)).cloned();
-    let view_count = parts
+    let row_parts = |index: usize| -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(row) = rows.and_then(|rows| rows.get(index)) {
+            text_contents(row, &mut out);
+        }
+        out
+    };
+
+    let row_count = rows.map_or(0, Vec::len);
+    let named_channel = row_count > 1;
+
+    // Everything after the channel row, or everything when there is no channel row.
+    let stats: Vec<String> = (usize::from(named_channel)..row_count)
+        .flat_map(row_parts)
+        .collect();
+
+    let channel_name = if named_channel {
+        row_parts(0).into_iter().next()
+    } else {
+        None
+    };
+
+    // Classified by what each string says rather than by position: a live item has no date and an
+    // upcoming one has no view count, so indexing would put a date where a count belongs. Read
+    // live, the shelf gives a bare `"24M"` with no "views" word at all, which is why this cannot
+    // key on that word the way the search mapping can.
+    let published_text = stats.iter().find(|text| is_time_text(text)).cloned();
+    let view_count = stats
         .iter()
-        .skip(1)
         .filter(|text| !is_time_text(text))
         .find_map(|text| parse_compact_count(text));
 
     // The verified tick is an attachment run on the channel row, named by its client resource.
     let channel_verified = rows.is_some_and(|rows| {
         let mut names = Vec::new();
-        collect_by_key(rows, "imageName", &mut names);
+        for row in rows {
+            collect_by_key(row, "imageName", &mut names);
+        }
         names
             .into_iter()
             .filter_map(serde_json::Value::as_str)
@@ -1224,7 +1270,7 @@ mod related_tests {
                     ]},
                     "overlays": [
                         { "thumbnailBottomOverlayViewModel": { "badges": [
-                            { "thumbnailBadgeViewModel": { "text": { "content": "12:34" } } }
+                            { "thumbnailBadgeViewModel": { "text": "12:34" } }
                         ]}}
                     ]
                 }
@@ -1279,6 +1325,143 @@ mod related_tests {
             .iter()
             .map(|(title, url)| ((*title).to_owned(), (*url).to_owned()))
             .collect()
+    }
+
+    /// One card in the shape a **channel grid** uses, reduced to the fields read.
+    ///
+    /// The difference from [`lockup`] is one metadata row: a channel page does not repeat the
+    /// uploader on every card, because the page is that uploader. Everything the card shows sits
+    /// in a single row instead of a second one.
+    fn channel_grid_lockup() -> serde_json::Value {
+        serde_json::json!({
+            "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+            "contentId": "gTKS8SAwUzE",
+            "contentImage": {
+                "thumbnailViewModel": {
+                    "image": { "sources": [{ "url": "https://i.ytimg.com/vi/gTKS8SAwUzE/hq.jpg", "width": 480, "height": 360 }] },
+                    "overlays": [{
+                        "thumbnailBottomOverlayViewModel": {
+                            "badges": [{ "thumbnailBadgeViewModel": { "text": "23:28" } }]
+                        }
+                    }]
+                }
+            },
+            "metadata": {
+                "lockupMetadataViewModel": {
+                    "title": { "content": "I Survived The Most Extreme Places On Earth" },
+                    "metadata": {
+                        "contentMetadataViewModel": {
+                            "metadataRows": [
+                                { "metadataParts": [
+                                    { "text": { "content": "79M views" } },
+                                    { "text": { "content": "6 days ago" } }
+                                ] }
+                            ]
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn a_duration_badge_is_read_in_either_spelling() {
+        // The live responses send `text` as a bare string; this fixture used to claim it was
+        // `{ content }`, which is why the parser passed its tests and still returned a duration
+        // for 0 of 26 live cards. Both are accepted now, and both are pinned.
+        let mut wrapped = channel_grid_lockup();
+        wrapped["contentImage"]["thumbnailViewModel"]["overlays"][0]
+            ["thumbnailBottomOverlayViewModel"]["badges"][0]["thumbnailBadgeViewModel"]["text"] =
+            serde_json::json!({ "content": "1:02:03" });
+
+        let summary = video_from_lockup(&wrapped).expect("a video summary");
+        assert_eq!(
+            summary.duration_ms,
+            Some((3600 + 2 * 60 + 3) * 1000),
+            "the wrapped spelling must parse, hours included"
+        );
+    }
+
+    #[test]
+    fn a_non_duration_badge_is_skipped_rather_than_guessed_at() {
+        let mut json = channel_grid_lockup();
+        json["contentImage"]["thumbnailViewModel"]["overlays"][0]
+            ["thumbnailBottomOverlayViewModel"]["badges"] = serde_json::json!([
+            { "thumbnailBadgeViewModel": { "text": "LIVE" } },
+            { "thumbnailBadgeViewModel": { "text": "23:28" } }
+        ]);
+
+        let summary = video_from_lockup(&json).expect("a video summary");
+        assert_eq!(
+            summary.duration_ms,
+            Some(23 * 60 * 1000 + 28 * 1000),
+            "a badge that is not a duration must be passed over, not parsed"
+        );
+    }
+
+    #[test]
+    fn a_channel_grid_card_keeps_its_views_and_date() {
+        // The bug this pins: with only one metadata row, the parser used to read "79M views" as
+        // the uploader's name and then find no view count at all. Measured against the live
+        // channel grid that was 0 of 30 cards with a view count and 30 of 30 misnamed.
+        let summary = video_from_lockup(&channel_grid_lockup()).expect("a video summary");
+
+        assert_eq!(summary.view_count, Some(79_000_000));
+        assert_eq!(summary.published_text.as_deref(), Some("6 days ago"));
+        assert_eq!(summary.duration_ms, Some(23 * 60 * 1000 + 28 * 1000));
+        assert_eq!(
+            summary.channel_name, None,
+            "a channel grid names no uploader per card, so none must be invented"
+        );
+    }
+
+    #[test]
+    fn a_collaboration_on_a_channel_grid_still_names_its_channel() {
+        // A co-hosted upload does carry a channel row, on the channel's own grid, and carries no
+        // avatar block with it — which is why the row count decides this and not the avatar.
+        let mut json = channel_grid_lockup();
+        json["metadata"]["lockupMetadataViewModel"]["metadata"]["contentMetadataViewModel"]
+            ["metadataRows"] = serde_json::json!([
+            { "metadataParts": [{ "text": { "content": "MrBeast and Mark Rober" } }] },
+            { "metadataParts": [
+                { "text": { "content": "131M views" } },
+                { "text": { "content": "1 year ago" } }
+            ] }
+        ]);
+
+        let summary = video_from_lockup(&json).expect("a video summary");
+        assert_eq!(summary.channel_name.as_deref(), Some("MrBeast and Mark Rober"));
+        assert_eq!(summary.view_count, Some(131_000_000));
+        assert_eq!(summary.published_text.as_deref(), Some("1 year ago"));
+    }
+
+    #[test]
+    fn a_recommendation_shelf_card_is_unchanged() {
+        // The two-row shape must keep behaving exactly as it did; this is the shelf the parser was
+        // written for, and the channel fix must not cost it its uploader.
+        let summary = video_from_lockup(&lockup()).expect("a video summary");
+        assert!(
+            summary.channel_name.is_some(),
+            "the recommendation shelf does name its uploader"
+        );
+    }
+
+    #[test]
+    fn a_live_card_with_no_date_does_not_borrow_one() {
+        // A live item reports watchers instead of an upload date. Position-based reading would put
+        // "12K watching" where the date belongs.
+        let mut json = channel_grid_lockup();
+        json["metadata"]["lockupMetadataViewModel"]["metadata"]["contentMetadataViewModel"]
+            ["metadataRows"] = serde_json::json!([
+            { "metadataParts": [{ "text": { "content": "12K watching" } }] }
+        ]);
+
+        let summary = video_from_lockup(&json).expect("a video summary");
+        assert_eq!(summary.published_text.as_deref(), Some("12K watching"));
+        assert_eq!(
+            summary.view_count, None,
+            "a watcher count is not a view count and must not be reported as one"
+        );
     }
 
     #[test]
@@ -1406,13 +1589,13 @@ mod related_tests {
             ]}}}
         });
 
-        let videos = related_from_next(&response.to_string());
+        let videos = videos_from_json(&response.to_string());
         assert_eq!(videos.len(), 1, "the same video must not appear twice");
         assert_eq!(videos[0].channel_name.as_deref(), Some("SlayyPop"));
     }
 
     #[test]
     fn a_response_that_is_not_json_yields_nothing_rather_than_panicking() {
-        assert!(related_from_next("<html>error</html>").is_empty());
+        assert!(videos_from_json("<html>error</html>").is_empty());
     }
 }

@@ -19,6 +19,16 @@ breaking changes.
 - **A channel's Shorts tab was empty.** It parsed to nothing at all for channels whose tab is full —
   48 shorts in the response, none of them shown. They arrive in a shelf the extractor discards, the
   same one search had to be taught to read, and they are now read the same way.
+- **Channel videos had no date, no view count and no duration.** Cards on a channel page showed a
+  title and nothing else, while the same video in search showed "2.1M views • 3 days ago" and a
+  duration badge. The provider has moved channel grids to a card format the extractor does not
+  know, so it returned the title and thumbnail it could still reach and left the rest empty —
+  measured at 0 of 30 cards with a duration, 0 of 30 with a date and 1 of 30 with a view count.
+  All three are now read straight from the response: 30 of 30.
+- **Videos in the recommendation shelf had no duration either.** Same cause, and it had been true
+  of every recommendation since the shelf was written: the duration is stored under a slightly
+  different key than the one being read, and the test that was supposed to catch it described a
+  shape the provider does not actually send. 0 of 26 before, 26 of 26 now.
 
 ### Added
 
