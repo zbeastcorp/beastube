@@ -190,8 +190,6 @@ impl YouTubeProvider {
 
     /// One channel tab, read from the raw browse response.
     ///
-    /// ## Why no tab goes through the typed parser
-    ///
     /// Every tab on a channel is a grid of `lockupViewModel` objects, and the extractor's channel
     /// parser expects `videoRenderer`. Measured against a live channel browse response: **30
     /// lockups, zero `videoRenderer`**. So the typed parser either returns nothing or returns
@@ -873,8 +871,6 @@ impl VideoProvider for YouTubeProvider {
 impl ChannelProvider for YouTubeProvider {
     /// Everything the channel page draws, from two requests made together.
     ///
-    /// ## Why the About tab is fetched as well
-    ///
     /// The channel page header and the About tab disagree, and the About tab is the one that is
     /// right. Measured against the live service, the header parse reports `MrBeast` at **1000**
     /// subscribers and Google for Developers at **6000** — those are their *video* counts,
@@ -1040,8 +1036,6 @@ impl MetadataProvider for YouTubeProvider {
 
     /// A login-free feed of what is on the provider right now.
     ///
-    /// ## Why this is possible again
-    ///
     /// It used to be refused, on the grounds that the trending surface was retired and everything
     /// replacing it needs an account. The first half is still true — the trending feed answers
     /// `400` — but the second was too broad: the category hubs behind [`Self::explore`] are
@@ -1052,8 +1046,6 @@ impl MetadataProvider for YouTubeProvider {
     /// screen was assembled by *searching* for evergreen words — "music", "science", "cooking" —
     /// which returns whatever ranks well for them, frequently years old. Read from the hubs
     /// instead, the same screen carries videos published minutes ago.
-    ///
-    /// ## Why the categories are interleaved rather than concatenated or re-sorted
     ///
     /// Each hub already arrives newest-first, so taking them in turn keeps the front of the feed
     /// fresh while keeping it varied. Sorting the merged list by age would do neither: news is
@@ -1161,21 +1153,15 @@ impl MetadataProvider for YouTubeProvider {
 
     /// One Explore category, read from the hub the site links to for it.
     ///
-    /// ## What each category actually is
-    ///
     /// The site's Explore entries are channels — editorial hubs whose front page collects videos
     /// from across the service — so the whole of this is a browse of a channel's home tab. That is
     /// also why the content matches the site exactly: it is the same page, read directly.
-    ///
-    /// ## Why the cards are read as legacy renderers
     ///
     /// These hubs have not moved to the lockup format the channel grids now use. Measured live:
     /// the News hub returns **183 `videoRenderer` and zero lockups**. `Music` is the exception and
     /// sends 104 lockups, so both readers are run and whichever finds cards wins. Running both is
     /// cheaper than deciding per category and, more to the point, it keeps working when a category
     /// migrates — which is exactly the change that broke the channel grids.
-    ///
-    /// ## What is not offered
     ///
     /// Trending, Movies & TV and Podcasts are not members of [`ExploreCategory`] at all; the
     /// reasons are recorded there. Nothing here has to refuse them, because nothing can ask.

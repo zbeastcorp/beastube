@@ -5,8 +5,6 @@
  * means the provider's own player handles the media transport — including the SABR transport that
  * has removed plain stream URLs, and which the direct-stream adapter therefore cannot reach.
  *
- * ## What this adapter can and cannot do
- *
  * Capability-gated, not silently broken:
  *
  * * **Can**: play/pause, seek, playback rate, volume, fullscreen, captions toggle, position
@@ -14,8 +12,6 @@
  *   takes some explaining; see below.
  * * **Cannot**: read buffer level or dropped-frame counts. The embed exposes neither, so the
  *   readouts for them are absent rather than inert.
- *
- * ## Quality is selectable, by size rather than by command
  *
  * `setPlaybackQuality` really is a no-op — measured, not assumed: calling it with `hd1080` on a
  * player showing `hd720` leaves it on `hd720`. What is *not* a no-op is the size of the frame. The
@@ -27,8 +23,6 @@
  * result down to the box the design wants. `getPlaybackQuality` and `getAvailableQualityLevels`
  * both work and both report honestly, which is what makes the result checkable rather than hoped
  * for. See `renderSize` and ADR-0004.
- *
- * ## The origin risk
  *
  * The embed rejects requests it cannot attribute with error 153. Under a custom `tauri://` scheme
  * there is no HTTP-compliant `Referer` and the embed refuses; on Windows the shell is served from
@@ -726,8 +720,6 @@ export interface PlayerHandle {
 /**
  * The embedded player.
  *
- * ## Built once, pointed at many videos
- *
  * The expensive thing here is not this component — it is the `<iframe>` the API creates, which is a
  * whole embed document with its own bootstrap and media pipeline. Rebuilding it is what a viewer
  * experiences as the stutter between two shorts, or as the pause before a hover preview appears.
@@ -741,8 +733,6 @@ export interface PlayerHandle {
  * values and is excluded from dependency arrays. That is what lets the construction effect declare
  * `[controls, loop]` — the two genuinely construction-time player vars — without dragging `videoId`
  * or `startAtMs` in with them.
- *
- * ## The sacrificial mount node
  *
  * The API *replaces* the element it is handed. Handing it the element React owns leaves React's ref
  * pointing at a detached node, so a second construction would build into a node outside the

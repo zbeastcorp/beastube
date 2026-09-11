@@ -11,12 +11,8 @@
  * and its seeds per call, so the fetch genuinely returns something different rather than the same
  * list again.
  *
- * ## Stale while revalidate
- *
  * Bumping this does not blank anything. `feedCache` keeps the previous batch and swaps the new one
  * in when it arrives, so a click gives you a feed instantly *and* a different feed a moment later.
- *
- * ## Why a revision rather than calling `reload()`
  *
  * Because the click happens in the sidebar and the fetch happens in a view that may not be mounted
  * yet. A number in a store is readable by whichever view mounts next; a `reload` handle only exists

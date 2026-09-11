@@ -4,8 +4,6 @@
  * Owns one playback session: it resolves the video, decides where to resume from, drives the
  * player, and checkpoints the position back to the local library.
  *
- * ## Checkpointing
- *
  * Position is written on a timer, on pause, on state changes and on unmount — never on every
  * sample. The player reports roughly four times a second; writing each one would mean four
  * SQLite transactions per second for the whole length of a video, for information that is only ever

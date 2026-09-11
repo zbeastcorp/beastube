@@ -6,16 +6,12 @@
  * native side merges and de-duplicates them (`get_suggestions`), so the ordering rule — your own
  * queries first — lives in one place rather than being re-derived here.
  *
- * ## The keyboard contract
- *
  * This is a combobox, and the accessible pattern is not optional decoration: the input keeps focus
  * at all times and `aria-activedescendant` moves the *virtual* selection, so a screen reader
  * announces each option while typing still works. Arrow keys move, Enter accepts the highlighted
  * option (or submits what was typed when nothing is highlighted), and Escape closes the list
  * without clearing the field — closing and clearing on one key is the behaviour people complain
  * about in every search box that does it.
- *
- * ## Why the highlight does not rewrite the input
  *
  * Arrowing through options leaves the typed text alone. Rewriting the field on every arrow press
  * makes it impossible to see what you typed, and means backing out of the list loses your query.

@@ -10,16 +10,12 @@
  * watch page. Rendering one through the landscape `VideoCard` produced a wide thumbnail with the
  * middle of a portrait frame cropped out of it — which is the complaint this component answers.
  *
- * ## A sibling of VideoCard, not a variant of it
- *
  * The two disagree about almost everything below the thumbnail: what metadata is shown, whether a
  * duration belongs, and where the link goes. Folding that into one memoised component as a set of
  * conditionals would make both harder to read and would change the memo comparison surface for the
  * eight existing `VideoCard` call sites. The shared parts — rendition selection, the placeholder
  * detection, the hover preview, the colour glow — are shared as functions and components, which is
  * the part that actually matters.
- *
- * ## Width is the caller's business
  *
  * A 9:16 box is nearly twice as tall as it is wide, so an unbounded portrait card in a grid column
  * sized for landscape cards would be about 500px tall and would set the height of every row it sits

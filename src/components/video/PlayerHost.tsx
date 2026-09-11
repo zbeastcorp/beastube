@@ -5,13 +5,9 @@
  * screens cannot destroy it. A view that wants playback puts an empty box in its layout and
  * registers it as the slot; this positions the player over that box.
  *
- * ## Absolutely positioned inside the scroller, not fixed to the window
- *
  * The same arrangement `ShortsFeed` uses. Because the host is a child of the element that scrolls,
  * the browser moves it with the content for free — there is no scroll listener, and nothing to
  * fall behind during a fast scroll. Only a *layout* change needs re-measuring, which is rare.
- *
- * ## The embed's chrome is cropped away, and the controls are ours
  *
  * The embed paints one band across the top of the player — title and channel on the left, volume,
  * subtitles and settings on the right — and a "More videos" strip with a watermark across the
@@ -36,8 +32,6 @@
  * Which means there is no longer a trade to state. The whole player is the application's own dark
  * UI — YouTube's embed ignores `prefers-color-scheme` entirely, verified with the operating system
  * in dark mode, where its panel stayed white — and quality is selectable inside it.
- *
- * ## Leaving a screen pauses rather than tears down
  *
  * When no view wants the player, it is paused and parked out of sight with its browsing context
  * intact. That is the whole point: the next video costs one `loadVideoById` rather than a fresh
@@ -831,8 +825,6 @@ export function PlayerHost({ scroller }: { scroller: HTMLElement | null }): Reac
  * on the right, and a panel per setting behind a back button. That shape is not decoration — with
  * eight quality tiers a flat menu would be a column of radio buttons taller than the player.
  *
- * ## Everything here does something
- *
  * Speed is set through the API, which genuinely supports it, and the rates are asked of the player
  * rather than hardcoded. Subtitles are offered only for a video that has them. Quality is asked
  * for by relaying the frame — see `YouTubePlayer` — and the tiers listed are the ones the embed
@@ -938,8 +930,6 @@ function SettingsMenu({
 /** Which panel of the menu is showing. */
 /**
  * Captions, drawn by the application rather than by the embed.
- *
- * ## Why this exists
  *
  * The embed renders its captions inside a cross-origin iframe. Nothing outside that frame can move
  * them, resize them or restyle them — the player API exposes a font size and nothing else. Drawing

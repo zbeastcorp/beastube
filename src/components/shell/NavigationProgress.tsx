@@ -16,8 +16,6 @@
  * visibly. Holding short of the end means the bar is never wrong, and the jump to full reads as the
  * page arriving.
  *
- * ## Why the DOM is written directly
- *
  * The ramp updates about 60 times a second. Putting it in React state would re-render this
  * component — and everything it is nested in — on every frame of every navigation, which is a lot
  * of work to animate two pixels. The rAF loop writes `transform` on a ref'd node instead, which is

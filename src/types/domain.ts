@@ -108,8 +108,6 @@ const SHORT_MAX_DURATION_MS = 60_000;
  * 3. **Duration**, under a minute. Nothing longer is a Short, and in practice this is what catches
  *    the ones the first two miss.
  *
- * ## Why the third signal is acceptable here and not everywhere
- *
  * It admits false positives: a genuinely landscape forty-second video is treated as short-form. The
  * cost of that is a card in the wrong shape or an item in the Shorts shelf instead of the grid —
  * visible, minor, recoverable. The cost of a false *negative* is the bug being fixed: a portrait

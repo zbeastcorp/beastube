@@ -1,22 +1,16 @@
 /**
  * The card an automatic update shows while it works.
  *
- * ## Why a card and not a toast
- *
  * The application is about to close and reopen on its own. A restart nobody was told about reads as
  * a crash, and a one-line toast saying "updating" leaves the viewer watching a frozen-looking
  * application with no idea how long it will be — which is the same complaint in a quieter voice.
  * So this shows the version, how far the download has got, and what will happen at the end.
- *
- * ## It never blocks
  *
  * No overlay, no dialog, no focus trap. An update is maintenance, not an event the viewer has to
  * attend to: the card sits in a corner and everything carries on behind it. It can be dismissed,
  * which hides the card and not the update — there is no cancel here, because the download is
  * already paid for by the time it is visible and a half-applied installer is worse than a finished
  * one.
- *
- * ## The bar is honest
  *
  * `percent` is `null` when the server reports no content length, and the bar then animates as an
  * indeterminate sweep rather than inventing a position. A progress bar that guesses is worse

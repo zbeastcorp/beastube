@@ -58,8 +58,6 @@ pub(crate) fn derived_thumbnails(id: &VideoId) -> ThumbnailSet {
 
 /// Extracts short-form videos from a raw InnerTube search response.
 ///
-/// ## Why this exists
-///
 /// The extractor this adapter is built on discards shorts entirely. They arrive as
 /// `shortsLockupViewModel` objects inside a shelf renderer that is not one of its known variants,
 /// so serde's catch-all arm swallows the whole shelf. Measured against a live `funny #shorts`
@@ -73,8 +71,6 @@ pub(crate) fn derived_thumbnails(id: &VideoId) -> ThumbnailSet {
 /// So this reads them straight out of the JSON the extractor already fetched. It is the same public
 /// endpoint, the same request, the same response; the only difference is that this reads a part of
 /// it the typed layer throws away.
-///
-/// ## Shape
 ///
 /// Walked rather than deserialized into a fixed struct. InnerTube nests these differently depending
 /// on where a shelf lands in the response, and a walk that looks for one key by name is far harder
@@ -96,8 +92,6 @@ pub(crate) fn shorts_from_json(json: &str) -> Vec<VideoSummary> {
 }
 
 /// Reads every video out of a response built from the **legacy** card renderers.
-///
-/// ## Why this exists alongside [`videos_from_json`]
 ///
 /// The provider is midway through replacing one card shape with another and different surfaces are
 /// at different points in that migration. A channel grid is `lockupViewModel`; the category hubs
@@ -439,8 +433,6 @@ pub(crate) const fn is_verified(verification: Verification) -> bool {
 }
 
 /// Builds watch-page details out of a raw `player` response.
-///
-/// ## Why this exists
 ///
 /// The typed watch-page parser refuses the whole video when YouTube omits one optional section:
 /// it reports `could not find secondary_info` and returns nothing, so the page opens on "BEASTUBE

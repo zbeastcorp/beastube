@@ -6,8 +6,6 @@
  * param to a route immediately fails every call site that omits it. A string-based router defers
  * both of those to runtime.
  *
- * ## Why hashes
- *
  * URLs are `#/watch/dQw4w9WgXcQ`. Path routing would need the host serving the bundle to rewrite
  * unknown paths to `index.html`; under Tauri the frontend is served by a custom protocol handler,
  * so a deep path after a devtools reload would 404. Hash routing behaves identically under the Vite

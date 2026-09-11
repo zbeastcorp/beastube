@@ -637,8 +637,6 @@ fn compile_regex(kind: RuleKind, pattern: &str) -> FilterResult<Regex> {
 /// Refuses regex patterns whose *compiled* form could be expensive, and patterns whose shape is
 /// the classic catastrophic-backtracking construction.
 ///
-/// ## Why this exists even though this engine cannot backtrack
-///
 /// The `regex` crate matches with finite automata in time linear in the input. It has no
 /// backtracking, so the denial of service this heuristic is named after cannot happen *here*. Two
 /// real risks remain:
@@ -650,8 +648,6 @@ fn compile_regex(kind: RuleKind, pattern: &str) -> FilterResult<Regex> {
 /// 2. **Rule sets are portable data.** The same pattern is stored in SQLite, can be exported, and
 ///    could later be consumed by something that *does* backtrack. A rule set that is only safe
 ///    because of one crate's implementation strategy is not safe.
-///
-/// ## The heuristic
 ///
 /// Scanning left to right, outside character classes and honouring backslash escapes:
 ///
@@ -994,8 +990,6 @@ struct ManagerState {
 }
 
 /// Owns the active rule set, the one before it, and the decision to go back.
-///
-/// ## Locking
 ///
 /// Two locks, always taken in this order: an activation mutex that serializes whole
 /// activate/rollback operations, and a state lock held only for the swap itself. Providers are

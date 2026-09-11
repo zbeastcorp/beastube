@@ -6,8 +6,6 @@
  * window permanently, with no way back but restarting. That is the worst failure mode a desktop app
  * has, because the user cannot even reach the screen that still works.
  *
- * ## Two layers, deliberately
- *
  * The shell mounts this twice, and the nesting is the point:
  *
  * 1. **Around the routed view**, inside the providers. A view that throws is replaced by a message
@@ -18,8 +16,6 @@
  *    not stores, not the theme — because the thing it exists to catch might be any of them. Its
  *    fallback is deliberately plain text and inline styles: a last resort that cannot itself fail
  *    for the same reason as whatever it is reporting.
- *
- * ## Why a class
  *
  * `getDerivedStateFromError` has no hook equivalent. This is the one part of React that still
  * requires a class, and wrapping it in something fashionable would only hide that.

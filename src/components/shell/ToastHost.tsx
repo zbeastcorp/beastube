@@ -7,13 +7,9 @@
  * warning, and now the result of every download. This is the missing half, and the same gap
  * `OverlayHost` was written to close.
  *
- * ## Dismissal is owned here, not by the caller
- *
  * A caller that scheduled its own timer would have to cancel it when the user dismisses early, and
  * would keep running after the component that raised it unmounted. One timer per toast, held by
  * the host, is the only version where "six seconds" means six seconds on screen.
- *
- * ## Keys, not sentences
  *
  * A toast carries an i18n key and its parameters, never rendered text, so a message raised in Rust
  * and one raised in the UI are translated by the same layer. The key is typed as a plain

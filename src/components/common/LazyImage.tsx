@@ -15,13 +15,9 @@
  * Withholding the `src` makes the cost proportional to what is on screen. Nothing off-screen
  * requests, decodes, or occupies texture memory.
  *
- * ## The box is reserved either way
- *
  * The wrapper carries the aspect ratio, so a tile has its final size before it has its picture and
  * nothing reflows when one arrives. Lazy loading without a reserved box would trade a slow first
  * paint for a jumping one, which is worse.
- *
- * ## One observer, not one per image
  *
  * Fifty `IntersectionObserver` instances is fifty sets of bookkeeping for a single question. The
  * module keeps one and dispatches to per-element callbacks.

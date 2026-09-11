@@ -10,8 +10,6 @@
  * something that can never succeed — a geo-blocked video, a deleted one — which is worse than no
  * button at all.
  *
- * ## Nothing engineer-facing reaches the screen
- *
  * The payload also carries a `code` and a `diagnostic` — a raw string from the native side, along
  * the lines of `playlist 5 vanished between insert and read`. Those used to sit behind a "More"
  * button here. They are deliberately not rendered any more: they are written for whoever reads the

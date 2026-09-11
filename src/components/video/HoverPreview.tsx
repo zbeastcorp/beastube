@@ -1,14 +1,10 @@
 /**
  * The inline preview that plays when the pointer rests on a card.
  *
- * ## What YouTube does, and what this can do
- *
  * YouTube's preview is a `<video>` element fed from a MediaSource blob — verified by inspecting
  * their page: `ytd-video-preview` holds a real `<video>` with a `blob:` source. That needs stream
  * URLs, which SABR no longer hands out (ADR-0001), so the same mechanism is not available here. The
  * sanctioned embed is, and it produces the same result on screen.
- *
- * ## What makes it feel smooth
  *
  * Three things, and all of them are about *when* the preview appears rather than what it is:
  *

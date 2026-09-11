@@ -5,13 +5,9 @@
  * `openOverlay` set state that no pixel reflected — a dialog system that existed entirely on paper.
  * This is the missing half.
  *
- * ## One host, not a dialog per caller
- *
  * A dialog opened from a card, a menu and a keyboard shortcut is the same dialog. Mounting it at
  * the root means the caller's own unmount cannot take the dialog with it — a menu that closes when
  * you click "Add to playlist" would otherwise close the thing it just opened.
- *
- * ## Only the kinds something can open
  *
  * `commandPalette` and `shortcuts` are declared in the union but nothing opens them and neither
  * screen exists yet, so neither is handled here. That is deliberate: a case rendering an empty

@@ -928,8 +928,6 @@ type UpdateState =
 /**
  * About, and the one control behind it that does real work.
  *
- * ## The update is one press, not a download page
- *
  * BEASTUBE ships as an installer, and an update is the next installer: fetched, signature-checked
  * against the key compiled into this binary, run without a wizard, then the application restarts.
  * From here that is a single button: checking and installing are one press, because a viewer who
@@ -940,8 +938,6 @@ type UpdateState =
  * What it is not is a patch — there is no delta mechanism on this path, so the whole application
  * comes down each time. The row says so before the press rather than after it, because fifty
  * megabytes is worth knowing about in advance.
- *
- * ## The strings for this existed for a long time before the control did
  *
  * `settings.about.checkUpdates` and its siblings were in the catalogue with nothing behind them,
  * and the updater plugin was a declared dependency that was never registered. A label that looks

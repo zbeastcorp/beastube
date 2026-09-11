@@ -8,13 +8,9 @@
  * hover: by the time the card is clicked the answer is usually already here and the whole page
  * paints at once.
  *
- * ## Why hover and not click
- *
  * Because hover happens first, and it happens for free. A pointer resting on a card is a strong
  * signal — the hover preview already treats it as one — and the cost of being wrong is one request
  * that is thrown away, against a saving of the entire round trip when it is right.
- *
- * ## Staleness
  *
  * A view count a few minutes old is not worth a second request, but one from an hour ago is. The
  * entry is dropped after a short window and refetched on the next ask.

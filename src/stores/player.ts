@@ -1,8 +1,6 @@
 /**
  * The one playback session, held above the router.
  *
- * ## The problem this exists to solve
- *
  * The shell keys the routed view on the route name, so moving from Home to a video unmounts one
  * view and mounts another. When the player lives inside that view, every such navigation destroys
  * an `<iframe>` and builds a new one — a full embed bootstrap, every time, for the most common
@@ -13,20 +11,14 @@
  * open, go back, open another. Worse, `HoverPreview` had already built a player for that exact
  * video while the pointer rested on it, and clicking threw it away.
  *
- * ## The shape
- *
  * One player is mounted once, outside the routed subtree, and never unmounts. A view that wants
  * playback registers a *slot* — an empty box in its own layout — and the host positions the player
  * over it. Switching videos is then one `loadVideoById`, which is the same cost as switching shorts
  * and is why that surface has always felt instant.
  *
- * ## Why a slot rather than a portal
- *
  * `createPortal` would move the player's DOM node into the view. Moving an `<iframe>` in the DOM
  * destroys its browsing context and reloads it, which is the exact cost being avoided — so the node
  * stays where it is and only its geometry follows the slot.
- *
- * ## Why callbacks are not in the store
  *
  * They change identity on most renders, and a store write per render would re-render every
  * subscriber. They live in a module-level registry the host reads at call time, so the reactive

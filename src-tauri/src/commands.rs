@@ -1312,8 +1312,6 @@ fn remove_contents(root: &std::path::Path) {
 
 /// Removes one of the locations `get_storage_stats` reports as clearable.
 ///
-/// ## Why the browser profile is emptied rather than deleted
-///
 /// The embedded browser holds its profile open for as long as the window exists, so removing the
 /// directory would fail on Windows and, if it half-succeeded, would leave the webview with a
 /// profile missing files it believes are there. Only the caches inside it are removed — the HTTP
@@ -1321,8 +1319,6 @@ fn remove_contents(root: &std::path::Path) {
 /// size is — and each is a directory the browser recreates on demand and treats as disposable by
 /// design. Cookies, local storage and the embed's own settings are deliberately left alone: they
 /// are not size, and clearing them signs the viewer out of nothing but costs them their preferences.
-///
-/// ## Best effort, honestly reported
 ///
 /// A file the browser has open cannot be deleted while it is open, so some of it may survive. This
 /// deletes what it can and then re-measures, which is why it returns the fresh statistics: the
@@ -1485,8 +1481,6 @@ pub(crate) struct RecommendedFeed {
 }
 
 /// Videos to show on the home screen.
-///
-/// ## How the ranking works, and where it happens
 ///
 /// Entirely on this device. The most recently watched videos are used as seeds, the provider's
 /// related list for each is fetched, and the results are interleaved so no single seed dominates.

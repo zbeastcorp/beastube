@@ -4,8 +4,6 @@
  * Used to tint a card's hover glow, the way YouTube's cards pick up the colours of what they hold.
  * One number comes out of each thumbnail: a hue that is genuinely present in the image.
  *
- * ## Why a weighted histogram, and not the two obvious alternatives
- *
  * **Not an average.** The arithmetic mean of a colourful image converges on grey-brown, because
  * complementary hues cancel component-wise. That is not a tuning problem to be fixed with a
  * multiplier — it is what the mean of a multimodal distribution *is*.
@@ -17,21 +15,15 @@
  * A bucket histogram is a single O(n) pass with integer-only inner work, it is deterministic, and
  * the mode of the distribution is by definition a colour that actually appears in the picture.
  *
- * ## Weighting is what stops it being useless
- *
  * A plain mode returns black for most thumbnails, because letterbox bars and shadow are the largest
  * flat region in a great many of them. So near-black and blown-white pixels are discarded outright,
  * and the remaining votes are weighted by saturation: a small vivid region beats a large grey one,
  * which is exactly the judgement a person makes when asked what colour a picture is.
  *
- * ## Only the hue comes from the video
- *
  * Saturation and lightness are clamped into a narrow band before the colour is returned. Without
  * that, a dark thumbnail yields an invisible glow and a neon one yields something that hurts to
  * look at. Clamping in JavaScript rather than with CSS `color-mix` keeps the result deterministic
  * and testable, and drops a browser-feature dependency for about twenty lines.
- *
- * ## Requires a CORS-clean image
  *
  * Reading pixels back from a canvas that has drawn a cross-origin image throws unless the image was
  * fetched with CORS. `i.ytimg.com` answers with `Access-Control-Allow-Origin: *` — measured, not

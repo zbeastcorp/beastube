@@ -13,8 +13,6 @@
  *    feed is perfectly good until the new one arrives — dropping it first meant staring at a
  *    skeleton for the length of the request.
  *
- * ## Stale while revalidate
- *
  * That third point is the shape of the whole module. A refresh does not throw away the value; it
  * starts a new request *beside* it. Callers read the old value immediately and the new one replaces
  * it when it lands. There is never a moment with nothing to show, and there is never a stale feed
@@ -23,8 +21,6 @@
  * The `revision` is how a caller says "not the one you have". It comes from `useFeedStore` and is
  * bumped by clicking a feed's nav entry, so the same request key with a new revision means fetch
  * again rather than serve the cached answer.
- *
- * ## Why a module, not a store
  *
  * Nothing re-renders on a change here; subscribers settle the promise themselves through the
  * ordinary resource hook. Putting it in a store would re-render every subscriber on every write.

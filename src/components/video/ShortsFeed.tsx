@@ -6,14 +6,10 @@
  * word "shorts" and rendered the results as ordinary landscape cards — which looked like a Shorts
  * tab and was not one.
  *
- * ## Only one player exists
- *
  * The feed holds many videos and exactly one player. Mounting a player per short would start a
  * network fetch and a decode for every item in the list; instead the single player is pointed at
  * whichever short is current. That is also why moving between shorts is instant rather than a
  * mount/unmount cycle.
- *
- * ## Navigation is the browser's, not ours
  *
  * The feed is a real scrolling element with mandatory snap points. Wheel, trackpad, touch drag and
  * the scrollbar therefore all work without a line of code, and they work *smoothly*, because native

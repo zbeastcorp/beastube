@@ -772,8 +772,6 @@ function ExploreView({ category }: { category: ExploreCategory }): ReactNode {
 /**
  * One channel, laid out the way the provider's own site lays one out.
  *
- * ## What is here, and what is deliberately not
- *
  * The site's page is a banner, an avatar, a name, a metadata line, a description that expands, a
  * row of the owner's links and a row of tabs. All of that is drawn here, because the adapter
  * returns all of it — it was simply being discarded before it reached this file.

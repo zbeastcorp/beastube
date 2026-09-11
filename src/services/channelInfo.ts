@@ -5,13 +5,9 @@
  * thumbnail and a view count — no channel, no avatar. YouTube's own Shorts surface shows both, so
  * getting them means one extra request per short, against the video itself.
  *
- * ## Only for shorts actually watched
- *
  * The feed holds forty. Fetching a channel for all of them would be forty requests for information
  * needed by one. So this is called for the short on screen and prefetched exactly one ahead, which
  * makes it one request per short the viewer actually reaches, arriving before they get there.
- *
- * ## The cache is the point
  *
  * Scrolling back to a short must not re-request its channel, and the feed is deliberately easy to
  * scroll back through. Entries are kept for the session and bounded, because a long session of

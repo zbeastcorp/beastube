@@ -6,14 +6,10 @@
  * download. Those actions already exist on the watch page here — this brings them to the card,
  * which is where the decision is actually made.
  *
- * ## Only what works
- *
  * Every entry is an action this application genuinely performs. Download appears only where a
  * downloader is installed, exactly as the watch-page control does (ADR-0003). There is no
  * "Not interested" or "Don't recommend channel", because nothing here would act on either — a
  * menu item that quietly does nothing is worse than a shorter menu.
- *
- * ## Why it is not a Radix dropdown
  *
  * The card is a link and the grid is virtualized. A portal-based menu anchored to a row that can
  * unmount underneath it leaves an orphaned popup, and the library's focus management fights the

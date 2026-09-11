@@ -12,8 +12,6 @@ use serde::{Deserialize, Serialize};
 
 /// A category the viewer can browse.
 ///
-/// ## Why the site's own Explore list is not reproduced whole
-///
 /// Three of its entries cannot be served by this build, and each is absent rather than present and
 /// failing:
 ///

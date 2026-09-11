@@ -11,8 +11,6 @@
  * went on rendering playlist cards that linked to a route which rendered Not Found. A card that
  * looks like a destination and is not one is worse than no card.
  *
- * ## Read synchronously, defaulted conservatively
- *
  * Capabilities are fixed for the life of the process, so they are fetched once at launch and read
  * from memory afterwards. Until the answer arrives every capability reads as **false**.
  *

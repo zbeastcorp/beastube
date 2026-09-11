@@ -6,8 +6,6 @@
  * recommended feed and the shorts shelf together, and the bar should stay up until both are done
  * rather than snapping shut when the first one lands.
  *
- * ## Why not track every IPC call
- *
  * Because most of them are not a navigation. Suggestions fire on every keystroke, watch positions
  * checkpoint on a timer, bookmark state is read per card. A bar that flashed for those would be
  * noise, and worse, it would be *lying* about what it means. Only a view's primary fetch opts in,

@@ -11,8 +11,6 @@
  * simply replaces the one it supersedes, and a late event for a download that has since finished
  * is discarded by comparing `updated_at`.
  *
- * ## Why the announcement lives here
- *
  * A download that finishes while the user is on another screen still has to say so. Raising the
  * toast in the store — the one place every transition passes through — means it happens exactly
  * once regardless of how many buttons are mounted, and happens at all when none are.

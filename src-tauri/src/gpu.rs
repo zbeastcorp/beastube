@@ -37,8 +37,6 @@ use std::path::PathBuf;
 /// `--disable-background-timer-throttling` keeps the playhead and the progress bar honest while the
 /// window is not focused, which is the ordinary case for a video playing in the background.
 ///
-/// ## The two cache ceilings, which are the whole storage story
-///
 /// Chromium sizes its disk cache from *free disk space* and will take hundreds of megabytes on
 /// a large drive. Measured on this application before these flags, the embedded browser's
 /// profile held **487 MB** against a 4.4 MB library: 360 MB of HTTP cache and 88 MB of compiled
