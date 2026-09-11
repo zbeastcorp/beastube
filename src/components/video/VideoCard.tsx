@@ -24,10 +24,7 @@ import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
 import { cachedDominantColor, sampleDominantColor } from '@/services/dominantColor';
 import { prefetchVideoDetails } from '@/services/videoCache';
-import { bestThumbnailFor, type VideoSummary } from '@/types/domain';
-
-/** Below this width the provider's grey "no thumbnail" placeholder is what came back. */
-const PLACEHOLDER_WIDTH_THRESHOLD = 160;
+import { bestThumbnailFor, PLACEHOLDER_WIDTH_THRESHOLD, type VideoSummary } from '@/types/domain';
 
 /** Duration badge, bottom-right of the thumbnail. */
 function DurationBadge({ video }: { video: VideoSummary }): ReactNode {

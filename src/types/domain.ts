@@ -169,6 +169,9 @@ export function videoAspectRatio(video: Pick<VideoSummary, 'thumbnails' | 'is_sh
  * Mirrors `ThumbnailSet::best_for_width`. Selecting the smallest sufficient rendition rather than
  * the largest is what keeps a virtualized grid from pulling oversized images for small cards.
  */
+/** Below this width, what came back is the provider's grey "no thumbnail" placeholder. */
+export const PLACEHOLDER_WIDTH_THRESHOLD = 160;
+
 export function bestThumbnailFor(set: ThumbnailSet, targetWidth: number): Thumbnail | undefined {
   const sufficient = set.find((t) => t.width !== undefined && t.width >= targetWidth);
   if (sufficient) return sufficient;

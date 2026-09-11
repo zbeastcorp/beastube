@@ -36,15 +36,13 @@ use sqlx::sqlite::SqliteRow;
 
 use crate::connection::Database;
 use crate::error::{DbError, DbResult};
+use super::{MAX_TEXT_LEN, truncate};
 
 use super::{
     column, decode_channel_id, decode_thumbnails, decode_video_id, degrade, encode_thumbnails,
     from_db_bool, from_db_count, from_db_millis_opt, from_db_timestamp, require_max_len,
     require_non_blank, to_db_limit, to_db_millis_opt,
 };
-
-/// Longest a playlist name or an item's title may be stored at.
-const MAX_TEXT_LEN: usize = 512;
 
 /// Longest a user-written description may be.
 const MAX_DESCRIPTION_LEN: usize = 5_000;
@@ -415,14 +413,6 @@ fn item_from_row(row: &SqliteRow) -> DbResult<PlaylistItem> {
         position: column::<i64>(row, "position")?,
         added_at: from_db_timestamp(column::<i64>(row, "added_at")?),
     })
-}
-
-/// Clamps stored text to a bound, on a character boundary.
-fn truncate(raw: &str, max: usize) -> String {
-    if raw.chars().count() <= max {
-        return raw.to_owned();
-    }
-    raw.chars().take(max).collect()
 }
 
 #[cfg(test)]

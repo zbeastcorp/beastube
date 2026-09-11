@@ -33,10 +33,7 @@ import { LazyImage } from '@/components/common/LazyImage';
 import { HoverPreview } from '@/components/video/HoverPreview';
 import { useTranslation } from '@/i18n/context';
 import { cachedDominantColor, sampleDominantColor } from '@/services/dominantColor';
-import { bestThumbnailFor, type VideoSummary } from '@/types/domain';
-
-/** Below this width the provider's grey "no thumbnail" placeholder is what came back. */
-const PLACEHOLDER_WIDTH_THRESHOLD = 160;
+import { bestThumbnailFor, PLACEHOLDER_WIDTH_THRESHOLD, type VideoSummary } from '@/types/domain';
 
 /** Default rendered width. Matches YouTube's shorts shelf, which is narrower than a video card. */
 const DEFAULT_WIDTH = 180;

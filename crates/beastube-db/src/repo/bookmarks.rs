@@ -29,6 +29,7 @@ use sqlx::{Sqlite, Transaction};
 
 use crate::connection::Database;
 use crate::error::{DbError, DbResult};
+use super::{MAX_TEXT_LEN, truncate};
 
 use super::{
     column, decode_channel_id, decode_thumbnails, decode_video_id, degrade, encode_thumbnails,
@@ -45,8 +46,6 @@ pub const MAX_TAG_LEN: usize = 64;
 /// Maximum stored length of a note.
 pub const MAX_NOTE_LEN: usize = 4_096;
 
-/// Maximum stored length of denormalized display text.
-const MAX_TEXT_LEN: usize = 512;
 
 /// How many identifiers one batched tag lookup binds at a time.
 ///
@@ -551,10 +550,6 @@ fn normalize_tags(raw: &[String]) -> DbResult<Vec<String>> {
     Ok(set.into_iter().collect())
 }
 
-/// Truncates untrusted text on a character boundary.
-fn truncate(raw: &str, max: usize) -> String {
-    raw.chars().take(max).collect()
-}
 
 /// Builds a [`Bookmark`] with an empty tag list, which the caller fills in.
 ///

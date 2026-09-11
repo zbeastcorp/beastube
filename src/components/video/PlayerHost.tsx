@@ -66,6 +66,7 @@ import { invoke } from '@/services/ipc';
 import { playerHandlers, usePlayerStore } from '@/stores/player';
 import { useSettingsStore } from '@/stores/settings';
 import type { CaptionTrack, Quality } from '@/types/domain';
+import { CHROME_IDLE_MS, EMBED_CHROME_CROP_PX } from '@/components/video/chrome';
 
 /**
  * Where the player waits when nothing wants it: off-screen, alive, and out of the way.
@@ -115,10 +116,6 @@ const PARKED_SMALL = { top: -100_000, left: 0, width: 640, height: 360 } as cons
  *
  * Multiplied by the live scale below, it is correct at every tier.
  */
-const EMBED_CHROME_CROP_PX = 64;
-
-/** How long the pointer must rest before the controls fade, as YouTube's do. */
-const CHROME_IDLE_MS = 2600;
 
 /** How long the poster frame may cover the player before it lifts regardless. */
 const POSTER_MAX_MS = 6000;

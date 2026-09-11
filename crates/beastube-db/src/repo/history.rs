@@ -31,6 +31,7 @@ use sqlx::sqlite::SqliteRow;
 
 use crate::connection::Database;
 use crate::error::{DbError, DbResult};
+use super::{MAX_TEXT_LEN, truncate};
 
 use super::{
     column, decode_channel_id, decode_thumbnails, decode_video_id, degrade, encode_thumbnails,
@@ -38,11 +39,6 @@ use super::{
     search_text, to_db_limit, to_db_millis_opt,
 };
 
-/// Maximum stored length of a denormalized title or channel name.
-///
-/// Provider titles are bounded in practice, but a drifted response could carry a large string into
-/// every list query. Truncating on write keeps the read path predictable.
-const MAX_TEXT_LEN: usize = 512;
 
 /// What the caller knows about a video at the moment playback starts.
 ///
@@ -151,8 +147,11 @@ impl HistoryRepo {
     /// Returns [`DbError::Invalid`] if the title is blank, or a [`DbError`] if the write fails.
     pub async fn record_watch(&self, record: &WatchRecord, at: Timestamp) -> DbResult<()> {
         super::require_non_blank("title", &record.title)?;
-        let title = truncate(&record.title);
-        let channel_name = record.channel_name.as_deref().map(truncate);
+        let title = truncate(&record.title, MAX_TEXT_LEN);
+        let channel_name = record
+            .channel_name
+            .as_deref()
+            .map(|name| truncate(name, MAX_TEXT_LEN));
         let search = search_text(&title, channel_name.as_deref());
 
         sqlx::query(
@@ -384,13 +383,6 @@ impl HistoryRepo {
     }
 }
 
-/// Truncates untrusted display text to [`MAX_TEXT_LEN`] characters.
-///
-/// Cuts on a character boundary, never a byte one, so a multi-byte title cannot be stored as
-/// invalid UTF-8.
-fn truncate(raw: &str) -> String {
-    raw.chars().take(MAX_TEXT_LEN).collect()
-}
 
 /// Maps a result set, dropping rows that cannot be decoded.
 fn map_entries(rows: &[SqliteRow]) -> Vec<HistoryEntry> {

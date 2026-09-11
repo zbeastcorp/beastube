@@ -62,6 +62,7 @@ import { cachedShortChannel, prefetchShortChannel, shortChannel } from '@/servic
 import { invoke } from '@/services/ipc';
 import { useSessionStore } from '@/stores/session';
 import { bestThumbnailFor, type VideoId, type VideoSummary } from '@/types/domain';
+import { CHROME_IDLE_MS, EMBED_CHROME_CROP_PX } from '@/components/video/chrome';
 
 interface ShortsFeedProps {
   videos: readonly VideoSummary[];
@@ -108,7 +109,6 @@ const SEED_WINDOW = 3;
  * rather than simply added to the top — adding it to one side only would scale the video down and
  * cost real frame.
  */
-const EMBED_CHROME_CROP_PX = 64;
 
 /**
  * How long a short may sit without reaching playback before it is nudged, then given up on.
@@ -130,9 +130,6 @@ const STALL_GIVE_UP_MS = 9000;
  * per-video.
  */
 const MAX_CONSECUTIVE_SKIPS = 3;
-
-/** How long the pointer must rest before the overlaid chrome fades away. */
-const CHROME_IDLE_MS = 2600;
 
 /** The Shorts tab. */
 export function ShortsFeed({

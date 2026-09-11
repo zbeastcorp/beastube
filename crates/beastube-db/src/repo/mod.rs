@@ -53,6 +53,22 @@ use beastube_core::model::thumbnail::ThumbnailSet;
 use beastube_core::time_util::Timestamp;
 
 use crate::connection::Database;
+
+/// Maximum stored length of denormalized display text.
+///
+/// Provider titles are bounded in practice, but a drifted response could carry a large string into
+/// every list query. Truncating on write keeps the read path predictable.
+pub(crate) const MAX_TEXT_LEN: usize = 512;
+
+/// Truncates untrusted text on a character boundary.
+///
+/// Never on a byte boundary: a multi-byte title must not be stored as invalid UTF-8.
+pub(crate) fn truncate(raw: &str, max: usize) -> String {
+    if raw.chars().count() <= max {
+        return raw.to_owned();
+    }
+    raw.chars().take(max).collect()
+}
 use crate::error::{DbError, DbResult};
 
 /// Every repository, constructed once and shared.
