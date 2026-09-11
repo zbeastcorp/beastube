@@ -40,6 +40,14 @@ breaking changes.
 
 ### Added
 
+- **The home feed is what is on the site now, not a search for evergreen words.** A fresh install's
+  first screen used to be assembled by searching for "music", "technology", "science" and the like,
+  which returns whatever ranks well for those words — measured, 8 of 106 videos were from the last
+  day and 29 were over a year old. It now reads the provider's own category hubs, the same ones
+  behind Explore: 36 videos from the last hour and 113 from the last day. The feed is ordered
+  newest-first in bands, so the top of the screen is genuinely recent while each band still draws
+  from every category rather than handing the whole screen to whichever one republishes fastest.
+
 - **An Explore section, with the site's own categories.** Seven of them — Music, Gaming, Live, News,
   Sport, Learning and Fashion & Beauty — each reading the provider's own hub page, so the videos are
   the same ones the site shows there rather than a search standing in for them. Three of the site's

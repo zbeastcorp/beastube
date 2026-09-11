@@ -1562,6 +1562,31 @@ pub(crate) async fn get_recommended(
         }
     }
 
+    // What the provider is actually showing today, read from its own category hubs. This is the
+    // first screen of a fresh install, and it used to be assembled by searching for the evergreen
+    // words in `DISCOVERY_TOPICS` — which returns whatever ranks well for them, often years old.
+    // The hubs carry videos published minutes ago, which is what "here is what is on YouTube"
+    // was always meant to mean.
+    let cancel = CancellationToken::new();
+    if let Ok(page) = state.provider.discovery_feed(None, &cancel).await {
+        let videos: Vec<VideoSummary> = page
+            .items
+            .into_iter()
+            .filter_map(|item| match item {
+                beastube_core::model::SearchItem::Video(video) => Some(video),
+                _ => None,
+            })
+            .collect();
+        if !videos.is_empty() {
+            return Ok(RecommendedFeed {
+                videos: interleave(vec![videos], &watched, limit),
+                source: RecommendationSource::Discover,
+            });
+        }
+    }
+
+    // Only if every hub failed. Searching for evergreen words is a poor feed, but it is a feed,
+    // and an empty home screen is worse than a stale one.
     let topics = rotating(DISCOVERY_TOPICS, RECOMMENDATION_SEEDS, variant);
     Ok(RecommendedFeed {
         videos: interleave(search_lists(&state, topics, enough).await, &watched, limit),

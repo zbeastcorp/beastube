@@ -1019,7 +1019,8 @@ impl MetadataProvider for YouTubeProvider {
             // typed tab parser returns an empty list for a tab the live probe finds 48 items in.
             channel_shorts: true,
             playlists: false,
-            discovery_feed: false,
+            // Built from the category hubs rather than from the retired trending feed.
+            discovery_feed: true,
             // Seven categories, each measured returning videos without an account. The site's
             // Trending, Movies & TV and Podcasts are not among them; see `ExploreCategory`.
             explore: true,
@@ -1037,19 +1038,124 @@ impl MetadataProvider for YouTubeProvider {
         }
     }
 
-    /// Not supported.
+    /// A login-free feed of what is on the provider right now.
     ///
-    /// The provider retired its login-free trending surface in 2025, and everything replacing it is
-    /// personalized — which requires exactly the account this application does not have. The home
-    /// view falls back to the local library, so a first screen never depends on signing in (§43).
+    /// ## Why this is possible again
+    ///
+    /// It used to be refused, on the grounds that the trending surface was retired and everything
+    /// replacing it needs an account. The first half is still true — the trending feed answers
+    /// `400` — but the second was too broad: the category hubs behind [`Self::explore`] are
+    /// editorial, identical for everyone, and need no account. Several of them together are a real
+    /// feed of what the provider is showing today.
+    ///
+    /// This is worth having because of what it replaces. With nothing here, a fresh install's home
+    /// screen was assembled by *searching* for evergreen words — "music", "science", "cooking" —
+    /// which returns whatever ranks well for them, frequently years old. Read from the hubs
+    /// instead, the same screen carries videos published minutes ago.
+    ///
+    /// ## Why the categories are interleaved rather than concatenated or re-sorted
+    ///
+    /// Each hub already arrives newest-first, so taking them in turn keeps the front of the feed
+    /// fresh while keeping it varied. Sorting the merged list by age would do neither: news is
+    /// republished every few minutes and would crowd out everything else, and the only date these
+    /// surfaces publish is relative text, so any sort would be built on a timestamp inferred from
+    /// prose rather than one the provider actually sent.
+    ///
+    /// A hub that fails contributes nothing and the rest still fill the feed — one slow or broken
+    /// category must not cost the viewer their home screen (§87).
     async fn discovery_feed(
         &self,
         _continuation: Option<&ContinuationToken>,
-        _cancel: &CancellationToken,
+        cancel: &CancellationToken,
     ) -> ProviderResult<Page<SearchItem>> {
-        Err(ProviderError::Unsupported {
-            operation: "discovery_feed",
-            provider: PROVIDER_NAME,
+        // Every category except Gaming, whose hub serves five videos to a signed-out reader and
+        // would contribute almost nothing while costing a request like any other.
+        let categories = [
+            ExploreCategory::News,
+            ExploreCategory::Music,
+            ExploreCategory::Learning,
+            ExploreCategory::Sport,
+            ExploreCategory::Fashion,
+            ExploreCategory::Live,
+        ];
+
+        let lists = futures::future::join_all(
+            categories
+                .into_iter()
+                .map(|category| self.explore(category, None, cancel)),
+        )
+        .await;
+
+        let mut columns: Vec<std::vec::IntoIter<VideoSummary>> = lists
+            .into_iter()
+            .filter_map(|page| page.ok().map(|page| page.items.into_iter()))
+            .collect();
+
+        if columns.is_empty() {
+            return Err(ProviderError::Transport {
+                detail: "no category hub could be read".to_owned(),
+            });
+        }
+
+        // Round-robin across the categories, dropping repeats: the same video legitimately appears
+        // on more than one hub.
+        let mut seen = std::collections::HashSet::new();
+        let mut drawn: Vec<VideoSummary> = Vec::new();
+        loop {
+            let mut drew_any = false;
+            for column in &mut columns {
+                if let Some(video) = column.next() {
+                    drew_any = true;
+                    if seen.insert(video.id.as_str().to_owned()) {
+                        drawn.push(video);
+                    }
+                }
+            }
+            if !drew_any {
+                break;
+            }
+        }
+
+        // Then newest-first, by band rather than by exact age.
+        //
+        // Interleaving alone put a three-year-old lesson third in the feed, between two items from
+        // the last hour: every hub is newest-first internally, but they are not newest-first
+        // against each other, and an evergreen hub's best video is old. Sorting strictly by age
+        // instead would hand the whole screen to news, which republishes every few minutes.
+        //
+        // Banding gets both. Videos are grouped by roughly how old they are, the bands run newest
+        // first, and the round-robin order survives *within* each band — so the top of the feed is
+        // genuinely recent and still drawn from every category.
+        //
+        // A live stream is happening now, so it sorts as new. Something with no date at all sorts
+        // last, because an unknown age is not evidence of freshness.
+        let band = |video: &VideoSummary| -> u8 {
+            if video.live_status == LiveStatus::Live {
+                return 0;
+            }
+            match video
+                .published_text
+                .as_deref()
+                .and_then(map::approximate_age_ms)
+            {
+                Some(age) if age < 3_600_000 => 0,           // the last hour
+                Some(age) if age < 86_400_000 => 1,          // today
+                Some(age) if age < 7 * 86_400_000 => 2,      // this week
+                Some(age) if age < 2_629_800_000 => 3,       // this month
+                Some(age) if age < 31_557_600_000 => 4,      // this year
+                Some(_) => 5,
+                None => 6,
+            }
+        };
+        // Stable, so the interleaving within each band is preserved exactly.
+        drawn.sort_by_key(band);
+
+        let items: Vec<SearchItem> = drawn.into_iter().map(SearchItem::Video).collect();
+
+        Ok(Page {
+            items,
+            continuation: None,
+            total_estimate: None,
         })
     }
 
@@ -1296,11 +1402,9 @@ mod tests {
             .expect_err("playlists are not supported by this build");
         assert!(matches!(playlist, ProviderError::Unsupported { .. }));
 
-        let feed = provider
-            .discovery_feed(None, &cancel)
-            .await
-            .expect_err("there is no login-free discovery feed");
-        assert!(matches!(feed, ProviderError::Unsupported { .. }));
+        // `discovery_feed` is deliberately absent from this list. It used to be refused and is
+        // now served from the category hubs, which is exactly the kind of change this test exists
+        // to notice: an operation that starts working must stop being listed here.
     }
 
     #[tokio::test]
@@ -1333,8 +1437,12 @@ mod tests {
             "playlist() returns Unsupported, so the capability must be false"
         );
         assert!(
-            !capabilities.discovery_feed,
-            "discovery_feed() returns Unsupported, so the capability must be false"
+            capabilities.discovery_feed,
+            "discovery_feed() is served from the category hubs"
+        );
+        assert!(
+            capabilities.explore,
+            "seven categories are offered, each measured returning videos"
         );
         assert!(
             capabilities.captions,

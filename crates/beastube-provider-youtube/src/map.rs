@@ -379,6 +379,52 @@ pub(crate) fn joined_at(date: Option<time::Date>) -> Option<Timestamp> {
     date.map(|day| Timestamp::from(day.midnight().assume_utc()))
 }
 
+/// How long ago `text` says a video was published, in milliseconds, or `None` if it does not say.
+///
+/// Approximate by construction, and only ever used for ordering. These surfaces publish prose —
+/// "35 minutes ago", "Streamed 2 hours ago" — and never an absolute date, so this recovers roughly
+/// what the reader is told and nothing finer. It must not be used to fill `published_at`, which is
+/// a claim about *when* something happened rather than about how it should be sorted.
+///
+/// Months and years are the average Gregorian ones, for the same reason: a feed ordered by
+/// "3 months" against "1 year" only needs those two to land on the right side of each other.
+pub(crate) fn approximate_age_ms(text: &str) -> Option<u64> {
+    const MINUTE: u64 = 60_000;
+    const HOUR: u64 = 60 * MINUTE;
+    const DAY: u64 = 24 * HOUR;
+
+    let lower = text.to_lowercase();
+    // The first number in the string. "Streamed 2 hours ago" and "2 hours ago" both give 2.
+    let digits: String = lower
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(char::is_ascii_digit)
+        .collect();
+    let count: u64 = digits.parse().ok()?;
+
+    // Checked longest-first: "month" contains no other unit, but checking "day" before "today"
+    // would be the same class of mistake, so the order is explicit rather than incidental.
+    let unit = if lower.contains("second") {
+        1_000
+    } else if lower.contains("minute") {
+        MINUTE
+    } else if lower.contains("hour") {
+        HOUR
+    } else if lower.contains("day") {
+        DAY
+    } else if lower.contains("week") {
+        7 * DAY
+    } else if lower.contains("month") {
+        2_629_800_000
+    } else if lower.contains("year") {
+        31_557_600_000
+    } else {
+        return None;
+    };
+
+    count.checked_mul(unit)
+}
+
 /// Converts a publication date into the domain timestamp.
 fn published_at(date: Option<time::OffsetDateTime>) -> Option<Timestamp> {
     date.map(Timestamp::from)
@@ -1626,6 +1672,44 @@ mod related_tests {
         // consults it rather than only looking at the scheme.
         let mapped = channel_links(&links(&[("Sneaky", "https://user:pass@example.com/")]));
         assert!(mapped.is_empty(), "{mapped:?}");
+    }
+
+    #[test]
+    fn relative_ages_order_correctly() {
+        // Only the ordering matters, so the assertions are about which is newer rather than about
+        // exact durations.
+        let age = |text: &str| approximate_age_ms(text).expect("a parseable age");
+        assert!(age("35 minutes ago") < age("2 hours ago"));
+        assert!(age("2 hours ago") < age("6 days ago"));
+        assert!(age("6 days ago") < age("3 weeks ago"));
+        assert!(age("3 weeks ago") < age("5 months ago"));
+        assert!(age("5 months ago") < age("3 years ago"));
+        assert_eq!(approximate_age_ms("45 seconds ago"), Some(45_000));
+        assert_eq!(approximate_age_ms("1 hour ago"), Some(3_600_000));
+    }
+
+    #[test]
+    fn a_past_stream_reads_like_any_other_age() {
+        // Live tabs say "Streamed 3 months ago" rather than "3 months ago", and the number is not
+        // the first thing in the string.
+        assert_eq!(
+            approximate_age_ms("Streamed 2 hours ago"),
+            approximate_age_ms("2 hours ago")
+        );
+        assert!(
+            approximate_age_ms("Streamed 3 months ago") > approximate_age_ms("Streamed 2 days ago")
+        );
+    }
+
+    #[test]
+    fn text_with_no_age_in_it_yields_nothing() {
+        // A watcher count is not an age, and must not be read as one: "12K watching" would
+        // otherwise parse its number against whatever unit happened to match.
+        assert_eq!(approximate_age_ms("12K watching"), None);
+        assert_eq!(approximate_age_ms("LIVE"), None);
+        assert_eq!(approximate_age_ms(""), None);
+        assert_eq!(approximate_age_ms("ages ago"), None);
+        assert_eq!(approximate_age_ms("Premieres tomorrow"), None);
     }
 
     #[test]
