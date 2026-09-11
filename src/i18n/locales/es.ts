@@ -10,7 +10,7 @@ import type { PartialCatalogue } from '../index';
  */
 export const es: PartialCatalogue = {
   app: {
-    loading: 'Cargando',
+    loading: 'Cargando…',
     retry: 'Reintentar',
     cancel: 'Cancelar',
     close: 'Cerrar',
@@ -205,11 +205,6 @@ export const es: PartialCatalogue = {
     shorts: 'Shorts',
     live: 'En directo',
     playlists: 'Listas',
-    about: 'Información',
-    follow: 'Seguir',
-    unfollow: 'Dejar de seguir',
-    followed: 'Siguiendo',
-    followingLocalOnly: 'Guardado solo en este dispositivo; no se sincroniza con una cuenta',
     verified: 'Verificado',
     empty: 'Nada por aquí todavía',
     videoCount: {

@@ -15,7 +15,7 @@ import type { PartialCatalogue } from '../index';
  */
 export const hi: PartialCatalogue = {
   app: {
-    loading: 'लोड हो रहा है',
+    loading: 'लोड हो रहा है…',
     retry: 'फिर कोशिश करें',
     cancel: 'रद्द करें',
     close: 'बंद करें',
@@ -210,11 +210,6 @@ export const hi: PartialCatalogue = {
     shorts: 'शॉर्ट्स',
     live: 'लाइव',
     playlists: 'प्लेलिस्ट',
-    about: 'जानकारी',
-    follow: 'फ़ॉलो करें',
-    unfollow: 'अनफ़ॉलो करें',
-    followed: 'फ़ॉलो किया गया',
-    followingLocalOnly: 'सिर्फ़ इस डिवाइस पर सहेजा गया — किसी खाते से सिंक नहीं होता',
     verified: 'सत्यापित',
     empty: 'यहाँ अभी कुछ नहीं है',
     videoCount: {

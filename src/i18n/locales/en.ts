@@ -11,7 +11,7 @@
 export const en = {
   app: {
     name: 'BEASTUBE',
-    loading: 'Loading',
+    loading: 'Loading…',
     retry: 'Retry',
     cancel: 'Cancel',
     close: 'Close',
@@ -137,7 +137,7 @@ export const en = {
     showLess: 'Show less',
     chapters: 'Chapters',
     related: 'Related',
-    noRelated: 'No recommendations for this video',
+    noRelated: 'No related videos',
     live: 'Live',
     upcoming: 'Upcoming',
     wasLive: 'Streamed live',
@@ -155,18 +155,18 @@ export const en = {
     removeFromHistory: 'Remove from history',
     unavailable: 'This video is unavailable',
     ageRestricted: 'This video is age-restricted',
-    notEmbeddable: 'The uploader has disabled playback outside YouTube',
+    notEmbeddable: 'This video can’t be played here',
   },
 
   update: {
-    downloading: 'Downloading BEASTUBE {version}',
-    downloadingPercent: 'Downloading BEASTUBE {version} — {percent}%',
-    installing: 'Installing BEASTUBE {version}',
+    downloading: 'Downloading {version}',
+    downloadingPercent: 'Downloading {version} — {percent}%',
+    installing: 'Installing {version}',
     restarting: 'Restarting',
     /** Said once, before the restart, so it is never a surprise. */
-    willRestart: 'BEASTUBE will restart when this finishes.',
-    failed: 'BEASTUBE {version} could not be installed',
-    failedHint: 'You are still on the version you had. It will be tried again another time.',
+    willRestart: 'Restarts when finished.',
+    failed: 'Couldn’t install {version}',
+    failedHint: 'You’re still on your current version.',
     progressLabel: 'Update progress',
     dismiss: 'Hide',
   },
@@ -196,7 +196,7 @@ export const en = {
     controlsYoutube: 'YouTube (exact quality)',
     /** States the trade plainly, because neither option is simply better than the other. */
     controlsHint:
-      "BEASTUBE's controls match the dark theme and offer 360p–2160p. YouTube's own controls switch instantly and reach 144p, but their settings panel is white and cannot be themed.",
+      'BEASTUBE’s controls match the dark theme. YouTube’s switch quality instantly and reach every tier.',
     speed: 'Playback speed',
     speedNormal: 'Normal',
     quality: 'Quality',
@@ -236,7 +236,7 @@ export const en = {
     previous: 'Previous short',
     empty: 'No Shorts to show',
     unplayable: 'This short cannot be played here',
-    skipping: 'Skipping to the next one',
+    skipping: 'Skipping…',
   },
 
   home: {
@@ -248,7 +248,7 @@ export const en = {
     recommended: 'Recommended',
     categories: 'Categories',
     empty: 'Nothing here yet',
-    emptyHint: 'Search for something, and what you watch will start showing up here.',
+    emptyHint: 'Search to get started.',
   },
 
   channel: {
@@ -256,11 +256,6 @@ export const en = {
     shorts: 'Shorts',
     live: 'Live',
     playlists: 'Playlists',
-    about: 'About',
-    follow: 'Follow',
-    unfollow: 'Unfollow',
-    followed: 'Followed',
-    followingLocalOnly: 'Saved on this device only — not synced to a YouTube account',
     verified: 'Verified',
     empty: 'Nothing here yet',
     videoCount: {
@@ -307,7 +302,7 @@ export const en = {
     systemPlaylistFixed: 'Built-in lists cannot be renamed or deleted.',
     empty: {
       history: 'Nothing watched yet',
-      historyHint: 'Videos you watch will appear here. History is stored only on this device.',
+      historyHint: 'Videos you watch appear here.',
       bookmarks: 'No bookmarks yet',
       bookmarksHint: 'Bookmark a video to find it again quickly.',
       playlists: 'No playlists yet',
@@ -359,7 +354,7 @@ export const en = {
     description: 'Nothing you watch or search in this session is saved.',
     enable: 'Turn on incognito',
     disable: 'Turn off incognito',
-    exitConfirm: 'Leave incognito? This session’s activity is discarded, not saved.',
+    exitConfirm: 'Leave incognito? This session won’t be saved.',
   },
 
   settings: {
@@ -395,16 +390,13 @@ export const en = {
       captions: 'Show subtitles by default',
       captionLanguage: 'Preferred subtitle language',
       captionPosition: 'Subtitle position',
-      captionPositionHint:
-        'How far subtitles sit above the bottom of the picture. They lift clear of the control bar while it is on screen.',
+      captionPositionHint: 'How far subtitles sit above the bottom of the picture.',
       captionSize: 'Subtitle size',
       captionBackground: 'Subtitle background',
-      captionBackgroundHint:
-        'The band behind the text. At zero the text is outlined instead, which is cleaner over dark footage and harder to read over bright.',
+      captionBackgroundHint: 'The band behind the text. At zero, the text is outlined instead.',
       audioLanguage: 'Preferred audio language',
       hardwareAcceleration: 'Hardware acceleration',
-      hardwareAccelerationHint:
-        'Turn this off if video stutters or the picture is black — some graphics drivers decode incorrectly.',
+      hardwareAccelerationHint: 'Turn this off if video stutters or the picture is black.',
       // The webview's command line is fixed when its window is created, which is before any of
       // this can be read. Saying so is better than a switch that appears to do nothing.
       hardwareAccelerationRestart: 'Takes effect when BEASTUBE is restarted.',
@@ -421,20 +413,17 @@ export const en = {
       recommendationsHint: 'Ranking happens on this device. Nothing is sent anywhere.',
       incognitoDefault: 'Start every session in incognito',
       retention: 'Delete history older than',
-      retentionHint:
-        'Applied when a video is opened and again at every launch, so a machine left alone still forgets.',
+      retentionHint: 'Applied when you open a video, and at every launch.',
       retentionNever: 'Never delete',
       retentionDays: '{count} days',
       cacheLimit: 'Clear caches when they exceed',
-      cacheLimitHint:
-        'Checked at launch. Clearing costs nothing but a slower first load; your library, settings and downloads are never touched.',
+      cacheLimitHint: 'Checked at launch. Your library and downloads are never touched.',
       cacheLimitNever: 'Never clear',
       telemetry: 'Usage reporting',
       telemetryValue: 'Off — BEASTUBE collects no analytics',
       storedData: 'Stored data',
       storageBreakdown: 'Where the space goes',
-      storageHint:
-        'Every folder BEASTUBE writes to, largest first. Clearing a cache costs nothing but a slower first load afterwards.',
+      storageHint: 'Every folder BEASTUBE writes to, largest first.',
       storageClear: 'Clear',
       // Several rows carry a button reading only "Clear". This is the accessible name, so a screen
       // reader listing the controls says which one each is.
@@ -442,8 +431,7 @@ export const en = {
       storageCleared: 'Cleared {name}',
       storageOpen: 'Open folder',
       clearAll: 'Clear every cache',
-      clearAllHint:
-        'Empties all of the caches below in one press. Your library, your settings and your downloaded files are not touched.',
+      clearAllHint: 'Empties every cache below. Your library and downloads are not touched.',
       clearAllAmount: 'Free {size}',
       historyEntries: 'History',
       historyCount: {
@@ -455,8 +443,7 @@ export const en = {
         libraryHint:
           'History, playlists, bookmarks and watch positions. Cleared with the controls below.',
         webview: 'Browser cache',
-        webviewHint:
-          'The embedded browser’s page, script and shader caches. Usually the largest item by far, and rebuilt as you watch.',
+        webviewHint: 'Usually the largest, and rebuilt as you watch.',
         provider_cache: 'Metadata cache',
         provider_cacheHint:
           'Video and channel details already fetched, so a revisit does not ask again.',
@@ -465,8 +452,7 @@ export const en = {
         logs: 'Logs',
         logsHint: 'Diagnostic output. Safe to remove; the next launch starts a new one.',
         downloads: 'Downloads',
-        downloadsHint:
-          'Videos you saved. BEASTUBE will not delete these — it is a folder you chose and may share with other things.',
+        downloadsHint: 'Videos you saved. BEASTUBE never deletes these.',
       },
       cacheLocation: 'Cache location',
       databaseLocation: 'Database location',
@@ -476,13 +462,13 @@ export const en = {
       clearBookmarks: 'Clear bookmarks',
       resetAll: 'Reset all application data',
       resetAllConfirm:
-        'Delete all BEASTUBE data — history, playlists, bookmarks and settings? This cannot be undone. Files elsewhere on your computer are not touched.',
+        'Delete all BEASTUBE data — history, playlists, bookmarks and settings? This cannot be undone.',
       cacheCleared: 'Cache cleared',
     },
     downloads: {
       title: 'Downloads',
       subtitle:
-        'BEASTUBE saves videos with yt-dlp and ffmpeg, both installed alongside it. Point it at your own copies only if you would rather manage them yourself.',
+        'Both ship with BEASTUBE. Point it at your own copies only if you would rather manage them.',
       folder: 'Save videos to',
       changeFolder: 'Change',
       openFolder: 'Open folder',
@@ -492,7 +478,7 @@ export const en = {
       // the label, where it can wrap instead of being cut off mid-sentence.
       downloaderMissing: 'Not found',
       downloaderMissingHint:
-        'Ships with BEASTUBE, so this usually means the installation is incomplete. Reinstall, or choose a copy of your own.',
+        'Ships with BEASTUBE, so the installation may be incomplete. Reinstall, or choose your own copy.',
       downloaderFound: 'yt-dlp {version}',
       downloaderNoVersion: 'Found, no version reported',
       choose: 'Choose…',
@@ -500,8 +486,7 @@ export const en = {
       ffmpeg: 'Merging',
       ffmpegFound: 'ffmpeg found',
       ffmpegMissing: 'ffmpeg not found',
-      ffmpegMissingHint:
-        'Required, and ships with BEASTUBE. YouTube sends video and audio as separate tracks, so without ffmpeg to join them there is nothing to save. Reinstall, or choose a copy of your own.',
+      ffmpegMissingHint: 'Required, and ships with BEASTUBE. Reinstall, or choose your own copy.',
       jsRuntime: 'JavaScript runtime',
       jsRuntimeFound: '{name}',
       jsRuntimeFoundHint: 'Used to solve the checks YouTube puts in front of some videos.',
@@ -531,10 +516,9 @@ export const en = {
       modeOffHint: 'No filtering is applied.',
       modeStandardHint:
         'Filters only what can be identified confidently. Playback is never risked.',
-      modeStrictHint:
-        'Also filters lower-confidence matches. More may be hidden than you intend; playback is still protected.',
+      modeStrictHint: 'Also filters lower-confidence matches. More may be hidden than you intend.',
       scopeNotice:
-        'Filtering works within what the active player allows. With the built-in YouTube player, that means skipping creator-marked segments and hiding content you have chosen to hide — it does not remove YouTube’s own advertising.',
+        'Filtering skips creator-marked segments and hides what you choose. It does not remove YouTube’s own ads.',
       segments: 'Skip creator-marked segments',
       segmentCategories: 'Segments to skip',
       allowlist: 'Always allow',
@@ -598,7 +582,7 @@ export const en = {
       updateSize: 'An update replaces the whole application, about 50 MB.',
       automatic: 'Update automatically',
       automaticHint:
-        'Installs a newer version shortly after launch and restarts. Never while something is playing, and a version that fails to install is not retried on its own.',
+        'Installs a newer version shortly after launch and restarts. Never while something is playing.',
       licenses: 'Open-source licences',
       licensesHint: 'ffmpeg and yt-dlp ship with BEASTUBE. Their licences are installed beside it.',
     },
@@ -666,7 +650,7 @@ export const en = {
     rolledBack: 'Rolled back',
     notRolledBack: 'No rollback',
     reportCopied: 'Report copied to the clipboard',
-    localOnly: 'This screen is generated on this device and is never sent anywhere.',
+    localOnly: 'Generated on this device. Never sent anywhere.',
   },
 
   error: {
@@ -774,7 +758,7 @@ export const en = {
     retrying: 'Retrying…',
     retryingIn: 'Retrying in {seconds}s',
     attempt: 'Attempt {current} of {max}',
-    awaitConnectivity: 'Waiting for the connection to return',
+    awaitConnectivity: 'Waiting for connection…',
     fallback: {
       lower_quality: 'Switched to a lower quality',
       alternate_player: 'Switched to a different player',
