@@ -277,6 +277,16 @@ export interface VideoDetails extends VideoSummary {
 /** Channel tabs that actually have content. */
 export type ChannelTab = 'videos' | 'shorts' | 'live' | 'playlists';
 
+/**
+ * The browsable categories, mirroring `ExploreCategory` in the core crate.
+ *
+ * The site's Explore list also carries Trending, Movies & TV and Podcasts. None of the three can be
+ * served without an account or returns any video at all, so none is a member here — see the Rust
+ * enum for the measurements behind that.
+ */
+export type ExploreCategory =
+  'music' | 'gaming' | 'live' | 'news' | 'sport' | 'learning' | 'fashion';
+
 /** The compact shape used by channel cards. */
 export interface ChannelSummary {
   id: ChannelId;

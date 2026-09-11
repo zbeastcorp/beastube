@@ -49,6 +49,7 @@ import {
   type ChannelDetails,
   type ChannelLink,
   type ChannelTab,
+  type ExploreCategory,
   type LocalPlaylist,
   type LocalPlaylistId,
   type SearchItem,
@@ -726,6 +727,49 @@ function BookmarksView(): ReactNode {
 }
 
 /**
+ * One browsable category.
+ *
+ * A plain grid, because that is what the provider's own category pages are: an editorial hub whose
+ * front page collects videos from across the service. Nothing here is personalised and nothing
+ * needs an account, which is the whole reason these can be offered at all (§43).
+ *
+ * The heading names the category rather than leaving the page unlabelled — the sidebar selection
+ * says the same thing, but a page that states what it is survives being opened from a link.
+ */
+function ExploreView({ category }: { category: ExploreCategory }): ReactNode {
+  const t = useTranslation();
+  const content = useAsyncResource(
+    `explore:${category}`,
+    (signal) => invoke('get_explore', { category }, { signal }),
+    { navigation: true },
+  );
+
+  const videos = content.data?.items ?? [];
+
+  return (
+    <>
+      <h1 className="text-text mb-6 text-2xl font-medium">
+        {t.t(`explore.${category}` as TranslationKey)}
+      </h1>
+
+      {content.error && videos.length === 0 ? (
+        <ErrorState error={content.error} onRetry={content.reload} />
+      ) : content.loading && videos.length === 0 ? (
+        <FeedSkeleton />
+      ) : videos.length === 0 ? (
+        <EmptyState titleKey="explore.empty" icon="search" />
+      ) : (
+        <VideoGrid>
+          {videos.map((video) => (
+            <FeedCard key={video.id} video={video} />
+          ))}
+        </VideoGrid>
+      )}
+    </>
+  );
+}
+
+/**
  * One channel, laid out the way the provider's own site lays one out.
  *
  * ## What is here, and what is deliberately not
@@ -1362,6 +1406,8 @@ export function renderRoute(route: Route): ReactNode {
       );
     case 'channel':
       return <ChannelView channelId={route.channelId} tab={route.tab ?? 'videos'} />;
+    case 'explore':
+      return <ExploreView category={route.category} />;
     case 'playlist':
       return <NotFoundView />;
     case 'localPlaylist':

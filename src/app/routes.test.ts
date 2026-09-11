@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { toChannelId, toLocalPlaylistId, toVideoId } from '@/types/domain';
 
-import { hashToRoute, isSameRoute, routeToHash, sidebarSectionFor, type Route } from './routes';
+import {
+  EXPLORE_CATEGORIES,
+  hashToRoute,
+  isSameRoute,
+  routeToHash,
+  sidebarSectionFor,
+  type Route,
+} from './routes';
 
 const VIDEO = toVideoId('dQw4w9WgXcQ');
 const CHANNEL = toChannelId('UCuAXFkgsw1L7xaCfnd5JJOw');
@@ -21,6 +28,8 @@ describe('route serialization', () => {
     { name: 'watch', videoId: VIDEO, playlistId: toLocalPlaylistId(3) },
     { name: 'channel', channelId: CHANNEL, tab: 'videos' },
     { name: 'channel', channelId: CHANNEL, tab: 'shorts' },
+    { name: 'explore', category: 'music' },
+    { name: 'explore', category: 'fashion' },
     { name: 'localPlaylist', id: toLocalPlaylistId(7) },
     { name: 'history' },
     { name: 'library' },
@@ -45,6 +54,20 @@ describe('route serialization', () => {
 
   it('always writes a channel tab so a bare channel URL still resolves', () => {
     expect(routeToHash({ name: 'channel', channelId: CHANNEL })).toContain('/videos');
+  });
+
+  it('refuses a category that is not offered rather than showing another one', () => {
+    // Trending is the case that matters: the provider retired it, so a link to it must land on
+    // not-found rather than quietly opening Music.
+    expect(hashToRoute('#/explore/trending').name).toBe('notFound');
+    expect(hashToRoute('#/explore/').name).toBe('notFound');
+    expect(hashToRoute('#/explore/Music').name).toBe('notFound');
+  });
+
+  it('routes every offered category', () => {
+    for (const category of EXPLORE_CATEGORIES) {
+      expect(hashToRoute(`#/explore/${category}`)).toEqual({ name: 'explore', category });
+    }
   });
 
   it('converts the watch start time to whole seconds', () => {

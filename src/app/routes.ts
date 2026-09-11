@@ -16,7 +16,14 @@
  * There are no aesthetics at stake — the address bar is not visible in a desktop window.
  */
 
-import type { ChannelId, ChannelTab, LocalPlaylistId, PlaylistId, VideoId } from '@/types/domain';
+import type {
+  ChannelId,
+  ChannelTab,
+  ExploreCategory,
+  LocalPlaylistId,
+  PlaylistId,
+  VideoId,
+} from '@/types/domain';
 import {
   toChannelId,
   toLocalPlaylistId,
@@ -42,6 +49,17 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 
 const CHANNEL_TABS: readonly ChannelTab[] = ['videos', 'shorts', 'live', 'playlists'];
 
+/** The browsable categories, in the order the sidebar lists them. */
+export const EXPLORE_CATEGORIES: readonly ExploreCategory[] = [
+  'music',
+  'gaming',
+  'live',
+  'news',
+  'sport',
+  'learning',
+  'fashion',
+];
+
 const SEARCH_KINDS: readonly SearchResultKind[] = [
   'all',
   'videos',
@@ -58,6 +76,7 @@ export type Route =
   | { name: 'search'; query: string; kind?: SearchResultKind }
   | { name: 'watch'; videoId: VideoId; startAtMs?: number; playlistId?: LocalPlaylistId }
   | { name: 'channel'; channelId: ChannelId; tab?: ChannelTab }
+  | { name: 'explore'; category: ExploreCategory }
   | { name: 'playlist'; playlistId: PlaylistId }
   | { name: 'localPlaylist'; id: LocalPlaylistId }
   | { name: 'history' }
@@ -101,6 +120,8 @@ export function routeToHash(route: Route): string {
     }
     case 'channel':
       return `#/channel/${route.channelId}/${route.tab ?? 'videos'}`;
+    case 'explore':
+      return `#/explore/${route.category}`;
     case 'playlist':
       return `#/playlist/${route.playlistId}`;
     case 'localPlaylist':
@@ -199,6 +220,13 @@ export function hashToRoute(hash: string): Route {
       return tab ? { name: 'channel', channelId, tab } : { name: 'channel', channelId };
     }
 
+    case 'explore': {
+      // An unknown category is a not-found rather than a silent fallback to the first one: a
+      // mistyped or retired category must not quietly show something else (§131).
+      const category = isOneOf(EXPLORE_CATEGORIES, segments[1]);
+      return category ? { name: 'explore', category } : notFound();
+    }
+
     case 'playlist': {
       const playlistId = toPlaylistId(segments[1] ?? '');
       return playlistId ? { name: 'playlist', playlistId } : notFound();
@@ -264,6 +292,8 @@ export function sidebarSectionFor(route: Route): RouteName | null {
     case 'library':
     case 'localPlaylist':
       return 'library';
+    case 'explore':
+      return 'explore';
     case 'watch':
     case 'channel':
     case 'playlist':

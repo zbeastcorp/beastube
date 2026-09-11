@@ -41,6 +41,7 @@ const UNKNOWN: ProviderCapabilities = {
   channel_shorts: false,
   playlists: false,
   discovery_feed: false,
+  explore: false,
   captions: false,
   chapters: false,
   search_filters: false,

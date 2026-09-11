@@ -40,6 +40,13 @@ breaking changes.
 
 ### Added
 
+- **An Explore section, with the site's own categories.** Seven of them — Music, Gaming, Live, News,
+  Sport, Learning and Fashion & Beauty — each reading the provider's own hub page, so the videos are
+  the same ones the site shows there rather than a search standing in for them. Three of the site's
+  Explore entries are absent because none of them can be served without an account: Trending was
+  retired by the provider itself and its feed now answers `400`, and Movies & TV and Podcasts return
+  no videos at all to a signed-out reader.
+
 - **The channel page looks like a channel page.** It was an avatar, a name and a grid. It now has the
   banner, the handle, the subscriber and video counts, the channel's description with the rest of it
   a click away, the owner's links, and tabs for Videos, Shorts and Live. Tabs come from what each

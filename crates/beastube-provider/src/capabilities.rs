@@ -40,6 +40,8 @@ pub struct ProviderCapabilities {
     pub playlists: bool,
     /// A discovery feed with no query and no account.
     pub discovery_feed: bool,
+    /// Browsable editorial categories, as the site's Explore section lists them.
+    pub explore: bool,
     /// Subtitle tracks.
     pub captions: bool,
     /// Chapter markers.
@@ -67,6 +69,7 @@ impl ProviderCapabilities {
             channel_shorts: false,
             playlists: false,
             discovery_feed: false,
+            explore: false,
             captions: false,
             chapters: false,
             search_filters: false,

@@ -193,6 +193,7 @@ pub fn run() {
             commands::get_caption_cues,
             commands::get_channel,
             commands::get_channel_content,
+            commands::get_explore,
             commands::get_provider_capabilities,
             commands::record_watch,
             commands::get_history,

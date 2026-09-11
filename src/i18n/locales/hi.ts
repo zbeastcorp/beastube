@@ -57,6 +57,18 @@ export const hi: PartialCatalogue = {
     goForward: 'आगे जाएँ',
   },
 
+  explore: {
+    title: 'एक्सप्लोर',
+    music: 'संगीत',
+    gaming: 'गेमिंग',
+    live: 'लाइव',
+    news: 'समाचार',
+    sport: 'खेल',
+    learning: 'लर्निंग',
+    fashion: 'फ़ैशन और ब्यूटी',
+    empty: 'इस श्रेणी में अभी दिखाने के लिए कुछ नहीं है',
+  },
+
   search: {
     placeholder: 'वीडियो, चैनल और प्लेलिस्ट खोजें',
     resultsFor: '“{query}” के परिणाम',

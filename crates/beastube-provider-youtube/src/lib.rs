@@ -50,6 +50,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use beastube_core::ids::{ChannelId, PlaylistId, VideoId};
 use beastube_core::model::channel::{ChannelDetails, ChannelTab};
+use beastube_core::model::explore::ExploreCategory;
 use beastube_core::model::video::{LiveStatus, VideoDetails, VideoSummary};
 use beastube_core::model::{
     ContinuationToken, Page, PlaylistDetails, SearchFilters, SearchItem, SearchResultKind,
@@ -1019,6 +1020,9 @@ impl MetadataProvider for YouTubeProvider {
             channel_shorts: true,
             playlists: false,
             discovery_feed: false,
+            // Seven categories, each measured returning videos without an account. The site's
+            // Trending, Movies & TV and Podcasts are not among them; see `ExploreCategory`.
+            explore: true,
             // Read from the player response; verified against the live service, which returned six
             // tracks for a long-form video and one auto-generated track for a short.
             captions: true,
@@ -1046,6 +1050,73 @@ impl MetadataProvider for YouTubeProvider {
         Err(ProviderError::Unsupported {
             operation: "discovery_feed",
             provider: PROVIDER_NAME,
+        })
+    }
+
+    /// One Explore category, read from the hub the site links to for it.
+    ///
+    /// ## What each category actually is
+    ///
+    /// The site's Explore entries are channels — editorial hubs whose front page collects videos
+    /// from across the service — so the whole of this is a browse of a channel's home tab. That is
+    /// also why the content matches the site exactly: it is the same page, read directly.
+    ///
+    /// ## Why the cards are read as legacy renderers
+    ///
+    /// These hubs have not moved to the lockup format the channel grids now use. Measured live:
+    /// the News hub returns **183 `videoRenderer` and zero lockups**. `Music` is the exception and
+    /// sends 104 lockups, so both readers are run and whichever finds cards wins. Running both is
+    /// cheaper than deciding per category and, more to the point, it keeps working when a category
+    /// migrates — which is exactly the change that broke the channel grids.
+    ///
+    /// ## What is not offered
+    ///
+    /// Trending, Movies & TV and Podcasts are not members of [`ExploreCategory`] at all; the
+    /// reasons are recorded there. Nothing here has to refuse them, because nothing can ask.
+    ///
+    /// Pagination is not claimed: the hubs paginate by continuation and nothing here can resume
+    /// from one yet, so the page reports an honest end of list.
+    async fn explore(
+        &self,
+        category: ExploreCategory,
+        _continuation: Option<&ContinuationToken>,
+        cancel: &CancellationToken,
+    ) -> ProviderResult<Page<VideoSummary>> {
+        // The hub behind each category, as the site's own Explore links point at them. Opaque
+        // identifiers, and deliberately kept next to the operation that uses them rather than in
+        // the model: which page a category reads is provider knowledge, not vocabulary.
+        let browse_id = match category {
+            ExploreCategory::Music => "UC-9-kyTW8ZkZNDHQJ6FgpwQ",
+            ExploreCategory::Gaming => "UCOpNcN46UbXVtpKMrmU4Abg",
+            ExploreCategory::Live => "UC4R8DWoMoI7CAwX8_LjQHig",
+            ExploreCategory::News => "UCYfdidRxbB8Qhf0Nx7ioOYw",
+            ExploreCategory::Sport => "UCEgdi0XIXXZ-qJOFPf4JSKw",
+            ExploreCategory::Learning => "UCtFRv9O2AHqOZjjynzrv-xg",
+            ExploreCategory::Fashion => "UCrpQ4p1Ql_hG8rKXIKM1MOQ",
+        };
+
+        let client = self.query().await;
+        // No `params`: the home tab is what carries a hub's collected videos, and six of the seven
+        // have no Videos tab at all — asking for one answers `NotFound`.
+        let body = serde_json::json!({ "browseId": browse_id });
+
+        let json = Self::with_cancellation(cancel, async move {
+            client
+                .raw(rustypipe::client::ClientType::Desktop, "browse", &body)
+                .await
+                .map_err(|error| classify(&error, "explore"))
+        })
+        .await?;
+
+        let mut items = map::videos_from_renderers(&json);
+        if items.is_empty() {
+            items = map::videos_from_json(&json);
+        }
+
+        Ok(Page {
+            items,
+            continuation: None,
+            total_estimate: None,
         })
     }
 }

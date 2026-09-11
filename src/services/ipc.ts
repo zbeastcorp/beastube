@@ -22,6 +22,7 @@ import type {
   ChannelDetails,
   ChannelId,
   ChannelTab,
+  ExploreCategory,
   ContinuationToken,
   Cue,
   DownloadProgress,
@@ -217,6 +218,10 @@ export interface CommandMap {
     args: { channelId: ChannelId; tab: ChannelTab; continuation?: ContinuationToken };
     result: Page<VideoSummary>;
   };
+  get_explore: {
+    args: { category: ExploreCategory; continuation?: ContinuationToken };
+    result: Page<VideoSummary>;
+  };
   get_provider_capabilities: { args: undefined; result: ProviderCapabilities };
 
   // --- feeds ---
@@ -362,6 +367,7 @@ export interface ProviderCapabilities {
   channel_shorts: boolean;
   playlists: boolean;
   discovery_feed: boolean;
+  explore: boolean;
   captions: boolean;
   chapters: boolean;
   search_filters: boolean;

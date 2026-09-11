@@ -27,6 +27,7 @@ use beastube_core::Settings;
 use beastube_core::error::{DomainError, ErrorPayload};
 use beastube_core::ids::{ChannelId, VideoId};
 use beastube_core::model::channel::{ChannelDetails, ChannelTab};
+use beastube_core::model::explore::ExploreCategory;
 use beastube_core::model::playlist::{LocalPlaylist, LocalPlaylistId, PlaylistItem};
 use beastube_core::model::search::{SearchItem, SearchResultKind};
 use beastube_core::model::video::{Cue, VideoDetails, VideoSummary};
@@ -425,6 +426,28 @@ pub(crate) async fn get_channel_content(
     state
         .provider
         .channel_content(&id, tab, continuation.as_ref(), &cancel)
+        .await
+        .map_err(fail)
+}
+
+/// The videos in one Explore category.
+///
+/// The category is a closed vocabulary, so an unknown one is refused at deserialisation rather
+/// than reaching the provider — there is no "unknown category" case to handle here.
+///
+/// # Errors
+///
+/// Returns a payload if the provider fails or the operation is unsupported.
+#[tauri::command]
+pub(crate) async fn get_explore(
+    state: State<'_, AppState>,
+    category: ExploreCategory,
+    continuation: Option<ContinuationToken>,
+) -> CommandResult<Page<VideoSummary>> {
+    let cancel = CancellationToken::new();
+    state
+        .provider
+        .explore(category, continuation.as_ref(), &cancel)
         .await
         .map_err(fail)
 }

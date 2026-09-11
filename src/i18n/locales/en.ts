@@ -53,6 +53,18 @@ export const en = {
     goForward: 'Go forward',
   },
 
+  explore: {
+    title: 'Explore',
+    music: 'Music',
+    gaming: 'Gaming',
+    live: 'Live',
+    news: 'News',
+    sport: 'Sport',
+    learning: 'Learning',
+    fashion: 'Fashion & Beauty',
+    empty: 'Nothing to show in this category right now',
+  },
+
   search: {
     placeholder: 'Search videos, channels and playlists',
     resultsFor: 'Results for “{query}”',

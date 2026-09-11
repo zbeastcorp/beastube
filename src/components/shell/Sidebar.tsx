@@ -19,12 +19,19 @@ import {
   Settings,
   SquarePlay,
   Wrench,
+  Music,
+  Gamepad2,
+  Radio,
+  Newspaper,
+  Trophy,
+  GraduationCap,
+  Shirt,
 } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 
 import { Link, useRoute } from '@/app/router';
 import { useFeedStore } from '@/stores/feed';
-import { sidebarSectionFor, type Route, type RouteName } from '@/app/routes';
+import { sidebarSectionFor, type Route } from '@/app/routes';
 import { useTranslation } from '@/i18n/context';
 import type { TranslationKey } from '@/i18n';
 
@@ -53,6 +60,53 @@ const GROUPS: NavGroup[] = [
         labelKey: 'nav.library',
         icon: SquarePlay,
         inMiniRail: true,
+      },
+    ],
+  },
+  {
+    headingKey: 'explore.title',
+    items: [
+      {
+        route: { name: 'explore', category: 'music' },
+        labelKey: 'explore.music',
+        icon: Music,
+        inMiniRail: false,
+      },
+      {
+        route: { name: 'explore', category: 'gaming' },
+        labelKey: 'explore.gaming',
+        icon: Gamepad2,
+        inMiniRail: false,
+      },
+      {
+        route: { name: 'explore', category: 'live' },
+        labelKey: 'explore.live',
+        icon: Radio,
+        inMiniRail: false,
+      },
+      {
+        route: { name: 'explore', category: 'news' },
+        labelKey: 'explore.news',
+        icon: Newspaper,
+        inMiniRail: false,
+      },
+      {
+        route: { name: 'explore', category: 'sport' },
+        labelKey: 'explore.sport',
+        icon: Trophy,
+        inMiniRail: false,
+      },
+      {
+        route: { name: 'explore', category: 'learning' },
+        labelKey: 'explore.learning',
+        icon: GraduationCap,
+        inMiniRail: false,
+      },
+      {
+        route: { name: 'explore', category: 'fashion' },
+        labelKey: 'explore.fashion',
+        icon: Shirt,
+        inMiniRail: false,
       },
     ],
   },
@@ -88,9 +142,19 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
-/** Whether `item` is the destination the user is currently in. */
-function isActive(item: NavItem, active: RouteName | null): boolean {
-  return active !== null && sidebarSectionFor(item.route) === active;
+/**
+ * Whether `item` is the destination the user is currently in.
+ *
+ * Compared against the whole route rather than only its section, because every Explore row belongs
+ * to the same section: matching on the section alone would light up all seven at once.
+ */
+function isActive(item: NavItem, route: Route): boolean {
+  const section = sidebarSectionFor(route);
+  if (section === null || sidebarSectionFor(item.route) !== section) return false;
+  if (item.route.name === 'explore' && route.name === 'explore') {
+    return item.route.category === route.category;
+  }
+  return true;
 }
 
 /**
@@ -110,7 +174,7 @@ function useFeedRefresh(item: NavItem): (() => void) | undefined {
   return name === 'home' || name === 'shorts' ? refresh : undefined;
 }
 
-function ExpandedRow({ item, active }: { item: NavItem; active: RouteName | null }): ReactNode {
+function ExpandedRow({ item, active }: { item: NavItem; active: Route }): ReactNode {
   const t = useTranslation();
   const Icon = item.icon;
   const selected = isActive(item, active);
@@ -133,7 +197,7 @@ function ExpandedRow({ item, active }: { item: NavItem; active: RouteName | null
   );
 }
 
-function MiniRow({ item, active }: { item: NavItem; active: RouteName | null }): ReactNode {
+function MiniRow({ item, active }: { item: NavItem; active: Route }): ReactNode {
   const t = useTranslation();
   const Icon = item.icon;
   const selected = isActive(item, active);
@@ -160,7 +224,7 @@ function MiniRow({ item, active }: { item: NavItem; active: RouteName | null }):
 /** The navigation rail, expanded or collapsed. */
 export function Sidebar({ collapsed }: { collapsed: boolean }): ReactNode {
   const t = useTranslation();
-  const activeSection = sidebarSectionFor(useRoute());
+  const active = useRoute();
 
   if (collapsed) {
     const miniItems = GROUPS.flatMap((group) => group.items).filter((item) => item.inMiniRail);
@@ -170,7 +234,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }): ReactNode {
         className="scroll-region scrollbar-none flex w-[var(--layout-sidebar-collapsed-width)] shrink-0 flex-col items-center gap-1 py-1"
       >
         {miniItems.map((item) => (
-          <MiniRow key={t.t(item.labelKey)} item={item} active={activeSection} />
+          <MiniRow key={t.t(item.labelKey)} item={item} active={active} />
         ))}
       </nav>
     );
@@ -194,7 +258,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }): ReactNode {
               <ExpandedRow
                 key={`${item.route.name}-${item.labelKey}`}
                 item={item}
-                active={activeSection}
+                active={active}
               />
             ))}
           </div>

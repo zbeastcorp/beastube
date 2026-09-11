@@ -12,6 +12,7 @@
 //!   UI can hide the field instead of rendering a confident and wrong "0 views".
 
 pub mod channel;
+pub mod explore;
 pub mod library;
 pub mod playlist;
 pub mod search;
@@ -20,6 +21,7 @@ pub mod thumbnail;
 pub mod video;
 
 pub use channel::{ChannelDetails, ChannelSummary};
+pub use explore::ExploreCategory;
 pub use library::{
     Bookmark, COMPLETION_THRESHOLD_FRACTION, HistoryEntry, PlaybackPosition, WatchState,
 };

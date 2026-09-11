@@ -52,6 +52,18 @@ export const es: PartialCatalogue = {
     goForward: 'Avanzar',
   },
 
+  explore: {
+    title: 'Explorar',
+    music: 'Música',
+    gaming: 'Videojuegos',
+    live: 'En directo',
+    news: 'Noticias',
+    sport: 'Deportes',
+    learning: 'Aprendizaje',
+    fashion: 'Moda y belleza',
+    empty: 'No hay nada que mostrar en esta categoría ahora mismo',
+  },
+
   search: {
     placeholder: 'Busca vídeos, canales y listas',
     resultsFor: 'Resultados de «{query}»',

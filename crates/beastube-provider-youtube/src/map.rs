@@ -95,6 +95,137 @@ pub(crate) fn shorts_from_json(json: &str) -> Vec<VideoSummary> {
         .collect()
 }
 
+/// Reads every video out of a response built from the **legacy** card renderers.
+///
+/// ## Why this exists alongside [`videos_from_json`]
+///
+/// The provider is midway through replacing one card shape with another and different surfaces are
+/// at different points in that migration. A channel grid is `lockupViewModel`; the category hubs
+/// behind Explore still send `videoRenderer` and `gridVideoRenderer`, the shape search uses.
+/// Measured against the live News hub: 183 legacy cards, zero lockups.
+///
+/// The legacy shape is the richer of the two, and worth reading on its own terms rather than
+/// flattening into the newer one: it carries an **exact** view count ("1,740 views") where a lockup
+/// only ever gives a rounded "1.7K", and it names the uploader and their channel id on every card.
+///
+/// Items that are not playable videos are dropped rather than mapped: a shelf on these pages also
+/// carries channels and playlists, and a card with no video id is not a video.
+pub(crate) fn videos_from_renderers(json: &str) -> Vec<VideoSummary> {
+    let Ok(root) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+
+    let mut cards = Vec::new();
+    collect_by_key(&root, "videoRenderer", &mut cards);
+    collect_by_key(&root, "gridVideoRenderer", &mut cards);
+
+    let mut seen = std::collections::HashSet::new();
+    cards
+        .into_iter()
+        .filter_map(video_from_renderer)
+        .filter(|video| seen.insert(video.id.as_str().to_owned()))
+        .collect()
+}
+
+/// Builds a summary from one legacy card, or `None` if it is not a usable video.
+fn video_from_renderer(card: &serde_json::Value) -> Option<VideoSummary> {
+    let id = VideoId::new(card.get("videoId")?.as_str()?).ok()?;
+
+    // Titles arrive as runs on every card measured (183 of 183), but `simpleText` is the older
+    // spelling of the same field and costs one line to accept.
+    let title = card
+        .pointer("/title/runs/0/text")
+        .or_else(|| card.pointer("/title/simpleText"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    if title.is_empty() {
+        return None;
+    }
+
+    // Live is declared by the overlay's style, not inferred from a missing duration. Both signals
+    // agree on 23 of the News hub's cards, and on one more they do not: a stream that is live *and*
+    // reports elapsed time. Reading the style gets that card right.
+    let live = {
+        let mut overlays = Vec::new();
+        collect_by_key(card, "thumbnailOverlayTimeStatusRenderer", &mut overlays);
+        overlays.iter().any(|overlay| {
+            overlay
+                .get("style")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|style| style == "LIVE")
+        })
+    };
+
+    let duration_ms = card
+        .pointer("/lengthText/simpleText")
+        .and_then(serde_json::Value::as_str)
+        .and_then(parse_duration_text);
+
+    // The exact count first: this shape publishes "1,740 views" where a lockup would only round it
+    // to "1.7K". The abbreviated field is the fallback, not the preference.
+    let view_count = card
+        .pointer("/viewCountText/simpleText")
+        .or_else(|| card.pointer("/shortViewCountText/simpleText"))
+        .and_then(serde_json::Value::as_str)
+        .and_then(parse_compact_count);
+
+    let published_text = card
+        .pointer("/publishedTimeText/simpleText")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+
+    let channel_name = card
+        .pointer("/ownerText/runs/0/text")
+        .or_else(|| card.pointer("/longBylineText/runs/0/text"))
+        .or_else(|| card.pointer("/shortBylineText/runs/0/text"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+
+    let channel_id = card
+        .pointer("/ownerText/runs/0/navigationEndpoint/browseEndpoint/browseId")
+        .or_else(|| {
+            card.pointer("/longBylineText/runs/0/navigationEndpoint/browseEndpoint/browseId")
+        })
+        .and_then(serde_json::Value::as_str)
+        .and_then(|raw| ChannelId::new(raw).ok());
+
+    // The tick is a badge on the owner rather than a property of the video.
+    let channel_verified = {
+        let mut styles = Vec::new();
+        collect_by_key(card, "metadataBadgeRenderer", &mut styles);
+        styles.iter().any(|badge| {
+            badge
+                .get("style")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|style| style.contains("VERIFIED"))
+        })
+    };
+
+    Some(VideoSummary {
+        id,
+        title,
+        channel_id,
+        channel_name,
+        channel_avatar: sources_to_thumbnails(
+            card.pointer("/avatar/decoratedAvatarViewModel/avatar/avatarViewModel/image/sources"),
+        ),
+        channel_verified,
+        thumbnails: sources_to_thumbnails(card.pointer("/thumbnail/thumbnails")),
+        duration_ms,
+        // Relative text only, as everywhere else on these surfaces.
+        published_at: None,
+        published_text,
+        view_count,
+        live_status: if live {
+            LiveStatus::Live
+        } else {
+            LiveStatus::NotLive
+        },
+        is_short: false,
+    })
+}
+
 /// Depth-first walk collecting every value stored under `key`.
 fn collect_by_key<'a>(value: &'a serde_json::Value, key: &str, out: &mut Vec<&'a serde_json::Value>) {
     match value {

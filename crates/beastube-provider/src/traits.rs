@@ -12,6 +12,7 @@
 use async_trait::async_trait;
 use beastube_core::ids::{ChannelId, PlaylistId, VideoId};
 use beastube_core::model::channel::ChannelTab;
+use beastube_core::model::explore::ExploreCategory;
 use beastube_core::model::{
     ChannelDetails, ContinuationToken, Page, PlaylistDetails, SearchFilters, SearchItem,
     SearchResults, Suggestion, VideoDetails, VideoSummary,
@@ -202,4 +203,21 @@ pub trait MetadataProvider:
         continuation: Option<&ContinuationToken>,
         cancel: &CancellationToken,
     ) -> ProviderResult<Page<SearchItem>>;
+
+    /// The videos behind one browsable category.
+    ///
+    /// Distinct from [`Self::discovery_feed`] in the one way that matters here: a discovery feed
+    /// answers "what should this viewer watch", which no provider can do without knowing who they
+    /// are, whereas a category answers "what is on the music page", which is the same for everyone
+    /// and needs no account (§43).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::ProviderError`] if the request fails, is cancelled, or is unsupported.
+    async fn explore(
+        &self,
+        category: ExploreCategory,
+        continuation: Option<&ContinuationToken>,
+        cancel: &CancellationToken,
+    ) -> ProviderResult<Page<VideoSummary>>;
 }
