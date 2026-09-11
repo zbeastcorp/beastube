@@ -381,7 +381,9 @@ impl TaskScheduler {
 
     /// Cancels every task that does not survive navigation, leaving playback untouched.
     ///
-    /// Called when the user navigates away from a view.
+    /// Not yet called: the shell does not signal navigation to the scheduler, so obsolete work
+    /// currently runs to completion instead of being dropped. The priorities it reads are
+    /// assigned correctly, so wiring this up is the only thing outstanding.
     pub fn cancel_navigable(&self) {
         self.shared.cancellable_root.cancel();
     }
